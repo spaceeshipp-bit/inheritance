@@ -1,0 +1,7 @@
+node_modules/
+dist/
+test-results/
+*.log
+.DS_Store
+tests/e2e/screenshots/*.png
+!tests/e2e/screenshots/.gitkeep

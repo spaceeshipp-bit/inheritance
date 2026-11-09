@@ -1,0 +1,229 @@
+// Every tunable number in the game, taken from the design doc
+// ("Inheritance — Game Design Document"). Server and client both import this
+// file so the rules can never disagree. Distances are metres, times are seconds
+// unless the name says Ms.
+
+export const PROTOCOL_VERSION = 1;
+
+/** Player counts. 1 Grandma + 4–7 cousins. */
+export const MIN_PLAYERS = 5;
+export const MAX_PLAYERS = 8;
+
+/** Simulation. */
+export const TICK_HZ = 30;
+export const SNAPSHOT_HZ = 20;
+export const GRAVITY = 18;
+
+/** Grandma's senses (one table drives audio, text scramble, HUD and vision). */
+export const SENSES = {
+  /** 0..clear: hears voices clearly / sees sharp. */
+  clear: 2,
+  /** clear..muffled: muffled hearing / soft blur. */
+  muffled: 6,
+  /** muffled..mumble: a mumble that tracks loudness only / heavy blur, silhouettes. */
+  mumble: 10,
+  /** Half-angle of Grandma's view cone in degrees. Outside it she sees nothing. */
+  coneHalfAngleDeg: 55,
+  /** Low-pass cutoff at the far edge of the muffled band (Hz), and gain drop (dB). */
+  muffledLowpassHz: 800,
+  muffledGainDb: -12,
+} as const;
+
+export const HEARING_AID = {
+  /** Clear hearing range while active. */
+  clearRange: 6,
+  duration: 6,
+  cooldown: 25,
+  /** Cousins hear the whistle up to this far. */
+  whistleRange: 12,
+} as const;
+
+export const SPECTACLES = {
+  /** Sharp sight out to this range while active... */
+  sharpRange: 8,
+  /** ...but in a narrower cone. */
+  coneHalfAngleDeg: 30,
+  duration: 5,
+  cooldown: 15,
+  /** A thrown object hitting Grandma faster than this knocks them off. */
+  knockOffSpeed: 6,
+} as const;
+
+/** Voice ranges for cousins. */
+export const VOICE = {
+  /** Cousins hear each other with normal falloff out to this range. */
+  cousinRange: 15,
+  /** Holding Whisper shrinks your voice range to this. */
+  whisperRange: 1.5,
+} as const;
+
+/** The live will. Shares are integer percentage points that always sum to 100. */
+export const WILL = {
+  /** Bless / Tut move this many points. */
+  quickStep: 5,
+  /** Each visit Grandma can move at most this many points in total. */
+  budgetPerVisit: 60,
+  /** ...and no more than this many points in any rolling window. */
+  rollingCap: 20,
+  rollingWindow: 30,
+  /** Full parchment: 1-point drags, Grandma moves at this fraction of speed. */
+  parchmentStep: 1,
+  parchmentMoveFactor: 0.3,
+  /** The quill scratch is audible this far while the parchment is open. */
+  quillRange: 10,
+  /** A Tut aimed at a cousin within this many seconds of a crime counts as an accusation. */
+  accuseWindow: 10,
+  /** "Big Cut" moment threshold, points lost in one opening of the parchment. */
+  bigCutPoints: 25,
+} as const;
+
+/** Cousin actions. */
+export const COUSIN = {
+  walkSpeed: 3.6,
+  runSpeed: 6.0,
+  sneakSpeed: 1.8,
+  jumpSpeed: 6.5,
+  /** Spoken or wheel compliments count only within this range of Grandma. */
+  complimentRange: 2,
+  /** Tattle works within this range of Grandma. */
+  tattleRange: 3,
+  /** Grab / steal / interact reach. */
+  reach: 1.4,
+  shoveRange: 1.3,
+  shoveImpulse: 7,
+  shoveCooldown: 1.2,
+  /** Hold to plant a stolen item. */
+  plantHold: 1.5,
+  /** Throw speed range (charge 0..1 maps to min..max). */
+  throwSpeedMin: 5,
+  throwSpeedMax: 13,
+  throwChargeTime: 1.0,
+  /** Footstep audibility (for Grandma's HUD and bots). */
+  footstepRangeRun: 8,
+  footstepRangeWalk: 4,
+  footstepRangeSneak: 1,
+  /** The leader gets "Nana's Pet": footsteps audible this many times as far. */
+  leaderFootstepFactor: 2,
+} as const;
+
+export const GRANDMA = {
+  walkSpeed: 2.2,
+  caneRange: 1.8,
+  caneImpulse: 6,
+  caneCooldown: 3,
+  summonCooldown: 30,
+  /** Cousins summoned must come within this radius... */
+  summonRadius: 4,
+  /** ...within this many seconds or Grandma is told who ignored her. */
+  summonGrace: 8,
+  /** Grandma "finds" an evidence item when it is this close and in her view. */
+  findRange: 2.5,
+} as const;
+
+/** Ragdoll (floppy) time after a shove, cane whack, or fall. */
+export const RAGDOLL_TIME = 1.5;
+/** Falling more than this many metres ragdolls you. */
+export const FALL_RAGDOLL_HEIGHT = 1.2;
+
+export const HEIRLOOM = {
+  /** Count placed per match (out of the map's spawn points). */
+  perMatch: 6,
+  /** An heirloom breaks when it hits something faster than this. */
+  breakSpeed: 4,
+  /** Shoving a character into an heirloom's pedestal topples it. */
+  topplePushRange: 0.8,
+} as const;
+
+/** A crash is a crime scene for this long (for planting evidence and accusations). */
+export const CRIME_SCENE = { radius: 3, duration: 20 } as const;
+
+/** Match structure. Visit 1 only in the first playable; full match is optional. */
+export type VisitId = 'tea' | 'dinner' | 'storm';
+export const VISITS: Record<VisitId, { name: string; duration: number }> = {
+  tea: { name: 'Afternoon Tea', duration: 180 },
+  dinner: { name: 'Family Dinner', duration: 300 },
+  storm: { name: 'The Storm', duration: 240 },
+};
+export const SLICE_VISITS: VisitId[] = ['tea'];
+export const FULL_VISITS: VisitId[] = ['tea', 'dinner', 'storm'];
+export const ROLE_REVEAL_TIME = 6;
+export const INTERMISSION_TIME = 20;
+export const READING_TIME = 20;
+export const VOTE_TIME = 20;
+export const RESULTS_TIME = 15;
+
+/** The Storm: lightning gives Grandma a short flash of sharp vision. */
+export const STORM = { lightningEvery: 20, lightningJitter: 6, flashDuration: 0.5 } as const;
+
+/** Wishes (errands). One active at a time, a new one when it is fulfilled or expires. */
+export const WISH = { duration: 45, deliverRange: 1.6, gapMin: 4, gapMax: 10 } as const;
+
+/** Disconnects. */
+export const DISCONNECT = { cousinRejoin: 90, grandmaLieDown: 15 } as const;
+
+/** Moments (auto-tagged for replays, achievements, Steam Timeline later). */
+export const MOMENT = {
+  /** Love You, Nana: compliment, then a shove within this many seconds while unseen. */
+  loveYouNanaWindow: 5,
+} as const;
+
+/** Sabotage points per act, for Grandma's score (server-logged, never shown in-match). */
+export const SABOTAGE_POINTS = {
+  shove: 1,
+  break: 1,
+  breakFavourite: 2,
+  plant: 2,
+  steal: 1,
+  knockSpectacles: 1,
+} as const;
+
+/** Cousin identities: colour band + signature item. Order = join order. */
+export const COUSINS = [
+  { key: 'trophy', item: 'Trophy', color: '#e0b100' },
+  { key: 'phone', item: 'Phone', color: '#d23c3c' },
+  { key: 'sneakers', item: 'Sneakers', color: '#2f80ed' },
+  { key: 'briefcase', item: 'Briefcase', color: '#27ae60' },
+  { key: 'jacket', item: 'Leather jacket', color: '#8e44ad' },
+  { key: 'ring', item: 'Wedding ring', color: '#e67e22' },
+  { key: 'trowel', item: 'Trowel', color: '#16a085' },
+  { key: 'scarf', item: 'Scarf', color: '#e84393' },
+] as const;
+export type ItemKey = (typeof COUSINS)[number]['key'];
+
+/** Grandma's secret preference cards (2 drawn per match, only she sees them). */
+export const PREFERENCE_CARDS = [
+  'Hates whistling',
+  'Loves Mittens more than her family',
+  'Cannot abide a liar who repeats himself',
+  'Thinks anyone who runs indoors is up to something',
+  'Adores a cousin who brings tea unasked',
+  'Suspects whoever is closest to a crash',
+  'Remembers every broken vase',
+  'Has a soft spot for the quiet one',
+  'Distrusts phones at the table',
+  'Never forgives a shove on the stairs',
+] as const;
+
+/** Quick-chat wheel lines (8 per role). Passed through Grandma's hearing like speech. */
+export const QUICKCHAT = {
+  cousin: [
+    'Love you, Nana!',
+    'It was HIM!',
+    "I'll fetch your pills!",
+    'Wasn\'t me!',
+    'You look lovely today, Nana.',
+    'Nana, look over there!',
+    'Sorry!',
+    'Help!',
+  ],
+  grandma: [
+    'Speak up!',
+    'WHO BROKE THAT?',
+    'Come here, dear.',
+    'I saw that!',
+    'Liar!',
+    'Good child.',
+    'Where are my pills?',
+    'Out of my sight!',
+  ],
+} as const;
