@@ -6,7 +6,10 @@
 // per-address limits then use X-Forwarded-For (see server/limits.ts).
 // INHERITANCE_NETSIM=<rtt ms>,<jitter ms>,<loss %> (e.g. 150,20,2) delays every
 // connection as a slow, lossy network would (testing only; see shared/netsim.ts).
+// INHERITANCE_METRICS=<file> sets where playtest records go, one JSON line per
+// finished match and per survey answer (default data/playtests.jsonl; "off" = none).
 import { existsSync, statSync, createReadStream } from 'node:fs';
+import { appendFile, mkdir } from 'node:fs/promises';
 import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -36,6 +39,17 @@ export interface ServerOptions {
   limits?: Partial<Limits>;
   /** Simulate a slow, lossy network on every connection, both ways (INHERITANCE_NETSIM). */
   netsim?: NetSimConfig;
+  /** Append playtest records to this JSON-lines file (INHERITANCE_METRICS). Off when unset. */
+  metricsFile?: string;
+}
+
+/** A sink that appends each record as one JSON line, in order, creating the folder first. */
+export function jsonLines(file: string, log: (m: string) => void): (line: Record<string, unknown>) => void {
+  let chain: Promise<unknown> = mkdir(path.dirname(path.resolve(file)), { recursive: true });
+  return (line) => {
+    const text = `${JSON.stringify(line)}\n`;
+    chain = chain.then(() => appendFile(file, text)).catch((err: unknown) => log(`could not write a playtest record to ${file}: ${String(err)}`));
+  };
 }
 
 export interface ServerHandle {
@@ -89,7 +103,8 @@ export function startServer(opts: ServerOptions = {}): Promise<ServerHandle> {
   const log = opts.quiet ? () => {} : (m: string) => console.log(`[server] ${m}`);
   const limits = limitsWith(opts.limits);
   const trustHops = Math.max(0, Math.floor(opts.trustProxy ?? 0));
-  const rooms = new RoomManager({ fast: opts.fast, visitSeconds: opts.visitSeconds, botsIdle: opts.botsIdle, seed: opts.seed, log, limits });
+  const record = opts.metricsFile ? jsonLines(opts.metricsFile, log) : undefined;
+  const rooms = new RoomManager({ fast: opts.fast, visitSeconds: opts.visitSeconds, botsIdle: opts.botsIdle, seed: opts.seed, log, limits, record });
   const defaultDir = path.resolve(here, '../dist/client');
   const dirCandidate = opts.staticDir ?? defaultDir;
   const staticDir = existsSync(path.join(dirCandidate, 'index.html')) ? dirCandidate : null;
@@ -234,7 +249,10 @@ if (isMain) {
   const netsim = parseNetSim(process.env.INHERITANCE_NETSIM) ?? undefined;
   if (process.env.INHERITANCE_NETSIM && !netsim) console.warn('[server] INHERITANCE_NETSIM should look like 150,20,2 (round trip ms, jitter ms, loss %); ignored');
   if (netsim) console.log(`[server] simulating the network: ${netsim.rtt * 1000} ms round trip, ±${netsim.jitter * 1000} ms, ${netsim.loss * 100}% loss`);
-  startServer({ port, fast: process.env.INHERITANCE_FAST === '1', visitSeconds, trustProxy, netsim }).then((h) => {
+  const metricsEnv = process.env.INHERITANCE_METRICS;
+  const metricsFile = metricsEnv === 'off' ? undefined : metricsEnv || 'data/playtests.jsonl';
+  if (metricsFile) console.log(`[server] playtest records go to ${metricsFile} (INHERITANCE_METRICS=off to stop)`);
+  startServer({ port, fast: process.env.INHERITANCE_FAST === '1', visitSeconds, trustProxy, netsim, metricsFile }).then((h) => {
     const stop = (): void => { void h.close().then(() => process.exit(0)); };
     process.on('SIGINT', stop);
     process.on('SIGTERM', stop);

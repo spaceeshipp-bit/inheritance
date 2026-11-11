@@ -2,7 +2,7 @@
 // null (and is dropped); numbers are clamped into range; strings are trimmed
 // and stripped of control characters. The server never trusts a client shape.
 import { QUICKCHAT } from '../shared/constants.js';
-import type { ClientMsg, GrandmaAction, InputMsg, RtcSignal } from '../shared/protocol.js';
+import { SURVEY_ANSWERS, SURVEY_QUESTIONS, type ClientMsg, type GrandmaAction, type InputMsg, type RtcSignal } from '../shared/protocol.js';
 import type { MatchOptions } from '../shared/types.js';
 import { LIMITS } from './limits.js';
 
@@ -204,6 +204,11 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
       case 'vote': {
         const target = id(m.target);
         return target ? { t: 'vote', target } : null;
+      }
+      case 'survey': {
+        const q = SURVEY_QUESTIONS.find((x) => x === m.q);
+        const a = SURVEY_ANSWERS.find((x) => x === m.a);
+        return q && a ? { t: 'survey', q, a } : null;
       }
       case 'rtc': {
         const to = id(m.to);

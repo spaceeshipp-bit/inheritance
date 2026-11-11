@@ -10,7 +10,7 @@
 import {
   COUSIN, COUSINS, CRIME_SCENE, DISCONNECT, FULL_VISITS, GRANDMA, HEARING_AID, HEIRLOOM, INTERMISSION_TIME, MISHEARD,
   PREFERENCE_CARDS, QUICKCHAT, READING_TIME, RESULTS_TIME, ROLE_REVEAL_TIME, SENSES, SLICE_VISITS, SNAPSHOT_HZ,
-  SPECTACLES, STORM, TICK_HZ, VISITS, VOICE, VOTE_TIME, WILL, WISH, INPUT,
+  SPECTACLES, STORM, TICK_HZ, VISITS, VOICE, VOTE_TIME, WILL, WISH, INPUT, PROTOCOL_VERSION,
 } from '../shared/constants.js';
 import { HEIRLOOM_SPOTS, HEIRLOOM_VARIANTS, SPAWNS, groundHeight } from '../shared/map.js';
 import { createBody, forwardOf, integrateBody, yawToward, type BodyShape, type MoveBody } from '../shared/movement.js';
@@ -206,6 +206,34 @@ interface Guess {
 
 const copyBody = (b: MoveBody): MoveBody => ({ pos: { ...b.pos }, vel: { ...b.vel }, onGround: b.onGround, peakY: b.peakY });
 
+/** One match as a playtest record (see Match.summary). */
+export interface MatchSummary {
+  protocol: number;
+  /** Reached the results (not stopped part-way). */
+  finished: boolean;
+  endedEarly: boolean;
+  seconds: number;
+  visits: VisitId[];
+  visitsPlayed: number;
+  options: { fullMatch: boolean; fillBots: boolean; pushGrandma: boolean };
+  humans: number;
+  grandma: 'human' | 'bot';
+  /** By seat; no names. */
+  cousins: { human: boolean; share: number; sabotage: number }[];
+  grandmaScore: number | null;
+  plants: number;
+  plantsAccusedOwner: number;
+  framingAccuracy: number | null;
+  shoves: number;
+  breaks: number;
+  moments: Record<string, number>;
+  leaders: { visit: number; at: 'half' | 'end'; leader: number | null }[];
+  /** Did the leader after Visit 2 (one visit: at its halfway mark) win? Null when either had no single leader. */
+  leaderKept: boolean | null;
+  /** Did the family's vote for "worst" pick the real worst saboteur? */
+  voteFoundWorst: boolean | null;
+}
+
 const r3 = (v: number): number => Math.round(v * 1000) / 1000;
 /** Seconds into Grandma's lie-down before a cousin may take over (time for her to reconnect). */
 export const GRANDMA_TAKEOVER_GRACE = 2;
@@ -238,6 +266,11 @@ export class Match {
   readonly visits: VisitId[];
   readonly fast: boolean;
   readonly durations: PhaseDurations;
+  /** Who led the will at each visit's halfway mark and end (the leader-flip metric). */
+  readonly leaders: { visit: number; at: 'half' | 'end'; id: string | null }[] = [];
+  private halfMarked = -1;
+  /** The will was read before the last visit ended (Nana fell, too few cousins, her lie-down ran out). */
+  private endedEarly = false;
   readonly rng: () => number;
   readonly log: EventLog;
   readonly chars = new Map<string, Char>();
@@ -954,6 +987,11 @@ export class Match {
     }
     this.updateProps(h);
     if (this.phase === 'visit') {
+      const v = this.visits[this.visitIndex];
+      if (this.halfMarked !== this.visitIndex && this.phaseEndsAt - this.time <= this.durations.visit(v) / 2) {
+        this.halfMarked = this.visitIndex;
+        this.leaders.push({ visit: this.visitIndex, at: 'half', id: leader(this.will) });
+      }
       this.updateGrandmaSystems(h);
       this.updateWish();
       this.updateStorm();
@@ -1822,12 +1860,13 @@ export class Match {
     switch (this.phase) {
       case 'roles': this.startVisit(0); break;
       case 'visit':
-        this.endVisit();
         if (this.visitIndex + 1 < this.visits.length) {
+          this.endVisit();
           this.petId = leader(this.will);
           this.setPhase('intermission', this.durations.intermission);
+        } else {
+          this.startReading(); // ends the visit itself
         }
-        else this.startReading();
         break;
       case 'intermission': this.startVisit(this.visitIndex + 1); break;
       case 'reading': this.setPhase('vote', this.durations.vote); break;
@@ -1882,6 +1921,7 @@ export class Match {
   }
 
   private endVisit(): void {
+    this.leaders.push({ visit: this.visitIndex, at: 'end', id: leader(this.will) });
     const g = this.grandma;
     if (g) {
       this.closeParchment(g);
@@ -1899,7 +1939,10 @@ export class Match {
     if (this.phase === 'reading' || this.phase === 'vote' || this.phase === 'results') return;
     this.pause = null;
     if (this.phase === 'visit') this.endVisit();
-    if (toast) this.emitAll({ e: 'toast', text: toast });
+    if (toast) {
+      this.endedEarly = true;
+      this.emitAll({ e: 'toast', text: toast });
+    }
     this.reading = { shares: { ...this.will.shares }, order: readingOrder(this.will), moments: [...this.log.moments] };
     this.setPhase('reading', this.durations.reading);
     for (const id of this.humans) this.cfg.send(id, { t: 'reading', result: this.reading });
@@ -1948,6 +1991,50 @@ export class Match {
       return !!c && c.connected && c.state !== 'sleeping';
     }).length;
     if (awake < 3) this.startReading('Too few cousins are left awake. The will is read as it stands.');
+  }
+
+  /** A player's role in this match, or null if they are not in it. */
+  roleOf(id: string): Role | null {
+    return this.isHuman(id) ? (this.chars.get(id)?.role ?? null) : null;
+  }
+
+  /**
+   * This match as a playtest record (GDD "Playtest metrics"), written as one
+   * JSON line when it ends. Anonymous: cousins are numbered, nothing names or
+   * locates a player.
+   */
+  summary(): MatchSummary {
+    const order = this.cousinIds;
+    const num = (id: string | null): number | null => (id === null ? null : order.indexOf(id));
+    const res = this.results;
+    const sabotage = res?.sabotage ?? this.log.sabotageTally(order);
+    const winner = res ? leader(this.will) : null;
+    // The GDD's leader-flip target: the leader after Visit 2 should win at most 55% of matches.
+    // One-visit matches use the leader at the halfway mark instead.
+    const ref = this.visits.length >= 2
+      ? this.leaders.find((l) => l.visit === 1 && l.at === 'end')
+      : this.leaders.find((l) => l.visit === 0 && l.at === 'half');
+    const moments: Record<string, number> = {};
+    for (const m of this.log.moments) moments[m.kind] = (moments[m.kind] ?? 0) + 1;
+    const worstSaboteur = order.reduce<string | null>((best, id) => (best === null || (sabotage[id] ?? 0) > (sabotage[best] ?? 0) ? id : best), null);
+    return {
+      protocol: PROTOCOL_VERSION,
+      finished: !!res,
+      endedEarly: this.endedEarly,
+      seconds: Math.round(this.time),
+      visits: [...this.visits],
+      visitsPlayed: this.visitIndex + 1,
+      options: { fullMatch: this.options.fullMatch, fillBots: this.options.fillBots, pushGrandma: this.options.pushGrandma },
+      humans: this.humans.length,
+      grandma: this.isHuman(this.grandmaId) ? 'human' : 'bot',
+      cousins: order.map((id) => ({ human: this.isHuman(id), share: this.will.shares[id] ?? 0, sabotage: sabotage[id] ?? 0 })),
+      grandmaScore: res?.grandmaScore ?? null,
+      ...this.log.metrics(),
+      moments,
+      leaders: this.leaders.map((l) => ({ visit: l.visit, at: l.at, leader: num(l.id) })),
+      leaderKept: ref && ref.id !== null && winner !== null ? winner === ref.id : null,
+      voteFoundWorst: res && res.votedWorst !== null && worstSaboteur !== null && (sabotage[worstSaboteur] ?? 0) > 0 ? res.votedWorst === worstSaboteur : null,
+    };
   }
 
   /** End now (e.g. the room is closing). */

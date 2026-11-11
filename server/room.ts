@@ -64,8 +64,13 @@ export interface RoomManagerOptions {
   log?: (msg: string) => void;
   /** Override some abuse limits (tests); the rest come from LIMITS. */
   limits?: Partial<Limits>;
+  /** Playtest records (one per finished match, one per survey answer), e.g. appended to a JSON-lines file. */
+  record?: (line: Record<string, unknown>) => void;
 }
 
+/** Survey answers count for this long after a match ends (seconds), at most this many per player. */
+const SURVEY_WINDOW = 600;
+const SURVEY_MAX_ANSWERS = 12;
 const BOT_NAMES = ['Agatha', 'Barnaby', 'Clementine', 'Dudley', 'Euphemia', 'Ferdinand', 'Gertrude', 'Horace'];
 /** How often the manager looks for connections that never said hello (seconds). */
 const SWEEP_EVERY = 0.5;
@@ -99,6 +104,11 @@ export class RoomManager {
 
   log(msg: string): void {
     this.opts.log?.(msg);
+  }
+
+  /** Hand a playtest record to the sink, stamped with the time. Never throws. */
+  record(line: Record<string, unknown>): void {
+    try { this.opts.record?.({ ...line, at: new Date().toISOString() }); } catch (err) { console.error('[metrics] record failed', err); }
   }
 
   /** A new connection; `ip` is the address it counts against for per-address limits ('' = exempt). */
@@ -318,6 +328,11 @@ export class Room {
   private lastStr = '';
   /** Who was connected, in which voice group, when `peers` went out last. */
   private peerKey = '';
+  /** The running match's id (playtest records), and the last match's, for late survey answers. */
+  private matchId = '';
+  private lastMatch: { id: string; endedAt: number; roles: Map<string, 'grandma' | 'cousin'> } | null = null;
+  /** Survey answers per player for the current or last match (a cap: three questions, a few changes of mind). */
+  private surveyAnswers = new Map<string, number>();
   private nextSpectatorRefresh = 0;
 
   constructor(private mgr: RoomManager, readonly code: string) {
@@ -453,6 +468,20 @@ export class Room {
       case 'vote':
         this.match?.handle(p.id, msg);
         break;
+      case 'survey': {
+        // About the match just played: on its results screen, or up to 10 minutes after it.
+        const m = this.match;
+        const last = this.lastMatch;
+        let role: 'grandma' | 'cousin' | null = null;
+        let id = '';
+        if (m && m.phase === 'results') { role = m.roleOf(p.id); id = this.matchId; }
+        else if (!m && last && now - last.endedAt <= SURVEY_WINDOW) { role = last.roles.get(p.id) ?? null; id = last.id; }
+        const n = this.surveyAnswers.get(p.id) ?? 0;
+        if (!role || n >= SURVEY_MAX_ANSWERS) break;
+        this.surveyAnswers.set(p.id, n + 1);
+        this.mgr.record({ type: 'survey', match: id, role, q: msg.q, a: msg.a });
+        break;
+      }
       case 'quick':
       case 'chat':
       case 'tattle':
@@ -543,6 +572,8 @@ export class Room {
       grandmaId = b.id;
     }
     this.lastGrandmaId = botGrandma ? null : grandmaId;
+    this.matchId = randomBytes(6).toString('hex');
+    this.surveyAnswers.clear();
     this.match = new Match({
       players, grandmaId: grandmaId!, options: { ...this.options }, fast: this.mgr.opts.fast, visitSeconds: this.mgr.opts.visitSeconds, botsIdle: this.mgr.opts.botsIdle,
       seed: this.mgr.opts.seed,
@@ -558,6 +589,13 @@ export class Room {
   }
 
   private endMatch(): void {
+    const m = this.match;
+    if (m) {
+      this.mgr.record({ type: 'match', match: this.matchId, ...m.summary() });
+      const roles = new Map<string, 'grandma' | 'cousin'>();
+      for (const id of m.humanIds()) { const r = m.roleOf(id); if (r) roles.set(id, r); }
+      this.lastMatch = { id: this.matchId, endedAt: this.mgr.now(), roles };
+    }
     this.match = null;
     this.idleSince = null;
     for (const p of [...this.players.values()]) if (p.isBot) this.players.delete(p.id);

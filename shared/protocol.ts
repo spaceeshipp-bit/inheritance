@@ -41,6 +41,16 @@ export type GrandmaAction =
   | { a: 'summon' }
   | { a: 'pin'; item: string };
 
+/**
+ * The playtest survey on the results screen (GDD "Playtest metrics"): would
+ * you play this role again, did anything make you laugh out loud, did you see
+ * a moment worth clipping. One click each; the latest answer counts.
+ */
+export const SURVEY_QUESTIONS = ['again', 'laughed', 'clip'] as const;
+export type SurveyQuestion = (typeof SURVEY_QUESTIONS)[number];
+export const SURVEY_ANSWERS = ['yes', 'maybe', 'no'] as const;
+export type SurveyAnswer = (typeof SURVEY_ANSWERS)[number];
+
 export type ClientMsg =
   | { t: 'hello'; name: string; room: string; protocol: number; /** Rejoin token from a previous welcome. */ token?: string }
   | { t: 'lobby'; willingGrandma?: boolean; options?: Partial<MatchOptions> }
@@ -54,6 +64,8 @@ export type ClientMsg =
   /** Tattle on a cousin (must be within tattle range of Grandma). */
   | { t: 'tattle'; accused: string }
   | { t: 'vote'; target: string }
+  /** One click on the results screen's playtest survey (about the match just played). */
+  | { t: 'survey'; q: SurveyQuestion; a: SurveyAnswer }
   /** WebRTC signalling, relayed by the server to `to` within the same room. */
   | { t: 'rtc'; to: string; data: RtcSignal }
   | { t: 'ping'; ts: number };
