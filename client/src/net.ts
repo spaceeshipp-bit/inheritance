@@ -2,11 +2,21 @@
 // ping/pong clock sync (server match time), JSON framing.
 // The transport is injectable so the dev mock (src/dev/mock.ts) can stand in
 // for a real server while exercising exactly the same code path.
+//
+// One link at a time: connect() drops any previous link (a double click must
+// not leave an orphan socket) and events from a dropped link are ignored.
+// We never redial when the server closes us with CLOSE_CODES.replaced: another
+// tab joined with our rejoin token, and redialling would kick it, which would
+// kick us, forever. Status 'replaced' lets the screens say so instead.
 import { PROTOCOL_VERSION } from '../../shared/constants.js';
-import { encode, type ClientMsg, type ServerMsg } from '../../shared/protocol.js';
+import { CLOSE_CODES, encode, type ClientMsg, type ServerMsg } from '../../shared/protocol.js';
 import { localSec } from './util.js';
 
-export type NetStatus = 'idle' | 'connecting' | 'open' | 'reconnecting' | 'closed';
+/**
+ * 'replaced': this game is open in another tab, which took our seat; we stopped.
+ * 'closed': we left, or the server turned us away (its `error` says why); we stopped.
+ */
+export type NetStatus = 'idle' | 'connecting' | 'open' | 'reconnecting' | 'closed' | 'replaced';
 
 /** A bidirectional string pipe (a WebSocket or the mock). */
 export interface Link {
@@ -16,7 +26,8 @@ export interface Link {
 export interface LinkHandlers {
   open(): void;
   message(data: string): void;
-  close(): void;
+  /** The link closed; `code` is the WebSocket close code when there is one. */
+  close(code?: number): void;
 }
 export type LinkFactory = (h: LinkHandlers) => Link;
 
@@ -26,13 +37,38 @@ export function webSocketLink(url = defaultWsUrl()): LinkFactory {
     const ws = new WebSocket(url);
     ws.onopen = () => h.open();
     ws.onmessage = (e) => h.message(typeof e.data === 'string' ? e.data : String(e.data));
-    ws.onclose = () => h.close();
+    ws.onclose = (e) => h.close(e.code);
     ws.onerror = () => { /* onclose follows */ };
     return {
       send: (s) => { if (ws.readyState === WebSocket.OPEN) ws.send(s); },
       close: () => ws.close(),
     };
   };
+}
+
+/**
+ * A lobby message that says no match is running, or that we are not in the one
+ * that is: a match this client still shows ended or went on without us (e.g.
+ * we rejoined after it finished, were replaced, or came back too late).
+ */
+export function lobbyEndsOurMatch(m: Extract<ServerMsg, { t: 'lobby' }>): boolean {
+  return m.phase === 'lobby' || !!m.inProgress;
+}
+
+/** In-order queue with a bound: signals held until voice is ready (a flood cannot grow it). */
+export class BoundedQueue<T> {
+  private items: T[] = [];
+  constructor(readonly max: number) {}
+  /** Keep `x` unless the queue is full; true if it was kept. */
+  push(x: T): boolean {
+    if (this.items.length >= this.max) return false;
+    this.items.push(x);
+    return true;
+  }
+  /** Everything queued, oldest first; the queue is left empty. */
+  drain(): T[] { return this.items.splice(0); }
+  clear(): void { this.items.length = 0; }
+  get size(): number { return this.items.length; }
 }
 
 export function defaultWsUrl(): string {
@@ -69,12 +105,12 @@ export class Net {
   onStatus: (s: NetStatus) => void = () => {};
 
   private link: Link | null = null;
+  /** Bumped whenever a link is dialled or dropped; events from older links are ignored. */
+  private gen = 0;
   private isOpen = false;
   private wantOpen = false;
-  private welcomed = false;
   private name = '';
   private token = '';
-  private sentToken = false;
   private retries = 0;
   private pingTimer: ReturnType<typeof setInterval> | undefined;
   private retryTimer: ReturnType<typeof setTimeout> | undefined;
@@ -89,12 +125,12 @@ export class Net {
 
   constructor(private factory: LinkFactory) {}
 
-  /** Connect to `room` ('' creates a new room). */
+  /** Connect to `room` ('' creates a new room). Drops any link we already had. */
   connect(name: string, room: string): void {
+    this.dropLink();
     this.name = name;
     this.room = room.trim().toUpperCase();
     this.wantOpen = true;
-    this.welcomed = false;
     const saved = this.room ? loadToken(this.room) : null;
     this.token = saved && saved.name === name ? saved.token : '';
     this.retries = 0;
@@ -102,13 +138,7 @@ export class Net {
   }
 
   leave(): void {
-    this.wantOpen = false;
-    clearTimeout(this.retryTimer);
-    clearInterval(this.pingTimer);
-    this.link?.close();
-    this.link = null;
-    this.isOpen = false;
-    this.setStatus('closed');
+    this.stop('closed');
   }
 
   send(msg: ClientMsg): void {
@@ -138,12 +168,30 @@ export class Net {
     this.onStatus(s);
   }
 
+  /** Stop for good (until the next connect): no link, no timers, no redial. */
+  private stop(status: NetStatus): void {
+    this.wantOpen = false;
+    this.dropLink();
+    this.setStatus(status);
+  }
+
+  private dropLink(): void {
+    this.gen++;
+    clearTimeout(this.retryTimer);
+    clearInterval(this.pingTimer);
+    const old = this.link;
+    this.link = null;
+    this.isOpen = false;
+    old?.close();
+  }
+
   private dial(): void {
+    const gen = ++this.gen;
     this.setStatus(this.retries > 0 ? 'reconnecting' : 'connecting');
     this.link = this.factory({
-      open: () => this.handleOpen(),
-      message: (d) => this.handleMessage(d),
-      close: () => this.handleClose(),
+      open: () => { if (gen === this.gen) this.handleOpen(); },
+      message: (d) => { if (gen === this.gen) this.handleMessage(d); },
+      close: (code) => { if (gen === this.gen) this.handleClose(code); },
     });
   }
 
@@ -160,7 +208,6 @@ export class Net {
   }
 
   private sendHello(): void {
-    this.sentToken = !!this.token;
     this.send({
       t: 'hello', name: this.name, room: this.room, protocol: PROTOCOL_VERSION,
       ...(this.token ? { token: this.token } : {}),
@@ -172,7 +219,6 @@ export class Net {
     try { m = JSON.parse(data) as ServerMsg; } catch { return; }
     switch (m.t) {
       case 'welcome':
-        this.welcomed = true;
         this.retries = 0;
         this.selfId = m.you;
         this.room = m.room;
@@ -181,11 +227,11 @@ export class Net {
         this.setStatus('open');
         break;
       case 'error':
-        // A stale rejoin token: try once more as a fresh player.
-        if (!this.welcomed && this.sentToken) {
-          this.token = '';
-          saveToken(null);
-          this.sendHello();
+        if (m.refused) {
+          // Turned away (room full, bad code, server limits...): show why and stop.
+          // Redialling would only be turned away again; the player decides what next.
+          this.onMessage(m);
+          this.stop('closed');
           return;
         }
         break;
@@ -228,11 +274,16 @@ export class Net {
     this.snapOffset += (est - this.snapOffset) * 0.1;
   }
 
-  private handleClose(): void {
+  private handleClose(code?: number): void {
     this.isOpen = false;
     clearInterval(this.pingTimer);
     this.link = null;
-    if (!this.wantOpen) { this.setStatus('closed'); return; }
+    if (code === CLOSE_CODES.replaced) {
+      // Another tab joined with our rejoin token and took the seat. Never redial on this.
+      this.stop('replaced');
+      return;
+    }
+    if (code === CLOSE_CODES.refused || !this.wantOpen) { this.stop('closed'); return; }
     this.retries++;
     this.setStatus('reconnecting');
     const delay = Math.min(5000, 400 * Math.pow(1.7, this.retries - 1));

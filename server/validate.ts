@@ -4,8 +4,9 @@
 import { QUICKCHAT } from '../shared/constants.js';
 import type { ClientMsg, GrandmaAction, InputMsg, RtcSignal } from '../shared/protocol.js';
 import type { MatchOptions } from '../shared/types.js';
+import { LIMITS } from './limits.js';
 
-/** Largest raw WebSocket frame we accept (SDP offers can be a few KB). */
+/** Largest raw WebSocket frame we accept (SDP offers are a few KB; see LIMITS.maxSdp). */
 export const MAX_FRAME_BYTES = 64 * 1024;
 export const MAX_NAME = 16;
 export const MAX_CHAT = 140;
@@ -31,16 +32,38 @@ function id(v: unknown): string | null {
   return v;
 }
 
-// Control characters, zero-width and bidi-override characters.
-const CONTROL_CHARS = new RegExp('[\\u0000-\\u001f\\u007f-\\u009f\\u200b-\\u200f\\u2028-\\u202e\\u2066-\\u2069]', 'g');
+// C0/C1 control characters and line/paragraph separators become spaces.
+const CONTROL_CHARS = /[\u{0}-\u{1f}\u{7f}-\u{9f}\u{2028}\u{2029}]/gu;
+// Invisible characters are removed outright: every Unicode format character
+// (Cf: soft hyphen U+00AD, zero-widths U+200B-U+200F, bidi controls
+// U+202A-U+202E and U+2066-U+2069, word joiner U+2060, BOM U+FEFF, tag
+// characters...), private-use and lone surrogate code points, and the
+// blank-looking characters that are not Cf: Hangul fillers (U+115F, U+1160,
+// U+3164, U+FFA0), Braille blank U+2800, combining grapheme joiner U+034F,
+// Khmer inherent vowels U+17B4-U+17B5, Mongolian variation selectors and the
+// variation selectors U+FE00-U+FE0F / U+E0100-U+E01EF.
+const INVISIBLE = /[\p{Cf}\p{Co}\p{Cs}\u{34f}\u{115f}\u{1160}\u{17b4}\u{17b5}\u{180b}-\u{180d}\u{180f}\u{2800}\u{3164}\u{fe00}-\u{fe0f}\u{ffa0}\u{e0100}-\u{e01ef}]/gu;
+/** More than three combining marks in a row is "Zalgo" text that spills over its neighbours. */
+const MARK_RUN = /(\p{M}{3})\p{M}+/gu;
+/** A high surrogate with nothing after it (a length cap can cut an emoji in half). */
+const HALF_PAIR_AT_END = /\p{Cs}$/u;
+/** "(bot)" marks the server's bots in names; a human may not wear it (nor "(bot" cut short by the length cap). */
+const BOT_TAG = /[([{]\s*bot\s*[)\]}]?$/i;
 
-/** Remove control characters and collapse whitespace. */
+/** Remove control and invisible characters, tame stacked accents, collapse whitespace, cap the length. */
 export function cleanText(s: string, max: number): string {
-  return s.replace(CONTROL_CHARS, ' ').replace(/\s+/g, ' ').trim().slice(0, max);
+  return s.replace(CONTROL_CHARS, ' ').replace(INVISIBLE, '').replace(MARK_RUN, '$1')
+    .replace(/\s+/g, ' ').trim().slice(0, max)
+    .replace(HALF_PAIR_AT_END, '') // never end on half a surrogate pair
+    .trim();
 }
 
 export function cleanName(v: unknown): string {
-  const s = typeof v === 'string' ? cleanText(v.slice(0, 200), MAX_NAME) : '';
+  let s = typeof v === 'string' ? cleanText(v.slice(0, 200).normalize('NFKC'), MAX_NAME) : '';
+  for (let prev = ''; prev !== s;) {
+    prev = s;
+    s = s.replace(BOT_TAG, '').trim();
+  }
   return s.length > 0 ? s : 'Cousin';
 }
 
@@ -111,7 +134,7 @@ function parseGrandma(m: Obj): ({ t: 'grandma' } & GrandmaAction) | null {
 function parseRtc(v: unknown): RtcSignal | null {
   if (!isObj(v)) return null;
   if (v.type === 'offer' || v.type === 'answer') {
-    if (typeof v.sdp !== 'string' || v.sdp.length > 60000) return null;
+    if (typeof v.sdp !== 'string' || v.sdp.length > LIMITS.maxSdp) return null;
     return { type: v.type, sdp: v.sdp };
   }
   if (v.type === 'ice') {
@@ -144,8 +167,10 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
     switch (m.t) {
       case 'hello': {
         const protocol = num(m.protocol, -1e9, 1e9);
-        if (protocol === null) return null;
-        const room = typeof m.room === 'string' ? m.room.slice(0, 32) : '';
+        // The room must be a string ('' asks for a new room): anything else is a
+        // broken client, never a request for a fresh room.
+        if (protocol === null || typeof m.room !== 'string') return null;
+        const room = m.room.slice(0, 32);
         const token = typeof m.token === 'string' && m.token.length <= 128 ? m.token : undefined;
         return { t: 'hello', name: cleanName(m.name), room, protocol, ...(token ? { token } : {}) };
       }
@@ -197,7 +222,14 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
   }
 }
 
-/** Token bucket for chat-like messages (quick lines, typed chat, tattles). */
+/** Characters of signalling in one relayed `rtc` message (what the relay's character budget counts). */
+export function rtcSize(sig: RtcSignal): number {
+  if (sig.type !== 'ice') return sig.sdp.length;
+  const c = sig.candidate;
+  return 32 + (c ? (c.candidate?.length ?? 0) + (c.sdpMid?.length ?? 0) + (c.usernameFragment?.length ?? 0) : 0);
+}
+
+/** Token bucket: chat-like messages, frames per socket, the rtc relay, room creation per address. */
 export class RateLimiter {
   private tokens: number;
   private last: number;
@@ -205,11 +237,20 @@ export class RateLimiter {
     this.tokens = capacity;
     this.last = now;
   }
-  take(now: number): boolean {
+  private refill(now: number): void {
     this.tokens = Math.min(this.capacity, this.tokens + Math.max(0, now - this.last) * this.refillPerSec);
-    this.last = now;
-    if (this.tokens < 1) return false;
-    this.tokens -= 1;
+    this.last = Math.max(this.last, now);
+  }
+  /** Spend `cost` tokens if there are that many. */
+  take(now: number, cost = 1): boolean {
+    this.refill(now);
+    if (this.tokens < cost) return false;
+    this.tokens -= cost;
     return true;
+  }
+  /** The bucket is full again: forgetting it would lose nothing. */
+  idle(now: number): boolean {
+    this.refill(now);
+    return this.tokens >= this.capacity;
   }
 }

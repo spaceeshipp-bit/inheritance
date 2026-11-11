@@ -8,7 +8,7 @@ import { Game } from './game.js';
 import { Hud } from './hud/hud.js';
 import { Screens } from './hud/screens.js';
 import { Input } from './input.js';
-import { Net, webSocketLink, type LinkFactory } from './net.js';
+import { BoundedQueue, Net, lobbyEndsOurMatch, webSocketLink, type LinkFactory } from './net.js';
 import { GameRenderer } from './render/scene.js';
 import { Settings } from './settings.js';
 import { GameState } from './state.js';
@@ -45,12 +45,12 @@ async function boot(): Promise<void> {
   settings.onChange(applySettings);
 
   // Voice: started once we know our id (after the Join click); signals that
-  // arrive before it is ready are queued.
+  // arrive before it is ready are queued (a bounded queue, emptied on leave).
   let voiceSelf = '';
   let voiceReady = false;
   let micOk: boolean | null = null;
   let peers: string[] = [];
-  const pending: { from: string; data: RtcSignal }[] = [];
+  const pending = new BoundedQueue<{ from: string; data: RtcSignal }>(200);
   const startVoice = (selfId: string) => {
     if (voiceSelf === selfId) return;
     if (voiceSelf) { voice.stop(); voiceReady = false; }
@@ -61,7 +61,7 @@ async function boot(): Promise<void> {
         if (voiceSelf !== selfId) return;
         voiceReady = true;
         voice.setPeers(peers);
-        for (const p of pending.splice(0)) voice.handleSignal(p.from, p.data);
+        for (const p of pending.drain()) voice.handleSignal(p.from, p.data);
       });
   };
 
@@ -69,6 +69,33 @@ async function boot(): Promise<void> {
     state, send: (m) => net.send(m), serverNow: () => net.serverNow(), renderer, hud, input, sfx, voice,
     micOk: () => micOk === true,
   });
+
+  /**
+   * Drop a match this client still shows but is no longer in: it ended while we
+   * were away, it went on without us (we were replaced or back too late), or
+   * this tab lost its seat to another tab.
+   */
+  const endStaleMatch = () => {
+    if (!state.match) return;
+    game.end();
+    state.match = null;
+    state.buf = [];
+    state.phase = 'lobby';
+  };
+  const stopVoice = () => {
+    voice.stop();
+    voiceSelf = '';
+    voiceReady = false;
+    pending.clear();
+    peers = [];
+  };
+  /** Back to the title: no match, no voice, nothing queued. */
+  const toTitle = () => {
+    endStaleMatch();
+    stopVoice();
+    state.lobby = null;
+    screens.showTitle();
+  };
 
   let myName = '';
   const join = (name: string, room: string, gesture = true) => {
@@ -86,18 +113,25 @@ async function boot(): Promise<void> {
     pushToTalk: (on) => voice.setPushToTalk(on),
     leave: () => {
       net.leave();
-      voice.stop();
-      voiceSelf = '';
-      voiceReady = false;
-      game.end();
-      state.match = null;
-      state.lobby = null;
+      toTitle();
       history.replaceState(null, '', location.pathname + (mockRole ? `?mock=${mockRole}` : ''));
-      screens.showTitle();
     },
+    // Take the seat back from the other tab (that tab is told it is open elsewhere).
+    reclaim: () => { if (myName && net.room) join(myName, net.room); },
   });
 
-  net.onStatus = (s) => hud.setNet(s);
+  net.onStatus = (s) => {
+    hud.setNet(s);
+    screens.setNetStatus(s);
+    if (s === 'replaced') {
+      // Another tab joined with our rejoin token and holds the seat now.
+      toTitle();
+      screens.showReplaced();
+    } else if (s === 'closed' && (state.lobby || state.match)) {
+      // The server turned us away (its error is on screen) or we left.
+      toTitle();
+    }
+  };
   net.onMessage = (m: ServerMsg) => {
     if (m.t === 'rtc') {
       if (voiceReady) voice.handleSignal(m.from, m.data);
@@ -125,6 +159,9 @@ async function boot(): Promise<void> {
     if (state.inMatch) hud.toasts.push(msg, 'bad');
   });
   state.on('lobby', (m) => {
+    // No match running, or one we are not in, while we still show a match: it
+    // ended or went on without us (e.g. we rejoined after it finished).
+    if (state.match && lobbyEndsOurMatch(m)) endStaleMatch();
     screens.updateLobby(m);
     if (!state.inMatch) screens.showLobby();
   });
@@ -161,6 +198,7 @@ async function boot(): Promise<void> {
       game.frame(dt);
     } else {
       renderer.frameIdle(ts / 1000);
+      screens.frame();
       screens.mic(voice.level('self'), voiceSelf ? micOk : null);
       voice.update({ selfRole: 'lobby', listenerPos: { x: 0, y: 0, z: 0 }, listenerYaw: 0, aidActive: false, speakers: [] });
     }

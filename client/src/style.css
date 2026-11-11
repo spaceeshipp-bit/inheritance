@@ -323,3 +323,21 @@ button, input { font: inherit; }
   .will, .item-card { transform-origin: left; }
   .senses, .gm-right { transform-origin: right top; }
 }
+
+/* ── lobby & spectating (net) ── */
+.title-card .btn:disabled, .host-box .btn:disabled { opacity: 0.5; cursor: progress; filter: grayscale(0.4); }
+.host-box .btn:disabled { cursor: default; }
+.net-note { color: var(--warn); font-size: 13px; margin-top: 10px; display: flex; align-items: center; justify-content: center; gap: 10px; }
+.elsewhere { background: rgba(214, 178, 90, 0.12); border: 1px solid var(--panel-border); border-radius: 10px; padding: 12px 14px; margin-bottom: 16px; }
+.elsewhere-title { font-family: var(--serif); color: var(--gold); font-size: 18px; }
+.elsewhere-text { color: var(--muted); font-size: 13px; margin: 4px 0 10px; }
+.elsewhere .btn { width: 100%; }
+.in-progress { background: rgba(214, 178, 90, 0.1); border: 1px solid var(--panel-border); border-radius: 10px; padding: 10px 14px; margin-bottom: 16px; }
+.ip-text { font-family: var(--serif); font-size: 17px; color: var(--text); }
+.ip-will-title { margin-top: 10px; }
+.ip-will { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 4px 14px; }
+.ip-row { display: flex; justify-content: space-between; gap: 8px; padding: 3px 8px; background: rgba(255, 255, 255, 0.05); border-radius: 6px; font-size: 14px; }
+.ip-row.self { outline: 1px solid var(--gold); }
+.ip-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ip-share { color: var(--gold); font-variant-numeric: tabular-nums; }
+.ip-grandma { color: var(--muted); font-size: 13px; margin-top: 8px; }

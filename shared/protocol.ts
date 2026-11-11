@@ -82,15 +82,22 @@ export interface SnapMsg {
 }
 
 export type GameEvent =
-  /** An heirloom broke. Everyone hears it. `favourite` only set for Grandma. */
+  /**
+   * An heirloom broke. Everyone hears it. For Grandma: `favourite` is set,
+   * and when she did not see it `heirloom` is '' and `pos` is only rough.
+   */
   | { e: 'crash'; pos: Vec3; heirloom: string; favourite?: boolean }
   | { e: 'quill'; pos: Vec3 }
   | { e: 'whistle'; pos: Vec3 }
-  | { e: 'will'; target: string; moved: number; via: 'bless' | 'tut' | 'parchment'; reason?: string }
+  | { e: 'will'; target: string; moved: number; via: 'bless' | 'tut' | 'parchment' | 'takeover'; reason?: string }
   /** Rejected will change (Grandma only): out of budget, rolling cap, needs parchment... */
   | { e: 'will-rejected'; target: string; reason: string }
-  /** A speech bubble. `text` is already scrambled for this recipient if they are Grandma. */
-  | { e: 'bubble'; from: string; text: string; quick: boolean; whisper: boolean }
+  /**
+   * A speech bubble. For Grandma `text` is what she heard (misheard or
+   * scrambled when muffled); `from` is '' when she could not see who spoke,
+   * and then `pos` says roughly where it came from.
+   */
+  | { e: 'bubble'; from: string; text: string; quick: boolean; whisper: boolean; pos?: Vec3 }
   | { e: 'wish'; wish: WishInfo | null }
   | { e: 'wish-done'; by: string; wish: WishInfo }
   /** Grandma found a planted item. Grandma only. */
@@ -99,6 +106,7 @@ export type GameEvent =
   | { e: 'summon'; pos: Vec3; endsAt: number }
   /** Grandma only: who ignored her summon. */
   | { e: 'summon-ignored'; ids: string[] }
+  /** For Grandma: only within earshot; `by`/`victim` are '' unless she could see them, `pos` rough if unseen. */
   | { e: 'shove'; by: string; victim: string; pos: Vec3 }
   | { e: 'cane'; victim: string; pos: Vec3 }
   | { e: 'specs-off'; pos: Vec3 }
@@ -108,8 +116,16 @@ export type GameEvent =
 
 export type ServerMsg =
   | { t: 'welcome'; you: string; token: string; room: string; protocol: number }
-  | { t: 'error'; message: string }
-  | { t: 'lobby'; room: string; players: PlayerInfo[]; hostId: string; options: MatchOptions; phase: Phase }
+  | {
+      t: 'error'; message: string;
+      /** The server refused this connection or its hello (limits, full, bad code...): stop reconnecting and show it. */
+      refused?: boolean;
+    }
+  | {
+      t: 'lobby'; room: string; players: PlayerInfo[]; hostId: string; options: MatchOptions; phase: Phase;
+      /** Only to players who are not in the running match (joined mid-match, replaced, or back too late). */
+      inProgress?: MatchInProgress;
+    }
   /** Sent to each player when a match starts. `prefCards` only for Grandma. */
   | {
       t: 'match';
@@ -126,7 +142,10 @@ export type ServerMsg =
   | ({ t: 'ev' } & GameEvent)
   | { t: 'reading'; result: ReadingResult }
   | { t: 'results'; result: FinalResult }
-  /** Room members you should hold a voice connection with (everyone else in the match/lobby). */
+  /**
+   * Room members you should hold a voice connection with. While a match runs, its
+   * participants pair only with each other and everyone else only with each other.
+   */
   | { t: 'peers'; ids: string[] }
   | { t: 'rtc'; from: string; data: RtcSignal }
   | { t: 'pong'; ts: number; time: number };
@@ -134,3 +153,28 @@ export type ServerMsg =
 export function encode(msg: ClientMsg | ServerMsg): string {
   return JSON.stringify(msg);
 }
+
+/**
+ * The running match as seen from the lobby by someone not in it. Public facts
+ * only: the phase, its clock, and the will (names and shares are public).
+ */
+export interface MatchInProgress {
+  phase: Phase;
+  visit: VisitId | null;
+  /** Match clock (seconds) when this phase ends, and the match clock now. */
+  endsAt: number;
+  time: number;
+  /** The live will by cousin id. */
+  shares: Record<string, number>;
+  /** Names of the cousins in `shares`, and of Grandma. */
+  names: Record<string, string>;
+  grandmaId: string;
+}
+
+/** WebSocket close codes the server uses (4000-4999 are for applications). */
+export const CLOSE_CODES = {
+  /** Another connection joined with this player's rejoin token (usually a second tab). Never redial on it. */
+  replaced: 4000,
+  /** The server refused or timed out this connection; an `error` with `refused` says why when it can. */
+  refused: 4001,
+} as const;
