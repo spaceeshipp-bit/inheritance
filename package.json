@@ -26,6 +26,7 @@
     "@types/node": "^22.18.12",
     "@types/three": "^0.180.0",
     "@types/ws": "^8.18.1",
+    "playwright": "1.63.0",
     "typescript": "^5.9.3",
     "vite": "^7.1.12",
     "vitest": "^3.2.4"
