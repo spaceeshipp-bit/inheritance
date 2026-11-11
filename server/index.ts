@@ -1,6 +1,7 @@
 // The game server: HTTP (health check + the built client from dist/client)
 // and the WebSocket endpoint at /ws. PORT env (default 3000).
-// INHERITANCE_FAST=1 shortens every phase (for end-to-end tests).
+// INHERITANCE_FAST=1 shortens every phase (for end-to-end tests);
+// INHERITANCE_VISIT_SECONDS=<n> then sets the visit length.
 import { existsSync, statSync, createReadStream } from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
@@ -14,6 +15,10 @@ export interface ServerOptions {
   port?: number;
   host?: string;
   fast?: boolean;
+  /** With `fast`: visit length in seconds (default 40). */
+  visitSeconds?: number;
+  /** Test-only: bots sit still. */
+  botsIdle?: boolean;
   /** Directory with the built client (default: dist/client next to the repo root). */
   staticDir?: string;
   quiet?: boolean;
@@ -70,7 +75,7 @@ function serveStatic(dir: string | null, req: http.IncomingMessage, res: http.Se
 
 export function startServer(opts: ServerOptions = {}): Promise<ServerHandle> {
   const log = opts.quiet ? () => {} : (m: string) => console.log(`[server] ${m}`);
-  const rooms = new RoomManager({ fast: opts.fast, seed: opts.seed, log });
+  const rooms = new RoomManager({ fast: opts.fast, visitSeconds: opts.visitSeconds, botsIdle: opts.botsIdle, seed: opts.seed, log });
   const defaultDir = path.resolve(here, '../dist/client');
   const dirCandidate = opts.staticDir ?? defaultDir;
   const staticDir = existsSync(path.join(dirCandidate, 'index.html')) ? dirCandidate : null;
@@ -171,7 +176,8 @@ export function startServer(opts: ServerOptions = {}): Promise<ServerHandle> {
 const isMain = !!process.argv[1] && pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url;
 if (isMain) {
   const port = Number(process.env.PORT) || 3000;
-  startServer({ port, fast: process.env.INHERITANCE_FAST === '1' }).then((h) => {
+  const visitSeconds = Number(process.env.INHERITANCE_VISIT_SECONDS) || undefined;
+  startServer({ port, fast: process.env.INHERITANCE_FAST === '1', visitSeconds }).then((h) => {
     const stop = (): void => { void h.close().then(() => process.exit(0)); };
     process.on('SIGINT', stop);
     process.on('SIGTERM', stop);

@@ -40,6 +40,10 @@ export interface MatchConfig {
   options: MatchOptions;
   /** Scale phase durations down for end-to-end tests (visits 40 s, other phases 3–5 s). */
   fast?: boolean;
+  /** With `fast`: override the visit length in seconds (end-to-end tests that script a lot). */
+  visitSeconds?: number;
+  /** Test-only: bots take their seats but do nothing (scripted end-to-end scenarios). */
+  botsIdle?: boolean;
   /** Seed for the match's random numbers (tests use it for determinism). */
   seed?: number;
   /** Deliver one message to one human player. */
@@ -216,7 +220,9 @@ export class Match {
     this.options = { ...cfg.options };
     this.visits = this.options.fullMatch ? [...FULL_VISITS] : [...SLICE_VISITS];
     this.fast = !!cfg.fast;
-    this.durations = this.fast ? FAST_DURATIONS : NORMAL_DURATIONS;
+    const vs = cfg.visitSeconds;
+    this.durations = !this.fast ? NORMAL_DURATIONS
+      : vs !== undefined && Number.isFinite(vs) && vs > 0 ? { ...FAST_DURATIONS, visit: () => vs } : FAST_DURATIONS;
     this.rng = makeRng(cfg.seed ?? Math.floor(Math.random() * 2 ** 31));
     this.grandmaId = cfg.grandmaId;
     this.humans = cfg.players.filter((p) => !p.isBot).map((p) => p.id);
@@ -631,8 +637,10 @@ export class Match {
       this.snapshots(h);
       return;
     }
-    for (const b of this.bots.values()) {
-      try { b.update(h); } catch (err) { console.error('[bot] error', b.id, err); }
+    if (!this.cfg.botsIdle) {
+      for (const b of this.bots.values()) {
+        try { b.update(h); } catch (err) { console.error('[bot] error', b.id, err); }
+      }
     }
     for (const c of this.chars.values()) this.updateChar(c, h);
     const all = [...this.chars.values()];

@@ -36,6 +36,10 @@ export interface Session {
 export interface RoomManagerOptions {
   /** Short phase durations (INHERITANCE_FAST=1). */
   fast?: boolean;
+  /** With `fast`: visit length in seconds (INHERITANCE_VISIT_SECONDS). */
+  visitSeconds?: number;
+  /** Test-only: bots sit still (scripted end-to-end scenarios). */
+  botsIdle?: boolean;
   /** Clock in seconds (tests inject one). */
   now?: () => number;
   /** Seed for match randomness (tests). */
@@ -383,7 +387,7 @@ export class Room {
     }
     this.lastGrandmaId = botGrandma ? null : grandmaId;
     this.match = new Match({
-      players, grandmaId: grandmaId!, options: { ...this.options }, fast: this.mgr.opts.fast,
+      players, grandmaId: grandmaId!, options: { ...this.options }, fast: this.mgr.opts.fast, visitSeconds: this.mgr.opts.visitSeconds, botsIdle: this.mgr.opts.botsIdle,
       seed: this.mgr.opts.seed,
       send: (to, msg) => this.sendTo(to, msg),
       onEnd: () => this.endMatch(),
