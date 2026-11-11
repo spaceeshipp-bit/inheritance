@@ -107,18 +107,25 @@ export interface Moment {
 }
 
 /** Server-only log of everything that happened, used for scoring and moments. */
+/**
+ * `seen`: Grandma could identify who did it (soft or sharp vision, line of
+ * sight). `sharp`: it happened inside her sharp vision (Caught Red-Handed).
+ */
 export type LogEvent =
-  | { t: number; kind: 'shove'; by: string; victim: string; pos: Vec3; seen: boolean }
-  | { t: number; kind: 'break'; by: string | null; heirloom: string; favourite: boolean; pos: Vec3; seen: boolean }
-  | { t: number; kind: 'steal'; by: string; item: string; owner: string; pos: Vec3; seen: boolean }
-  | { t: number; kind: 'plant'; by: string; item: string; owner: string; pos: Vec3; seen: boolean }
+  | { t: number; kind: 'shove'; by: string; victim: string; pos: Vec3; seen: boolean; sharp?: boolean }
+  | { t: number; kind: 'break'; by: string | null; heirloom: string; favourite: boolean; pos: Vec3; seen: boolean; sharp?: boolean }
+  | { t: number; kind: 'steal'; by: string; item: string; owner: string; pos: Vec3; seen: boolean; sharp?: boolean }
+  | { t: number; kind: 'plant'; by: string; item: string; owner: string; pos: Vec3; seen: boolean; sharp?: boolean }
+  /** Grandma found a planted item (it was still planted, in this visit). */
+  | { t: number; kind: 'found'; item: string; owner: string; plant: number | null; visit: number }
   | { t: number; kind: 'compliment'; by: string; line: string }
   | { t: number; kind: 'tattle'; by: string; accused: string }
+  /** A Tut that landed on a cousin linked to a crime (`crime` = log index of it). */
   | { t: number; kind: 'accuse'; target: string; crime: number | null }
   | { t: number; kind: 'will'; target: string; moved: number; via: 'bless' | 'tut' | 'parchment' }
   | { t: number; kind: 'wish'; by: string; wish: WishInfo['kind'] }
   | { t: number; kind: 'cane'; victim: string }
-  | { t: number; kind: 'knock-specs'; by: string };
+  | { t: number; kind: 'knock-specs'; by: string; seen?: boolean; sharp?: boolean };
 
 export interface MatchOptions {
   /** false = Visit 1 only (first playable); true = Tea, Dinner, Storm. */

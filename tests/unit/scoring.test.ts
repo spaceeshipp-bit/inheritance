@@ -66,7 +66,7 @@ describe('the sabotage tally and moments (log.ts)', () => {
     const log = new EventLog();
     log.add({ t: 10, kind: 'compliment', by: 'a', line: 'Love you, Nana!' });
     log.add({ t: 13, kind: 'shove', by: 'a', victim: 'b', pos, seen: false });
-    log.add({ t: 20, kind: 'shove', by: 'c', victim: 'b', pos, seen: true });
+    log.add({ t: 20, kind: 'shove', by: 'c', victim: 'b', pos, seen: true, sharp: true });
     log.add({ t: 30, kind: 'plant', by: 'a', item: 'item-phone', owner: 'b', pos, seen: false });
     log.add({ t: 35, kind: 'accuse', target: 'b', crime: 3 });
     log.add({ t: 40, kind: 'break', by: 'c', heirloom: 'h', favourite: true, pos, seen: false });
@@ -80,9 +80,33 @@ describe('the sabotage tally and moments (log.ts)', () => {
   it('no Love You Nana when the shove is seen or comes too late', () => {
     const log = new EventLog();
     log.add({ t: 0, kind: 'compliment', by: 'a', line: 'Love you, Nana!' });
-    log.add({ t: 1, kind: 'shove', by: 'a', victim: 'b', pos, seen: true });
+    log.add({ t: 1, kind: 'shove', by: 'a', victim: 'b', pos, seen: true, sharp: true });
     log.add({ t: 9, kind: 'shove', by: 'a', victim: 'b', pos, seen: false });
     expect(log.moments.map((m) => m.kind)).toEqual(['caught-red-handed']);
     expect(log.metrics().framingAccuracy).toBeNull();
+  });
+
+  it('Caught Red-Handed needs her sharp vision: seen in a soft blur is not enough', () => {
+    const log = new EventLog();
+    log.add({ t: 1, kind: 'shove', by: 'a', victim: 'b', pos, seen: true, sharp: false });
+    expect(log.moments).toEqual([]);
+  });
+
+  it('Framed needs the accusation to come from the plant: being shoved later does not count', () => {
+    const log = new EventLog();
+    log.add({ t: 30, kind: 'plant', by: 'a', item: 'item-phone', owner: 'b', pos, seen: false }); // 0
+    log.add({ t: 55, kind: 'shove', by: 'c', victim: 'b', pos, seen: false }); // 1
+    log.add({ t: 56, kind: 'accuse', target: 'b', crime: 1 }); // b accused as the shove VICTIM
+    expect(log.moments.some((m) => m.kind === 'framed')).toBe(false);
+    expect(log.metrics()).toMatchObject({ plants: 1, plantsAccusedOwner: 0, framingAccuracy: 0 });
+  });
+
+  it('Framed counts when she found the planted item and then accused its owner', () => {
+    const log = new EventLog();
+    log.add({ t: 30, kind: 'plant', by: 'a', item: 'item-phone', owner: 'b', pos, seen: false }); // 0
+    log.add({ t: 40, kind: 'found', item: 'item-phone', owner: 'b', plant: 0, visit: 0 }); // 1
+    log.add({ t: 45, kind: 'accuse', target: 'b', crime: null });
+    expect(log.moments.filter((m) => m.kind === 'framed')).toMatchObject([{ actor: 'a', victim: 'b' }]);
+    expect(log.metrics()).toMatchObject({ plants: 1, plantsAccusedOwner: 1, framingAccuracy: 1 });
   });
 });

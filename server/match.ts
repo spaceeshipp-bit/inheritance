@@ -8,15 +8,16 @@
 // secrets (favourite flag, preference cards, unscrambled bubbles) never leave
 // for the wrong player.
 import {
-  COUSIN, COUSINS, CRIME_SCENE, DISCONNECT, FULL_VISITS, GRANDMA, HEARING_AID, HEIRLOOM, INTERMISSION_TIME,
-  PREFERENCE_CARDS, QUICKCHAT, READING_TIME, RESULTS_TIME, ROLE_REVEAL_TIME, SLICE_VISITS, SNAPSHOT_HZ,
+  COUSIN, COUSINS, CRIME_SCENE, DISCONNECT, FULL_VISITS, GRANDMA, HEARING_AID, HEIRLOOM, INTERMISSION_TIME, MISHEARD,
+  PREFERENCE_CARDS, QUICKCHAT, READING_TIME, RESULTS_TIME, ROLE_REVEAL_TIME, SENSES, SLICE_VISITS, SNAPSHOT_HZ,
   SPECTACLES, STORM, TICK_HZ, VISITS, VOICE, VOTE_TIME, WILL, WISH,
 } from '../shared/constants.js';
 import { HEIRLOOM_SPOTS, HEIRLOOM_VARIANTS, SPAWNS, groundHeight } from '../shared/map.js';
 import { createBody, forwardOf, integrateBody, type BodyShape, type MoveBody } from '../shared/movement.js';
 import type { GameEvent, GrandmaAction, InputMsg, ServerMsg, ClientMsg } from '../shared/protocol.js';
 import { grandmaScore } from '../shared/scoring.js';
-import { canSee, dist, flatDist, hearingBand, scrambleText, type GrandmaSenseState } from '../shared/senses.js';
+import { dist, flatDist, hearingBand, scrambleText, visionBand, type GrandmaSenseState, type HearingBand, type VisionBand } from '../shared/senses.js';
+import { CHEST_HEIGHT, PROP_MID, eyeOf, lineOfSight } from '../shared/sight.js';
 import type {
   CharSnap, CousinInfo, FinalResult, MatchOptions, Phase, PropKind, PropSnap, ReadingResult, Role, Vec3, VisitId, WishInfo,
 } from '../shared/types.js';
@@ -113,10 +114,22 @@ export interface Prop extends PhysProp {
   cat?: { body: MoveBody; goal: Vec3 | null; waitUntil: number; giveUpAt: number };
 }
 
+/** What Grandma perceives of a point (see Match.perceive). */
+export interface Perception {
+  band: VisionBand;
+  /** In her view cone and not behind a wall. */
+  visible: boolean;
+  /** She could tell who (or what) it is: soft or sharp vision. */
+  identifiable: boolean;
+  /** Inside her sharp vision (Caught Red-Handed). */
+  sharp: boolean;
+  dist: number;
+}
+
 export interface Crime {
   t: number;
   pos: Vec3;
-  kind: 'shove' | 'break' | 'steal' | 'plant';
+  kind: 'shove' | 'break' | 'steal' | 'plant' | 'knock-specs';
   by: string | null;
   logIndex: number;
   /** Cousins within CRIME_SCENE.radius when it happened. */
@@ -157,6 +170,20 @@ export function makeRng(seed: number): () => number {
 }
 
 const r3 = (v: number): number => Math.round(v * 1000) / 1000;
+/** A position rounded to the metre: "somewhere over there" for things Grandma only heard. */
+const coarse = (p: Vec3): Vec3 => ({ x: Math.round(p.x), y: Math.round(p.y), z: Math.round(p.z) });
+
+/**
+ * What Grandma makes of a cousin's quick-chat line: the line itself when she
+ * hears clearly, a plausible mishearing when muffled, a mumble beyond that.
+ */
+export function mishear(line: number, band: HearingBand, secret: number, tick: number): string {
+  const text = QUICKCHAT.cousin[line] ?? '';
+  if (band === 'clear') return text;
+  if (band !== 'muffled') return '…';
+  const options = MISHEARD[line] ?? ['…'];
+  return options[(hashStr(`${secret}:${line}:${tick}`) >>> 0) % options.length];
+}
 const r2 = (v: number): number => Math.round(v * 100) / 100;
 const v3 = (p: Vec3): Vec3 => ({ x: r3(p.x), y: r3(p.y), z: r3(p.z) });
 function hashStr(s: string): number {
@@ -179,6 +206,8 @@ export class Match {
   readonly crimes: Crime[] = [];
   readonly bots = new Map<string, Bot>();
   readonly prefCards: string[];
+  /** Seeds what Grandma mishears; never sent to anyone (so lines cannot be decoded). */
+  readonly secret: number;
   /** Points moved against the budget in each visit (free Tuts excluded). */
   readonly visitUsed: number[] = [];
   will: WillState;
@@ -197,6 +226,8 @@ export class Match {
   flash = false;
   freeTuts = 0;
   willFrozen = false;
+  /** "Nana's Pet": the leader as of the last intermission (none during the first visit). */
+  petId: string | null = null;
   pause: { until: number } | null = null;
   reading: ReadingResult | null = null;
   results: FinalResult | null = null;
@@ -223,7 +254,9 @@ export class Match {
     const vs = cfg.visitSeconds;
     this.durations = !this.fast ? NORMAL_DURATIONS
       : vs !== undefined && Number.isFinite(vs) && vs > 0 ? { ...FAST_DURATIONS, visit: () => vs } : FAST_DURATIONS;
-    this.rng = makeRng(cfg.seed ?? Math.floor(Math.random() * 2 ** 31));
+    const seed = cfg.seed ?? Math.floor(Math.random() * 2 ** 31);
+    this.rng = makeRng(seed);
+    this.secret = Math.floor(makeRng(seed ^ 0x5bd1e995)() * 2 ** 31);
     this.grandmaId = cfg.grandmaId;
     this.humans = cfg.players.filter((p) => !p.isBot).map((p) => p.id);
     this.log = new EventLog((id) => this.nameOf(id));
@@ -251,8 +284,11 @@ export class Match {
     // moment goes only to the cousin who earned it; Grandma also sees the ones she
     // caused or witnessed (Big Cut, Caught Red-Handed), and Big Cut is public
     // because the will is. Everything is revealed at the Reading of the Will.
+    // Favourite-broken would name her secret Favourite, and Framed would tell the
+    // framer that Nana fell for it: both wait for the reading.
     this.log.onMoment((moment) => this.emitAll((to) => {
       if (moment.kind === 'big-cut') return { e: 'moment', moment };
+      if (moment.kind === 'favourite-broken' || moment.kind === 'framed') return null;
       if (to === moment.actor) return { e: 'moment', moment };
       if (to === this.grandmaId && moment.kind === 'caught-red-handed') return { e: 'moment', moment };
       return null;
@@ -507,7 +543,7 @@ export class Match {
     const lines: readonly string[] = c.role === 'grandma' ? QUICKCHAT.grandma : QUICKCHAT.cousin;
     const text = lines[line];
     if (typeof text !== 'string') return;
-    this.bubble(c, text, true);
+    this.bubble(c, text, true, line);
     if (c.role === 'cousin' && COMPLIMENT_LINES.includes(line)) this.maybeCompliment(c, text);
   }
 
@@ -527,8 +563,17 @@ export class Match {
       this.emit(id, { e: 'toast', text: `Get within ${COUSIN.tattleRange} m of Nana to tattle.` });
       return;
     }
+    if (this.grandmaHears(c.body.pos, c.whispering) === 'silent') {
+      this.emit(id, { e: 'toast', text: 'Nana cannot hear a whisper from there.' });
+      return;
+    }
     this.log.add({ t: this.time, kind: 'tattle', by: id, accused });
-    this.emitAll({ e: 'tattle', from: id, accused });
+    const range = c.whispering ? VOICE.whisperRange : VOICE.cousinRange;
+    this.emitAll((to) => {
+      if (to === id || to === this.grandmaId) return { e: 'tattle', from: id, accused };
+      const o = this.chars.get(to);
+      return o && dist(o.body.pos, c.body.pos) <= range ? { e: 'tattle', from: id, accused } : null;
+    });
   }
 
   handleVote(id: string, target: string): void {
@@ -615,12 +660,34 @@ export class Match {
     };
   }
 
-  /** Can Grandma see this point clearly enough to recognise who is there? */
-  canSeeNow(p: Vec3): boolean {
+  /**
+   * What Grandma perceives of a point right now: her vision band, whether she
+   * has line of sight to it (`height` above `p`: a chest, an item), whether she
+   * could identify who/what is there (soft or sharp), and whether it is inside
+   * her sharp vision. Asleep (disconnected) or on her lie-down: nothing.
+   */
+  perceive(p: Vec3, height = CHEST_HEIGHT): Perception {
     const g = this.grandma;
-    if (!g || !g.connected || this.pause) return false;
+    if (!g || !g.connected || this.pause || g.state === 'sleeping') return { band: 'none', visible: false, identifiable: false, sharp: false, dist: Infinity };
+    const d = dist(g.body.pos, p);
     const s = this.grandmaSense();
-    return !!s && canSee(s, p);
+    const band = s ? visionBand(s, p) : 'none';
+    if (band === 'none' || !lineOfSight(eyeOf(g.body.pos), { x: p.x, y: p.y + height, z: p.z })) {
+      return { band: 'none', visible: false, identifiable: false, sharp: false, dist: d };
+    }
+    return { band, visible: true, identifiable: band === 'sharp' || band === 'soft', sharp: band === 'sharp', dist: d };
+  }
+
+  /** Can Grandma see this point clearly enough to recognise who (or what) is there? */
+  canSeeNow(p: Vec3, height = CHEST_HEIGHT): boolean {
+    return this.perceive(p, height).identifiable;
+  }
+
+  /** How Grandma hears a voice from a speaker at `p` (whispering shrinks it to 1.5 m). */
+  grandmaHears(p: Vec3, whisper: boolean): HearingBand {
+    const g = this.grandma;
+    if (!g || !g.connected || this.pause) return 'silent';
+    return hearingBand(dist(g.body.pos, p), g.aidT > 0, whisper ? VOICE.whisperRange : Infinity);
   }
 
   // ───────────── the tick ─────────────
@@ -755,18 +822,28 @@ export class Match {
     }
     if (!best) return;
     const dir = bestD > 0.05 ? { x: best.body.pos.x - c.body.pos.x, z: best.body.pos.z - c.body.pos.z } : f;
-    this.dropHeld(best, true);
+    // Knock back first, so whatever the victim drops is blamed on the shover.
     knockback(best, dir, COUSIN.shoveImpulse, 2.5, c.id, this.time);
+    this.dropHeld(best, true);
     best.charge = 0;
     best.plantT = 0;
     const pos = { ...best.body.pos };
-    const seen = this.canSeeNow(c.body.pos);
-    // Grandma's client only learns WHO shoved if she could see it; otherwise a
-    // modified client could read the culprit off the wire.
-    this.emitAll((to) => ({ e: 'shove', by: to === this.grandmaId && !seen ? '' : c.id, victim: best.id, pos: v3(pos) }));
-    const idx = this.log.add({ t: this.time, kind: 'shove', by: c.id, victim: best.id, pos, seen });
+    const who = this.perceive(c.body.pos);
+    const vic = this.perceive(pos);
+    const seen = who.identifiable;
+    // Grandma hears a shove (the "oof") within earshot. Her client only learns
+    // who shoved, or who was shoved, if she could see them.
+    this.emitAll((to) => {
+      if (to !== this.grandmaId) return { e: 'shove', by: c.id, victim: best.id, pos: v3(pos) };
+      if (vic.dist > SENSES.mumble) return null;
+      return { e: 'shove', by: seen ? c.id : '', victim: vic.identifiable ? best.id : '', pos: vic.visible ? v3(pos) : coarse(pos) };
+    });
+    const idx = this.log.add({ t: this.time, kind: 'shove', by: c.id, victim: best.id, pos, seen, sharp: who.sharp });
     this.addCrime('shove', c.id, pos, idx);
-    if (best.role === 'grandma') this.grandmaFell();
+    if (best.role === 'grandma') {
+      this.knockSpecsOff(best, c.id, seen, who.sharp);
+      this.grandmaFell();
+    }
   }
 
   private tryGrab(c: Char): void {
@@ -844,7 +921,8 @@ export class Match {
       p.vel = { ...c.body.vel };
       p.resting = false;
       const blame = c.state !== 'normal' && c.knockedBy && this.time - c.knockedAt < 3 ? c.knockedBy : c.id;
-      p.lastBy = blame;
+      // Grandma's own cane never makes her the culprit of what it knocks over.
+      p.lastBy = blame === this.grandmaId ? null : blame;
       p.thrownBy = null;
     } else {
       const g = groundHeight(p.pos.x, p.pos.z, p.pos.y, 0.05);
@@ -945,9 +1023,33 @@ export class Match {
       c.sticky = true;
       this.followHolder(it);
       const pos = { ...c.body.pos };
-      const idx = this.log.add({ t: this.time, kind: 'steal', by: c.id, item: it.id, owner: victim.id, pos, seen: this.canSeeNow(c.body.pos) });
+      const who = this.perceive(c.body.pos);
+      const idx = this.log.add({ t: this.time, kind: 'steal', by: c.id, item: it.id, owner: victim.id, pos, seen: who.identifiable, sharp: who.sharp });
       this.addCrime('steal', c.id, pos, idx);
+      this.emit(c.id, { e: 'toast', text: `You pinched ${victim.name}'s ${this.nameOf(it.id).toLowerCase()}! Hold G to plant it somewhere damning.` });
+      return;
     }
+    this.hint(c, this.interactHint(c));
+  }
+
+  /** Why an Interact press did nothing (shown to that player only, at most once a second). */
+  private interactHint(c: Char): string {
+    const g = this.grandma;
+    const near = (o: Char) => o !== c && o.role === 'cousin' && this.inReach(c, o.body.pos) && Math.abs(o.body.pos.y - c.body.pos.y) <= 1.2;
+    const robbed = [...this.chars.values()].find((o) => near(o));
+    if (robbed) return `${robbed.name}'s item is already gone.`;
+    if (g && flatDist(c.body.pos, g.body.pos) <= WISH.deliverRange + 0.5) return 'Bring Nana what she wished for, then press E next to her.';
+    return 'Nothing to take here. Stand right next to a cousin to pinch their item.';
+  }
+
+  private hintAt = new Map<string, number>();
+  /** A small private hint toast, rate-limited per player. */
+  private hint(c: Char, text: string): void {
+    if (c.isBot) return;
+    const last = this.hintAt.get(c.id) ?? -Infinity;
+    if (this.time - last < 1.5) return;
+    this.hintAt.set(c.id, this.time);
+    this.emit(c.id, { e: 'toast', text });
   }
 
   private doPlant(c: Char, item: Prop): void {
@@ -964,7 +1066,8 @@ export class Match {
     const crimeScene = this.crimes.some((cr) => cr.kind === 'break' && this.time - cr.t <= CRIME_SCENE.duration && dist(cr.pos, item.pos) <= CRIME_SCENE.radius);
     const owner = item.owner ?? '';
     const pos = { ...item.pos };
-    const idx = this.log.add({ t: this.time, kind: 'plant', by: c.id, item: item.id, owner, pos, seen: this.canSeeNow(c.body.pos) });
+    const who = this.perceive(c.body.pos);
+    const idx = this.log.add({ t: this.time, kind: 'plant', by: c.id, item: item.id, owner, pos, seen: who.identifiable, sharp: who.sharp });
     item.plantLog = idx;
     this.addCrime('plant', c.id, pos, idx);
     this.emit(c.id, { e: 'toast', text: crimeScene ? `Planted ${this.nameOf(owner)}'s ${this.nameOf(item.id)} at the scene of the crime.` : `Planted ${this.nameOf(owner)}'s ${this.nameOf(item.id)}.` });
@@ -1006,8 +1109,8 @@ export class Match {
       if (d < bestD) { best = o; bestD = d; }
     }
     if (!best) return;
-    this.dropHeld(best, true);
     knockback(best, { x: best.body.pos.x - g.body.pos.x, z: best.body.pos.z - g.body.pos.z }, GRANDMA.caneImpulse, 2, g.id, this.time);
+    this.dropHeld(best, true);
     this.log.add({ t: this.time, kind: 'cane', victim: best.id });
     this.emitAll({ e: 'cane', victim: best.id, pos: v3(best.body.pos) });
   }
@@ -1046,12 +1149,13 @@ export class Match {
   private quickEdit(target: string, delta: number): void {
     const gid = this.grandmaId;
     if (!this.cousinIds.includes(target)) { this.emit(gid, { e: 'will-rejected', target, reason: 'unknown-target' }); return; }
-    if (delta < 0) this.checkAccusation(target);
     if (this.willFrozen) { this.emit(gid, { e: 'will-rejected', target, reason: 'frozen' }); return; }
     const free = delta < 0 && this.freeTuts > 0;
     const r = this.applyWill(target, delta, delta > 0 ? 'bless' : 'tut', free);
     if (!r.ok) { this.emit(gid, { e: 'will-rejected', target, reason: r.reason ?? 'rejected' }); return; }
     if (free) this.freeTuts--;
+    // An accusation is a Tut that actually landed.
+    if (delta < 0) this.checkAccusation(target);
   }
 
   /**
@@ -1083,7 +1187,8 @@ export class Match {
     if (r.ok && !silent) {
       if (!free) this.visitUsed[this.visitIndex] = (this.visitUsed[this.visitIndex] ?? 0) + Math.abs(r.moved);
       this.log.add({ t: this.time, kind: 'will', target, moved: r.moved, via });
-      this.emitAll({ e: 'will', target, moved: r.moved, via, ...(free ? { reason: 'favourite' } : {}) });
+      // Only Grandma is told a Tut was her free one: it would name the Favourite to cousins.
+      this.emitAll((to) => ({ e: 'will', target, moved: r.moved, via, ...(free && to === this.grandmaId ? { reason: 'favourite' } : {}) }));
     }
     return r;
   }
@@ -1104,33 +1209,49 @@ export class Match {
   }
 
   private addCrime(kind: Crime['kind'], by: string | null, pos: Vec3, logIndex: number): void {
+    // Everyone near the scene, and always the culprit (a thrower can be far from the shards).
     const near = this.cousinIds.filter((id) => {
       const c = this.chars.get(id);
-      return !!c && dist(c.body.pos, pos) <= CRIME_SCENE.radius;
+      return !!c && (id === by || dist(c.body.pos, pos) <= CRIME_SCENE.radius);
     });
     this.crimes.push({ t: this.time, pos: { ...pos }, kind, by, logIndex, near });
   }
 
   // ───────────── text ─────────────
 
+  /** A compliment counts only if Grandma hears it clearly (within 2 m, 6 m with the hearing aid; whispers 1.5 m). */
   private maybeCompliment(c: Char, line: string): void {
     const g = this.grandma;
     if (!g || this.phase !== 'visit' || this.pause) return;
-    if (dist(c.body.pos, g.body.pos) > COUSIN.complimentRange + 0.3) return;
+    if (this.grandmaHears(c.body.pos, c.whispering) !== 'clear') return;
     this.log.add({ t: this.time, kind: 'compliment', by: c.id, line });
   }
 
-  private bubble(c: Char, text: string, quick: boolean): void {
+  /**
+   * A speech bubble. Cousins read it within earshot of the speaker (15 m, or
+   * 1.5 m for a whisper). Grandma gets what she would hear: nothing when it is
+   * out of her hearing, quick-chat lines misheard and typed lines scrambled
+   * when muffled, and the speaker's identity only if she can see them.
+   */
+  private bubble(c: Char, text: string, quick: boolean, line = -1): void {
     const whisper = c.whispering;
     const g = this.grandma;
-    const seed = hashStr(c.id + ':' + this.tick + ':' + text);
-    const forGrandma = (): string => {
-      if (!g || g.id === c.id) return text;
-      const band = hearingBand(dist(g.body.pos, c.body.pos), g.aidT > 0, whisper ? VOICE.whisperRange : Infinity);
-      return scrambleText(text, band, seed);
-    };
+    const range = whisper ? VOICE.whisperRange : VOICE.cousinRange;
     const plain: GameEvent = { e: 'bubble', from: c.id, text, quick, whisper };
-    this.emitAll((to) => (to === this.grandmaId ? { e: 'bubble', from: c.id, text: forGrandma(), quick, whisper } : plain));
+    this.emitAll((to) => {
+      if (to === c.id) return plain;
+      if (to === this.grandmaId) {
+        if (!g) return null;
+        const band = this.grandmaHears(c.body.pos, whisper);
+        if (band === 'silent') return null;
+        const heard = quick && line >= 0 && c.role === 'cousin' ? mishear(line, band, this.secret, this.tick) : scrambleText(text, band, hashStr(`${this.secret}:${c.id}:${this.tick}`));
+        const seen = this.canSeeNow(c.body.pos);
+        return { e: 'bubble', from: seen ? c.id : '', text: heard, quick, whisper: false, ...(seen ? {} : { pos: coarse(c.body.pos) }) };
+      }
+      const o = this.chars.get(to);
+      if (!o || dist(o.body.pos, c.body.pos) > range) return null;
+      return plain;
+    });
   }
 
   // ───────────── props ─────────────
@@ -1169,10 +1290,9 @@ export class Match {
 
   private propHitChar(p: Prop, victim: Char, speed: number): void {
     if (victim.role === 'grandma' && speed > SPECTACLES.knockOffSpeed && !victim.specsOff && p.thrownBy) {
-      victim.specsOff = true;
-      victim.specsT = 0;
-      this.emitAll({ e: 'specs-off', pos: v3(victim.body.pos) });
-      this.log.add({ t: this.time, kind: 'knock-specs', by: p.thrownBy });
+      const thrower = this.chars.get(p.thrownBy);
+      const who = thrower ? this.perceive(thrower.body.pos) : null;
+      this.knockSpecsOff(victim, p.thrownBy, !!who?.identifiable, !!who?.sharp);
     }
     if (victim.state === 'normal' && (victim.role === 'cousin' || this.options.pushGrandma)) {
       victim.body.vel.x += p.vel.x * 0.15;
@@ -1186,6 +1306,17 @@ export class Match {
     if (p.kind === 'heirloom' && !p.broken && wasFast > HEIRLOOM.breakSpeed) this.breakHeirloom(p);
   }
 
+  /** Knock Grandma's spectacles off (a thrown object, or a shove when pushing her is allowed). */
+  private knockSpecsOff(g: Char, by: string, seen: boolean, sharp: boolean): void {
+    if (g.specsOff) return;
+    g.specsOff = true;
+    g.specsT = 0;
+    this.emitAll({ e: 'specs-off', pos: v3(g.body.pos) });
+    const pos = { ...g.body.pos };
+    const idx = this.log.add({ t: this.time, kind: 'knock-specs', by, seen, sharp });
+    this.addCrime('knock-specs', by, pos, idx);
+  }
+
   private toppleCheck(c: Char): void {
     for (const p of this.props.values()) {
       if (p.kind !== 'heirloom' || p.broken || !p.spot || !p.resting || p.heldBy) continue;
@@ -1196,7 +1327,8 @@ export class Match {
       p.resting = false;
       p.spot = null;
       p.thrownBy = null;
-      p.lastBy = c.knockedBy && this.time - c.knockedAt < 4 ? c.knockedBy : c.id;
+      const blame = c.knockedBy && this.time - c.knockedAt < 4 ? c.knockedBy : c.id;
+      p.lastBy = blame === this.grandmaId ? null : blame;
     }
   }
 
@@ -1206,13 +1338,18 @@ export class Match {
     p.vel = { x: 0, y: 0, z: 0 };
     p.pos.y = groundHeight(p.pos.x, p.pos.z, p.pos.y + 0.1, 0.2);
     p.resting = true;
-    const by = p.lastBy && this.chars.has(p.lastBy) ? p.lastBy : null;
+    const by = p.lastBy && p.lastBy !== this.grandmaId && this.chars.has(p.lastBy) ? p.lastBy : null;
     const culprit = by ? this.chars.get(by) : undefined;
-    const seen = culprit ? this.canSeeNow(culprit.body.pos) : this.canSeeNow(p.pos);
+    const who = culprit ? this.perceive(culprit.body.pos) : this.perceive(p.pos, PROP_MID);
     const pos = { ...p.pos };
-    const idx = this.log.add({ t: this.time, kind: 'break', by, heirloom: p.id, favourite: p.favourite, pos, seen });
+    const idx = this.log.add({ t: this.time, kind: 'break', by, heirloom: p.id, favourite: p.favourite, pos, seen: who.identifiable, sharp: who.sharp });
     this.addCrime('break', by, pos, idx);
-    this.emitAll((to) => (to === this.grandmaId ? { e: 'crash', pos: v3(pos), heirloom: p.id, favourite: p.favourite } : { e: 'crash', pos: v3(pos), heirloom: p.id }));
+    // Everyone hears a crash. Grandma gets the exact spot and which heirloom only
+    // if she saw it; otherwise a rough direction to turn towards.
+    const sawIt = this.perceive(pos, PROP_MID).visible;
+    this.emitAll((to) => (to === this.grandmaId
+      ? (sawIt ? { e: 'crash', pos: v3(pos), heirloom: p.id, favourite: p.favourite } : { e: 'crash', pos: coarse(pos), heirloom: '', favourite: p.favourite })
+      : { e: 'crash', pos: v3(pos), heirloom: p.id }));
     if (p.favourite) {
       this.freeTuts++;
       this.emit(this.grandmaId, { e: 'toast', text: 'Your favourite! You get one free Tut, outside the budget.' });
@@ -1273,8 +1410,9 @@ export class Match {
     if (!g) return;
     for (const p of this.props.values()) {
       if (p.kind !== 'item' || !p.planted || p.found || p.heldBy || p.hidden) continue;
-      if (dist(g.body.pos, p.pos) > GRANDMA.findRange || !this.canSeeNow(p.pos)) continue;
+      if (dist(g.body.pos, p.pos) > GRANDMA.findRange || !this.canSeeNow(p.pos, PROP_MID)) continue;
       p.found = true;
+      this.log.add({ t: this.time, kind: 'found', item: p.id, owner: p.owner ?? '', plant: p.plantLog, visit: this.visitIndex });
       this.emit(g.id, { e: 'found', item: p.id, owner: p.owner ?? '', pos: v3(p.pos) });
     }
   }
@@ -1408,7 +1546,10 @@ export class Match {
       case 'roles': this.startVisit(0); break;
       case 'visit':
         this.endVisit();
-        if (this.visitIndex + 1 < this.visits.length) this.setPhase('intermission', this.durations.intermission);
+        if (this.visitIndex + 1 < this.visits.length) {
+          this.petId = leader(this.will);
+          this.setPhase('intermission', this.durations.intermission);
+        }
         else this.startReading();
         break;
       case 'intermission': this.startVisit(this.visitIndex + 1); break;
@@ -1554,21 +1695,26 @@ export class Match {
     }
   }
 
-  private charSnap(c: Char, leaderId: string | null): CharSnap {
+  /** One character as `forId` may see it (Grandma-only fields only for her own record). */
+  private charSnap(c: Char, petId: string | null, forId: string): CharSnap {
     const s: CharSnap = {
       id: c.id, role: c.role, pos: v3(c.body.pos), yaw: r3(c.yaw), pitch: r3(c.pitch), vel: v3(c.body.vel), state: c.state,
       ragdollT: r2(c.ragdollT), holding: c.holding, running: c.running, sneaking: c.sneaking, whispering: c.whispering,
-      charge: r2(c.charge), plant: r2(Math.min(1, c.plantT / COUSIN.plantHold)), leader: c.id === leaderId, ack: c.ack,
+      charge: r2(c.charge), plant: r2(Math.min(1, c.plantT / COUSIN.plantHold)), leader: c.id === petId, ack: c.ack,
     };
     if (c.role === 'grandma') {
+      // Everyone can see her writing, her hearing aid whistling and her spectacles.
       s.parchmentOpen = c.parchmentOpen;
       s.aidActive = c.aidT > 0;
-      s.aidCooldown = r2(c.aidCd);
       s.specsActive = c.specsT > 0 && !c.specsOff;
-      s.specsCooldown = r2(c.specsCd);
       s.specsOff = c.specsOff;
+      // A swing is visible (cousins animate it from the cooldown jumping up).
       s.caneCooldown = r2(c.caneCd);
-      s.summonCooldown = r2(c.summonCd);
+      if (forId === c.id) {
+        s.aidCooldown = r2(c.aidCd);
+        s.specsCooldown = r2(c.specsCd);
+        s.summonCooldown = r2(c.summonCd);
+      }
     }
     return s;
   }
@@ -1582,21 +1728,62 @@ export class Match {
     }
     if (p.kind === 'item') {
       s.owner = p.owner;
-      s.planted = p.planted;
-      s.found = p.found;
+      // Grandma learns an item was planted only by finding it; cousins never learn what she found.
+      s.planted = forGrandma ? p.planted && p.found : p.planted;
+      if (forGrandma) s.found = p.found;
     }
     return s;
   }
 
+  /**
+   * Grandma's snapshot holds only what she perceives. People she can identify
+   * (soft or sharp, line of sight) come with everything; people she can only
+   * make out, or only hear (within 10 m, or a running cousin's footsteps), come
+   * as a position with nothing about what they carry, charge, plant or
+   * whisper; anyone else is left out. Props: only what she can see, items only
+   * when identifiable, things in hands only when she can identify the holder,
+   * and planted evidence is not flagged as planted until she finds it.
+   */
+  private grandmaSnapshot(g: Char): { chars: CharSnap[]; props: PropSnap[] } {
+    const chars: CharSnap[] = [];
+    const known = new Map<string, Perception>();
+    for (const c of this.chars.values()) {
+      if (c === g) { chars.push(this.charSnap(c, this.petId, g.id)); continue; }
+      const per = this.perceive(c.body.pos);
+      known.set(c.id, per);
+      const steps = (c.running ? COUSIN.footstepRangeRun : c.sneaking ? COUSIN.footstepRangeSneak : COUSIN.footstepRangeWalk) * (c.id === this.petId ? COUSIN.leaderFootstepFactor : 1);
+      if (!per.visible && per.dist > Math.max(SENSES.mumble, steps)) continue;
+      const s = this.charSnap(c, this.petId, g.id);
+      delete s.ack;
+      if (!per.identifiable) { s.holding = null; s.charge = 0; s.plant = 0; s.whispering = false; }
+      chars.push(s);
+    }
+    const props: PropSnap[] = [];
+    for (const p of this.props.values()) {
+      if (p.hidden) continue;
+      if (p.heldBy) {
+        if (p.heldBy !== g.id && !known.get(p.heldBy)?.identifiable) continue;
+      } else {
+        const per = this.perceive(p.pos, PROP_MID);
+        if (!per.visible || (p.kind === 'item' && !per.identifiable)) continue;
+      }
+      props.push(this.propSnap(p, true));
+    }
+    return { chars, props };
+  }
+
   /** Build this tick's snapshot for each recipient (exposed for tests). */
   snapshotFor(id: string): ServerMsg {
-    const leaderId = leader(this.will);
-    const forGrandma = id === this.grandmaId;
     const av = available(this.will, this.time);
+    const g = this.grandma;
+    const view = g && id === g.id
+      ? this.grandmaSnapshot(g)
+      : {
+        chars: [...this.chars.values()].map((c) => this.charSnap(c, this.petId, id)),
+        props: [...this.props.values()].filter((p) => !p.hidden).map((p) => this.propSnap(p, false)),
+      };
     return {
-      t: 'snap', time: r3(this.time), tick: this.tick,
-      chars: [...this.chars.values()].map((c) => this.charSnap(c, leaderId)),
-      props: [...this.props.values()].filter((p) => !p.hidden).map((p) => this.propSnap(p, forGrandma)),
+      t: 'snap', time: r3(this.time), tick: this.tick, chars: view.chars, props: view.props,
       shares: { ...this.will.shares }, willAvail: { budget: av.budget, rolling: av.rolling }, dark: this.dark, flash: this.flash,
     };
   }

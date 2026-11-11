@@ -95,8 +95,9 @@ describe('game server', () => {
     const phase = await c.wait('phase');
     expect(phase.phase).toBe('roles');
     const snap = await c.wait('snap');
+    // Grandma's snapshot holds what she perceives: everyone is within earshot at the start.
     expect(snap.chars.length).toBe(5);
-    expect(snap.props.filter((p) => p.favourite).length).toBe(1);
+    expect(snap.props.filter((p) => p.favourite).length).toBeLessThanOrEqual(1);
     expect(Object.values(snap.shares).reduce((a, b) => a + b, 0)).toBe(100);
     // Bots appear in the lobby list while the match runs.
     const l2 = await c.wait('lobby', (m) => m.players.length === 5);

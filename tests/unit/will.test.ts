@@ -129,3 +129,40 @@ describe('the live will', () => {
     expect(leader(w)).toBe('c');
   });
 });
+
+describe('will floors and the rolling window (review R6, R14, R15)', () => {
+  const mk = (shares: Record<string, number>) => ({ shares: { ...shares }, usedThisVisit: 0, recent: [] as { t: number; points: number }[] });
+
+  it('a quick Bless never takes another cousin to 0 (only the parchment can disgrace)', () => {
+    const w = mk({ a: 1, b: 1, c: 5, d: 93 });
+    const r = applyChange(w, 'd', 5, 0, false);
+    expect(r).toMatchObject({ ok: true, moved: 4 });
+    expect(Object.values(w.shares).every((v) => v >= 1)).toBe(true);
+    expect(Object.values(w.shares).reduce((a, b) => a + b, 0)).toBe(100);
+    expect(applyChange(w, 'd', 5, 1, false)).toMatchObject({ ok: false, reason: 'no-room' });
+    // The parchment may take others to 0.
+    expect(setShare(w, 'd', 100, 2)).toMatchObject({ ok: true, moved: 3 });
+    expect(w.shares).toEqual({ a: 0, b: 0, c: 0, d: 100 });
+  });
+
+  it('a Tut on someone else does not lift a disgraced cousin off 0', () => {
+    const w = mk({ a: 0, b: 5, c: 5, d: 90 });
+    expect(applyChange(w, 'd', -5, 0, false)).toMatchObject({ ok: true, moved: -5 });
+    expect(w.shares.a).toBe(0);
+    expect(w.shares.b + w.shares.c).toBe(15);
+    // When everyone else is at 0 the points are split equally.
+    const z = mk({ a: 0, b: 0, c: 0, d: 100 });
+    applyChange(z, 'd', -6, 0, false);
+    expect(z.shares).toEqual({ a: 2, b: 2, c: 2, d: 94 });
+  });
+
+  it('the rolling cap looks back 30 s across a visit boundary', () => {
+    const w = mk({ a: 25, b: 25, c: 25, d: 25 });
+    for (let i = 0; i < 4; i++) applyChange(w, 'a', 5, 0.1 * i, false);
+    expect(w.usedThisVisit).toBe(20);
+    resetVisitBudget(w);
+    expect(w.usedThisVisit).toBe(0);
+    expect(applyChange(w, 'b', 5, 10, false)).toMatchObject({ ok: false, reason: 'rolling' });
+    expect(applyChange(w, 'b', 5, 31, false)).toMatchObject({ ok: true, moved: 5 });
+  });
+});

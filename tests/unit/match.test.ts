@@ -112,9 +112,9 @@ function press(m: Match, id: string, over: Partial<InputMsg> = {}): void {
   m.handleInput(id, { ...m.blankInput(seq, c.yaw), pitch: 0, ...over });
 }
 
-function place(m: Match, id: string, x: number, z: number, yaw: number): Char {
+function place(m: Match, id: string, x: number, z: number, yaw: number, atY?: number): Char {
   const c = m.chars.get(id)!;
-  const y = groundHeight(x, z, 0.5);
+  const y = atY ?? groundHeight(x, z, 0.5);
   c.body.pos = { x, y, z };
   c.body.vel = { x: 0, y: 0, z: 0 };
   c.body.onGround = true;
@@ -149,6 +149,10 @@ describe('match rules', () => {
     expect(aMatch.role).toBe('cousin');
     expect(aMatch.prefCards).toBeUndefined();
     expect(aMatch.cousins.map((c) => c.id)).toEqual(['a', 'b', 'c', 'd']);
+    // Grandma looks straight at her Favourite: only she is told which one it is.
+    const fav = [...m.props.values()].find((p) => p.favourite)!;
+    const gx = fav.pos.x + (fav.pos.x > 0 ? -1.6 : 1.6);
+    place(m, 'g', gx, fav.pos.z, Math.atan2(-(fav.pos.x - gx), 0), fav.pos.y > 2 ? fav.pos.y - 1 : undefined);
     tick(m, 10);
     const gSnap = box.of('g').filter((x) => x.t === 'snap').pop() as Extract<ServerMsg, { t: 'snap' }>;
     const aSnap = box.of('a').filter((x) => x.t === 'snap').pop() as Extract<ServerMsg, { t: 'snap' }>;
@@ -223,8 +227,10 @@ describe('match rules', () => {
     place(m, 'b', -7.5, 2.2, 0);
     press(m, 'a', { shove: true });
     tick(m);
-    const unseen = box.events('g', 'shove').pop() as { by: string; victim: string };
-    expect(unseen).toMatchObject({ by: '', victim: 'b' });
+    const unseen = box.events('g', 'shove').pop() as { by: string; victim: string; pos: { x: number; z: number } };
+    // She hears it behind her but sees neither of them: no names, and only a rough position.
+    expect(unseen).toMatchObject({ by: '', victim: '' });
+    expect(Number.isInteger(unseen.pos.x) && Number.isInteger(unseen.pos.z)).toBe(true);
     expect(box.events('b', 'shove').pop()).toMatchObject({ by: 'a', victim: 'b' });
     box.clear();
     tick(m, 60);
@@ -264,10 +270,9 @@ describe('match rules', () => {
     expect(m.log.events.some((e) => e.kind === 'accuse' && e.target === 'b')).toBe(true);
     expect(m.log.moments.some((x) => x.kind === 'framed' && x.actor === 'a' && x.victim === 'b')).toBe(true);
     expect(m.log.metrics()).toMatchObject({ plants: 1, plantsAccusedOwner: 1, framingAccuracy: 1 });
-    // Secret until the reading: Grandma must not be told she was fooled. The framer is.
-    expect(box.events('g', 'moment').some((e) => (e as { moment: { kind: string } }).moment.kind === 'framed')).toBe(false);
-    expect(box.events('b', 'moment').length).toBe(0);
-    expect(box.events('a', 'moment').some((e) => (e as { moment: { kind: string } }).moment.kind === 'framed')).toBe(true);
+    // Secret until the reading: nobody is told mid-match (not even the framer: it
+    // would tell them Nana fell for it); the reading reveals it to everyone.
+    for (const id of ['g', 'a', 'b']) expect(box.events(id, 'moment').some((e) => (e as { moment: { kind: string } }).moment.kind === 'framed')).toBe(false);
     // The owner takes it back.
     place(m, 'b', -3.2, 2.0, 0);
     press(m, 'b', { interact: true });
@@ -333,7 +338,12 @@ describe('match rules', () => {
     expect(m.will.shares.c).toBe(20);
     expect(m.will.usedThisVisit).toBe(before);
     expect(m.freeTuts).toBe(0);
-    expect(box.events('d', 'will').pop()).toMatchObject({ target: 'c', moved: -5, via: 'tut', reason: 'favourite' });
+    // Only Grandma is told it was her free (Favourite) Tut; cousins just see a Tut.
+    expect(box.events('g', 'will').pop()).toMatchObject({ target: 'c', moved: -5, via: 'tut', reason: 'favourite' });
+    const forCousin = box.events('d', 'will').pop() as Record<string, unknown>;
+    expect(forCousin).toMatchObject({ target: 'c', moved: -5, via: 'tut' });
+    expect('reason' in forCousin).toBe(false);
+    expect(box.all.some((x) => x.msg.t === 'ev' && x.msg.e === 'moment' && x.msg.moment.kind === 'favourite-broken')).toBe(false);
     // The next Tut is a normal one.
     m.handleGrandma('g', { a: 'tut', target: 'c' });
     expect(m.will.usedThisVisit).toBe(before + WILL.quickStep);
@@ -391,9 +401,9 @@ describe('match rules', () => {
 
   it("bubbles reach Grandma scrambled by distance; compliments count only up close", () => {
     const { m, box } = humanMatch();
-    place(m, 'a', 3, 1.6, 0); // 8 m in front of Grandma: mumble
+    place(m, 'a', 3, 1.6, 0); // 8 m in front of Grandma: a mumble from a blur she cannot identify
     m.handleQuick('a', 0);
-    expect(box.events('g', 'bubble').pop()).toMatchObject({ from: 'a', text: '…' });
+    expect(box.events('g', 'bubble').pop()).toMatchObject({ from: '', text: '…' });
     expect(box.events('b', 'bubble').pop()).toMatchObject({ from: 'a', text: QUICKCHAT.cousin[0] });
     expect(m.log.events.some((e) => e.kind === 'compliment')).toBe(false);
     place(m, 'a', -3.6, 1.6, Math.PI / 2); // 1.4 m: clear

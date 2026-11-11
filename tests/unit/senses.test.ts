@@ -78,10 +78,15 @@ describe("Grandma's sight", () => {
     expect(canSee(g, ahead(4))).toBe(false);
   });
 
-  it('the Storm: almost blind in the dark, sharp in a lightning flash', () => {
-    expect(visionBand(nana({ dark: true }), ahead(3))).toBe('none');
-    expect(visionBand(nana({ dark: true }), ahead(1))).toBe('heavy');
-    expect(visionBand(nana({ dark: true, flash: true }), ahead(5))).toBe('sharp');
+  it('the Storm: her candle shows faces within 2 m and shapes to 3.5 m; a flash lights the house like daylight, no better', () => {
+    expect(visionBand(nana({ dark: true }), ahead(1.5))).toBe('soft');
+    expect(visionBand(nana({ dark: true }), ahead(3))).toBe('heavy');
+    expect(visionBand(nana({ dark: true }), ahead(4))).toBe('none');
+    expect(visionBand(nana({ dark: true, flash: true }), ahead(1))).toBe('sharp');
+    expect(visionBand(nana({ dark: true, flash: true }), ahead(5))).toBe('soft');
+    expect(visionBand(nana({ dark: true, flash: true }), ahead(20))).toBe('shapes');
+    // Knocked-off spectacles still blur a flash.
+    expect(visionBand(nana({ dark: true, flash: true, specsOff: true }), ahead(4))).toBe('heavy');
   });
 
   it('canSee / canIdentify = sharp or soft', () => {

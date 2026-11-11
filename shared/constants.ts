@@ -146,14 +146,19 @@ export const VISITS: Record<VisitId, { name: string; duration: number }> = {
 };
 export const SLICE_VISITS: VisitId[] = ['tea'];
 export const FULL_VISITS: VisitId[] = ['tea', 'dinner', 'storm'];
-export const ROLE_REVEAL_TIME = 6;
+/** Long enough to read the role card's goal line and the key list (playability review P3). */
+export const ROLE_REVEAL_TIME = 12;
 export const INTERMISSION_TIME = 20;
 export const READING_TIME = 20;
 export const VOTE_TIME = 20;
 export const RESULTS_TIME = 15;
 
-/** The Storm: lightning gives Grandma a short flash of sharp vision. */
-export const STORM = { lightningEvery: 20, lightningJitter: 6, flashDuration: 0.5 } as const;
+/**
+ * The Storm: the power is out. Grandma carries a candle (she can identify
+ * someone within candleClear m and make out shapes to candleDim m); lightning
+ * lights the whole house like daylight for a moment.
+ */
+export const STORM = { lightningEvery: 10, lightningJitter: 2, flashDuration: 0.8, candleClear: 2, candleDim: 3.5 } as const;
 
 /** Wishes (errands). One active at a time, a new one when it is fulfilled or expires. */
 export const WISH = { duration: 45, deliverRange: 1.6, gapMin: 4, gapMax: 10 } as const;
@@ -203,6 +208,21 @@ export const PREFERENCE_CARDS = [
   'Distrusts phones at the table',
   'Never forgives a shove on the stairs',
 ] as const;
+
+/**
+ * What Grandma hears when a cousin's quick-chat line reaches her muffled
+ * (2-6 m): a plausible mishearing, picked per line. Same order as QUICKCHAT.cousin.
+ */
+export const MISHEARD: readonly (readonly string[])[] = [
+  ['Shove you, Nana?', 'Glove shoe, banana!', 'Love stew, Nana?'],
+  ['It was HYMN!', 'Is it ham?', 'It was tin?'],
+  ["I'll pinch your pills!", "I'll stretch your bills!", 'Aisle, fetch the hills!'],
+  ['Was it me?', "Wasn't tea!", 'Was then he!'],
+  ['You look lumpy today, Nana.', 'Ooh, look, lovely tray, Nana.', 'You cook lovely toast, Nana.'],
+  ["Nana, look, I'm a bear!", 'Banana, cook over there!', 'Nana, hook over chair!'],
+  ['Starry!', 'Saury?', 'Sari!'],
+  ['Kelp!', 'Yelp!', 'Help?'],
+];
 
 /** Quick-chat wheel lines (8 per role). Passed through Grandma's hearing like speech. */
 export const QUICKCHAT = {

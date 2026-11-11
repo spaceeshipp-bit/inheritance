@@ -45,25 +45,39 @@ export function available(w: WillState, now: number): { budget: number; rolling:
   return { budget, rolling, now: Math.min(budget, rolling) };
 }
 
+/**
+ * A new visit: the visit budget starts afresh. The rolling cap does not: it
+ * looks back 30 s whatever the phase, so 20 points at the end of one visit
+ * and 20 more at the start of the next cannot land within 30 s.
+ */
 export function resetVisitBudget(w: WillState): void {
   w.usedThisVisit = 0;
-  w.recent = [];
 }
 
 /**
  * Distribute `amount` points (positive = give, negative = take) across `ids`
- * in proportion to `weights`, as integers, using the largest-remainder method.
- * When taking, never takes more than an id has.
+ * in proportion to their shares, as integers (largest-remainder method).
+ * Taking never leaves anyone below `floor`. Giving goes in proportion to
+ * shares, so a disgraced cousin (0) stays at 0 unless everyone is at 0, in
+ * which case it is split equally.
  */
-function distribute(shares: Record<string, number>, ids: string[], amount: number): void {
+function distribute(shares: Record<string, number>, ids: string[], amount: number, floor: number): void {
   if (amount === 0 || ids.length === 0) return;
   const sign = Math.sign(amount);
   let left = Math.abs(amount);
   // Loop because capping (when taking) can leave points to place.
   for (let guard = 0; left > 0 && guard < 10; guard++) {
-    const eligible = sign < 0 ? ids.filter((id) => shares[id] > 0) : ids;
+    let eligible: string[];
+    let weights: number[];
+    if (sign < 0) {
+      eligible = ids.filter((id) => shares[id] > floor);
+      weights = eligible.map((id) => shares[id]);
+    } else {
+      const withShare = ids.filter((id) => shares[id] > 0);
+      eligible = withShare.length > 0 ? withShare : ids;
+      weights = withShare.length > 0 ? eligible.map((id) => shares[id]) : eligible.map(() => 1);
+    }
     if (eligible.length === 0) break;
-    const weights = eligible.map((id) => (sign < 0 ? shares[id] : Math.max(shares[id], 0) + 1));
     const wsum = weights.reduce((a, b) => a + b, 0);
     const raw = eligible.map((_, i) => (left * weights[i]) / wsum);
     const base = raw.map((r) => Math.floor(r));
@@ -77,7 +91,7 @@ function distribute(shares: Record<string, number>, ids: string[], amount: numbe
     for (let i = 0; i < eligible.length; i++) {
       const id = eligible[i];
       let n = base[i];
-      if (sign < 0) n = Math.min(n, shares[id]);
+      if (sign < 0) n = Math.min(n, shares[id] - floor);
       shares[id] += sign * n;
       left -= n;
     }
@@ -87,23 +101,24 @@ function distribute(shares: Record<string, number>, ids: string[], amount: numbe
 /**
  * Move `delta` points onto (`delta > 0`) or off (`delta < 0`) `target`, taking
  * from / giving to everyone else in proportion. Clamped to what the budget and
- * rolling cap allow. A quick edit (fromParchment = false) can never take a
- * cousin to 0%: that needs the full parchment.
+ * rolling cap allow. A quick edit (fromParchment = false) can never take any
+ * cousin to 0%, the target or the others it draws from: disgracing someone
+ * needs the full parchment.
  */
 export function applyChange(w: WillState, target: string, delta: number, now: number, fromParchment: boolean): WillResult {
   if (!(target in w.shares)) return { ok: false, moved: 0, reason: 'unknown-target' };
   if (delta === 0) return { ok: false, moved: 0, reason: 'no-op' };
   const others = Object.keys(w.shares).filter((id) => id !== target);
   const cur = w.shares[target];
+  const floor = fromParchment ? 0 : 1;
   let want = delta;
   if (want < 0) {
-    const floor = fromParchment ? 0 : 1;
     if (cur <= floor) return { ok: false, moved: 0, reason: fromParchment ? 'no-room' : 'zero-needs-parchment' };
     want = Math.max(want, floor - cur);
   } else {
-    const othersTotal = others.reduce((a, id) => a + w.shares[id], 0);
-    if (othersTotal <= 0) return { ok: false, moved: 0, reason: 'no-room' };
-    want = Math.min(want, othersTotal);
+    const room = others.reduce((a, id) => a + Math.max(0, w.shares[id] - floor), 0);
+    if (room <= 0) return { ok: false, moved: 0, reason: 'no-room' };
+    want = Math.min(want, room);
   }
   const av = available(w, now);
   if (av.budget <= 0) return { ok: false, moved: 0, reason: 'budget' };
@@ -112,7 +127,7 @@ export function applyChange(w: WillState, target: string, delta: number, now: nu
   if (mag === 0) return { ok: false, moved: 0, reason: 'no-op' };
   const moved = Math.sign(want) * mag;
   w.shares[target] = cur + moved;
-  distribute(w.shares, others, -moved);
+  distribute(w.shares, others, -moved, floor);
   w.usedThisVisit += mag;
   w.recent.push({ t: now, points: mag });
   return { ok: true, moved };

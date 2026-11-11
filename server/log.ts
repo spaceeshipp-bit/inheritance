@@ -75,11 +75,37 @@ export class EventLog {
     return out;
   }
 
+  /**
+   * Plants (by log index) that led Grandma to accuse their owner: the
+   * accusation's crime is that plant, or it targets the owner of an item she
+   * found while it was still planted (the 'found' entry links the plant), in
+   * the same visit and before the owner took it back.
+   */
+  framedPlants(): Map<number, { accuse: number; t: number }> {
+    const out = new Map<number, { accuse: number; t: number }>();
+    const evs = this.events;
+    evs.forEach((a, ai) => {
+      if (a.kind !== 'accuse') return;
+      const link = (pi: number | null) => {
+        if (pi === null || out.has(pi)) return;
+        const p = evs[pi];
+        if (!p || p.kind !== 'plant' || p.owner !== a.target || p.by === a.target || p.t > a.t) return;
+        out.set(pi, { accuse: ai, t: a.t });
+      };
+      if (a.crime !== null && evs[a.crime]?.kind === 'plant') link(a.crime);
+      // The newest find of one of the target's items before this accusation.
+      for (let i = ai - 1; i >= 0; i--) {
+        const f = evs[i];
+        if (f.kind === 'found' && f.owner === a.target) { link(f.plant); break; }
+      }
+    });
+    return out;
+  }
+
   /** Playtest metrics. */
   metrics(): FinalResult['metrics'] {
     const plants = this.events.filter((e): e is Extract<LogEvent, { kind: 'plant' }> => e.kind === 'plant');
-    const accusations = this.events.filter((e): e is Extract<LogEvent, { kind: 'accuse' }> => e.kind === 'accuse');
-    const plantsAccusedOwner = plants.filter((p) => accusations.some((a) => a.target === p.owner && a.t >= p.t)).length;
+    const plantsAccusedOwner = this.framedPlants().size;
     return {
       plants: plants.length,
       plantsAccusedOwner,
@@ -98,7 +124,8 @@ export class EventLog {
 
   private deriveMoments(ev: LogEvent): void {
     const n = this.name;
-    if (isSabotage(ev) && 'seen' in ev && ev.seen && ev.by) {
+    // Caught Red-Handed: inside her SHARP vision (seen = she could tell who; sharp = in plain sight up close).
+    if (isSabotage(ev) && ev.sharp && ev.by) {
       const last = this.lastCaught.get(ev.by) ?? -Infinity;
       if (ev.t - last >= 10) {
         this.lastCaught.set(ev.by, ev.t);
@@ -122,11 +149,12 @@ export class EventLog {
       });
     }
     if (ev.kind === 'accuse') {
-      this.events.forEach((p, i) => {
-        if (p.kind !== 'plant' || p.owner !== ev.target || p.by === ev.target || this.framed.has(i) || p.t > ev.t) return;
+      for (const [i] of this.framedPlants()) {
+        const p = this.events[i];
+        if (p.kind !== 'plant' || this.framed.has(i)) continue;
         this.framed.add(i);
         this.addMoment({ kind: 'framed', t: ev.t, actor: p.by, victim: p.owner, text: `${n(p.by)} framed ${n(p.owner)} with their own ${n(p.item).toLowerCase()}, and Nana fell for it.` });
-      });
+      }
     }
   }
 

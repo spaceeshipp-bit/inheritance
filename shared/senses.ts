@@ -1,7 +1,7 @@
 // Grandma's senses as pure functions. The server uses them for game logic
 // (moments, "found" evidence, scrambling text she reads); the client uses them
 // for her audio filter, her blurred view and the cousins' "Nana Senses" HUD.
-import { HEARING_AID, SENSES, SPECTACLES } from './constants.js';
+import { HEARING_AID, SENSES, SPECTACLES, STORM } from './constants.js';
 import type { Vec3 } from './types.js';
 
 export type HearingBand = 'clear' | 'muffled' | 'mumble' | 'silent';
@@ -83,15 +83,24 @@ export function grandmaVoiceFilter(d: number, aidActive: boolean, speakerRange =
   }
 }
 
-/** How clearly Grandma sees a point. */
+/**
+ * How clearly Grandma sees a point (geometry only: line of sight through walls
+ * is checked separately with shared/sight.ts).
+ * - Outside her view cone: nothing.
+ * - The Storm, power out: her candle shows faces within STORM.candleClear and
+ *   shapes to STORM.candleDim; beyond that, nothing.
+ * - Daylight, or a lightning flash (which lights the house like daylight, no
+ *   better): sharp to 2 m (8 m with spectacles on), soft blur to 6 m, heavy
+ *   blur to 10 m, shapes beyond. Knocked-off spectacles: soft at best.
+ */
 export function visionBand(g: GrandmaSenseState, p: Vec3): VisionBand {
   const d = dist(g.pos, p);
-  const halfAngle = g.specsActive && !g.specsOff ? SPECTACLES.coneHalfAngleDeg : SENSES.coneHalfAngleDeg;
+  const specsOn = g.specsActive && !g.specsOff;
+  const halfAngle = specsOn ? SPECTACLES.coneHalfAngleDeg : SENSES.coneHalfAngleDeg;
   if (angleFromFacing(g, p) > halfAngle) return 'none';
-  if (g.dark && !g.flash) return d <= 1.2 ? 'heavy' : 'none';
-  if (g.flash) return d <= SPECTACLES.sharpRange ? 'sharp' : 'soft';
+  if (g.dark && !g.flash) return d <= STORM.candleClear ? 'soft' : d <= STORM.candleDim ? 'heavy' : 'none';
   if (g.specsOff) return d <= SENSES.clear ? 'soft' : d <= SENSES.mumble ? 'heavy' : 'shapes';
-  if (g.specsActive && d <= SPECTACLES.sharpRange) return 'sharp';
+  if (specsOn && d <= SPECTACLES.sharpRange) return 'sharp';
   if (d <= SENSES.clear) return 'sharp';
   if (d <= SENSES.muffled) return 'soft';
   if (d <= SENSES.mumble) return 'heavy';
