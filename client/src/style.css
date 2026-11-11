@@ -498,3 +498,20 @@ body.band-patterns .swatch[data-pat="7"] { background-image: radial-gradient(cir
 .ip-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ip-share { color: var(--gold); font-variant-numeric: tabular-nums; }
 .ip-grandma { color: var(--muted); font-size: 13px; margin-top: 8px; }
+
+/* ── What Nana Saw: the replays at the end of the reading (hud/replay.ts) ── */
+.reading-wrap { position: absolute; inset: 0; pointer-events: none; }
+.reading-wrap > .phase-card { pointer-events: auto; }
+.replay { position: absolute; inset: 0; pointer-events: none; }
+.replay-divider { position: absolute; left: 0; right: 0; top: 50%; height: 3px; transform: translateY(-1px); background: var(--gold); box-shadow: 0 0 12px rgba(0, 0, 0, 0.8); }
+.replay-label { position: absolute; left: 18px; padding: 4px 12px; border-radius: 6px; font-family: var(--serif); font-size: 20px; letter-spacing: 0.02em; color: var(--text); background: rgba(16, 11, 8, 0.78); border: 1px solid var(--panel-border); }
+.replay-label.top { top: 14px; }
+.replay-label.bottom { top: calc(50% + 14px); }
+.replay-label.top::before { content: '👁  '; }
+.replay-sub { position: absolute; left: 50%; transform: translateX(-50%); max-width: min(760px, 90vw); padding: 6px 16px; border-radius: 8px; font-size: 18px; text-align: center; background: rgba(10, 7, 5, 0.82); color: var(--text); }
+.replay-sub.top { top: calc(50% - 56px); font-style: italic; color: var(--gold); }
+.replay-sub.bottom { bottom: 22px; }
+.replay-card { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(620px, 90vw); padding: 22px 28px; text-align: center; border-radius: 14px; background: linear-gradient(#f8eed6, #e6d09c); color: var(--ink); border: 1px solid #b89a5a; box-shadow: 0 30px 80px rgba(0, 0, 0, 0.7); }
+.replay-kicker { font-size: 13px; letter-spacing: 0.25em; text-transform: uppercase; opacity: 0.75; }
+.replay-card-title { font-family: var(--serif); font-size: 34px; margin: 6px 0 8px; }
+.replay-card-text { font-size: 17px; line-height: 1.4; }

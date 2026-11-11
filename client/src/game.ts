@@ -272,7 +272,10 @@ export class Game {
     if (g && (g.caneCooldown ?? 0) > this.prevCane + 0.5) renderer.caneSwing(s.grandmaId, s.selfId);
     this.prevCane = g?.caneCooldown ?? 0;
 
-    renderer.frame({
+    // What Nana Saw plays at the end of the reading; otherwise the usual view.
+    const replay = s.phase === 'reading' ? hud.replayView() : null;
+    if (replay) renderer.frameReplay(replay, dt, t);
+    else renderer.frame({
       view, selfId: s.selfId, role: s.role, yaw: input.yaw, pitch: input.pitch, dt, time: t,
       dark: s.dark, flash: s.flash, wishKind: s.wish?.kind ?? null, found: this.found,
       level: (id) => voice.level(id), parchment: this.parchmentOpen || s.phase !== 'visit',

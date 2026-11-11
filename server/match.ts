@@ -25,6 +25,7 @@ import { applyChange, available, createWill, leader, readingOrder, resetVisitBud
 import { CousinBot, GrandmaBot, type Bot } from './bots.js';
 import { EventLog } from './log.js';
 import { ReplayRecorder, type FullFrame } from './replay.js';
+import { replaysSeconds } from '../shared/replay.js';
 import { hasLOS, levelOf, waypoints } from './nav.js';
 import {
   bodyItemPos, bumpsPedestal, handPos, inFrontClear, knockback, propHitsChar, propOutside, rescueIfLost, separateCharacters,
@@ -1967,7 +1968,8 @@ export class Match {
       shares: { ...this.will.shares }, order: readingOrder(this.will), moments: [...this.log.moments],
       replays: this.replay.replays(this.log.moments, (m) => this.log.momentEvent(m)),
     };
-    this.setPhase('reading', this.durations.reading);
+    // The will is read first; What Nana Saw plays after, in the extra time.
+    this.setPhase('reading', this.durations.reading + replaysSeconds(this.reading.replays));
     for (const id of this.humans) this.cfg.send(id, { t: 'reading', result: this.reading });
   }
 
@@ -2042,6 +2044,7 @@ export class Match {
     });
     const props = [...this.props.values()].map((p) => ({
       id: p.id, kind: p.kind, x: r2(p.pos.x), y: r2(p.pos.y), z: r2(p.pos.z), yaw: r2(p.yaw), broken: !!p.broken, heldBy: p.heldBy, hidden: !!p.hidden,
+      ...(p.variant ? { variant: p.variant } : {}), ...(p.owner ? { owner: p.owner } : {}),
     }));
     const nana = g ? {
       x: r2(g.body.pos.x), y: r2(g.body.pos.y), z: r2(g.body.pos.z), yaw: r2(g.yaw), pitch: r2(g.pitch),

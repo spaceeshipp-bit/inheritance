@@ -7,15 +7,10 @@ import { cousinOutcome, type CousinOutcome } from '../../../shared/scoring.js';
 import type { FinalResult, Moment, MomentKind, ReadingResult } from '../../../shared/types.js';
 import type { GameState } from '../state.js';
 import { el, setText, show } from '../util.js';
-import { botGlyph, cleanText, isBot, nameOf, swatch } from './ident.js';
+import { MOMENT_TITLES, botGlyph, cleanText, isBot, nameOf, swatch } from './ident.js';
+import { ReplayTheatre } from './replay.js';
+import type { ReplayView } from '../render/scene.js';
 
-const MOMENT_TITLES: Record<MomentKind, string> = {
-  'love-you-nana': 'Love You, Nana',
-  framed: 'Framed!',
-  'caught-red-handed': 'Caught Red-Handed',
-  'big-cut': 'The Big Cut',
-  'favourite-broken': 'Her Favourite, Broken',
-};
 
 export const OUTCOME_TEXT: Record<CousinOutcome, string> = {
   winner: 'Inherits the lot',
@@ -83,7 +78,10 @@ export function planReading(n: number, topCount: number, momentCount: number, to
 }
 
 export class ReadingScreen {
-  readonly root = el('div', 'phase-card reading');
+  /** The card, and What Nana Saw over the whole screen once the will has been read. */
+  readonly root = el('div', 'reading-wrap');
+  private card = el('div', 'phase-card reading');
+  private theatre: ReplayTheatre;
   private lines: HTMLElement[] = [];
   private badges: HTMLElement[] = [];
   private momentEls: HTMLElement[] = [];
@@ -97,8 +95,8 @@ export class ReadingScreen {
   private picked: Moment[];
 
   constructor(s: GameState, r: ReadingResult) {
-    this.root.appendChild(el('div', 'reveal-kicker', 'The Reading of the Will'));
-    this.root.appendChild(el('div', 'lawyer', 'Mr Pettigrew, the family solicitor, clears his throat and unfolds the parchment...'));
+    this.card.appendChild(el('div', 'reveal-kicker', 'The Reading of the Will'));
+    this.card.appendChild(el('div', 'lawyer', 'Mr Pettigrew, the family solicitor, clears his throat and unfolds the parchment...'));
     const cols = el('div', 'reading-cols');
     const list = el('div', 'reading-list');
     const n = r.order.length;
@@ -142,14 +140,27 @@ export class ReadingScreen {
       this.momentEls.push(row);
     });
     cols.append(list, moments);
-    this.root.append(cols, this.timer);
+    this.card.append(cols, this.timer);
+    this.theatre = new ReplayTheatre(s, r.replays ?? []);
+    this.root.append(this.card, this.theatre.root);
+  }
+
+  /** What the renderer should draw while a replay plays (null: the usual establishing shot). */
+  replayView(): ReplayView | null {
+    return this.theatre.view();
   }
 
   frame(s: GameState, now: number): void {
     if (!this.plan) this.startedAt = performance.now();
     const t = (performance.now() - this.startedAt) / 1000;
     // The whole reading as the clock sees it now; a clock that settles mid-reading re-paces the rest.
-    const total = t + Math.max(0, s.phaseEndsAt - now);
+    // What Nana Saw takes the last part of it, so the will is read in what is left before.
+    const replays = this.theatre.duration;
+    const left = Math.max(0, s.phaseEndsAt - now);
+    const total = Math.max(3, t + left - replays);
+    // Replays start when only their own length is left on the clock.
+    const replaying = this.theatre.seek(replays > 0 ? replays - left : -1);
+    show(this.card, !replaying);
     if (!this.plan || Math.abs(total - this.planTotal) > 0.5) {
       this.planTotal = total;
       this.plan = planReading(this.lines.length, this.topCount, this.momentEls.length, total);

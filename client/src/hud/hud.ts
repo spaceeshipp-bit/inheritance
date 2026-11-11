@@ -27,6 +27,7 @@ import { cleanText, nameOf } from './ident.js';
 import { FullParchment } from './parchment.js';
 import { COUSIN_KEYS, GRANDMA_KEYS, Intermission, RoleReveal, VoteScreen } from './phases.js';
 import { ReadingScreen, ResultsScreen } from './reading.js';
+import type { ReplayView } from '../render/scene.js';
 import { SettingsPanel } from './settings.js';
 import { Toasts } from './toasts.js';
 import { TopBar } from './topbar.js';
@@ -333,6 +334,11 @@ export class Hud {
     if (ev.text === '…' || ev.text === '...') { this.captions.sound(`${nameOf(s, ev.from)} mumbles`); return; }
     const who = ev.from === s.selfId ? 'You' : ev.from === s.grandmaId ? 'Nana' : nameOf(s, ev.from);
     this.captions.speech(who, ev.text, { whisper: ev.whisper, color: s.cousin(ev.from)?.color });
+  }
+
+  /** While What Nana Saw plays at the reading: the frame to draw instead of the usual shot. */
+  replayView(): ReplayView | null {
+    return this.overlay instanceof ReadingScreen ? this.overlay.replayView() : null;
   }
 
   private setOverlay(o: Overlay | null, key: string): void {

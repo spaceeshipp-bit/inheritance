@@ -71,6 +71,11 @@ export class CameraRig {
     this.camera.add(this.viewModel);
   }
 
+  /** Hide Grandma's cane view-model (cinematic shots, replays: the rig camera is not the one looking). */
+  hideViewModel(): void {
+    this.viewModel.visible = false;
+  }
+
   /** Current orbit boom length (m). */
   get boom(): number { return this.dist; }
 

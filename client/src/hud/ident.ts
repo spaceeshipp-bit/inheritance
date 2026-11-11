@@ -3,6 +3,7 @@
 // cousin's band pattern as well as the colour (style.css draws the patterns
 // under body.band-patterns).
 import type { ItemKey } from '../../../shared/constants.js';
+import type { MomentKind } from '../../../shared/types.js';
 import { bandPatternIndex } from '../render/materials.js';
 import type { GameState } from '../state.js';
 import { el } from '../util.js';
@@ -63,3 +64,12 @@ export function paintSwatch(e: HTMLElement, color: string, item?: ItemKey | null
 export function swatch(color: string, item?: ItemKey | null, cls = ''): HTMLElement {
   return paintSwatch(el('span', `swatch${cls ? ' ' + cls : ''}`), color, item);
 }
+
+/** What each kind of moment is called at the reading. */
+export const MOMENT_TITLES: Record<MomentKind, string> = {
+  'love-you-nana': 'Love You, Nana',
+  framed: 'Framed!',
+  'caught-red-handed': 'Caught Red-Handed',
+  'big-cut': 'The Big Cut',
+  'favourite-broken': 'Her Favourite, Broken',
+};

@@ -172,6 +172,8 @@ export const FULL_VISITS: VisitId[] = ['tea', 'dinner', 'storm'];
 export const ROLE_REVEAL_TIME = 12;
 export const INTERMISSION_TIME = 20;
 export const READING_TIME = 20;
+/** What Nana Saw at the reading: each replay's title card and the pause after it (s). */
+export const REPLAY = { title: 1.6, gap: 1.0 } as const;
 export const VOTE_TIME = 20;
 export const RESULTS_TIME = 15;
 

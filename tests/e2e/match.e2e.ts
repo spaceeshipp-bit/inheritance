@@ -260,6 +260,8 @@ export async function run(): Promise<Report> {
       }
       r.check('holding G plants the stolen item', planted);
       await bob.shot('cousin-planted');
+      // Nana looks where it landed (bodies jostle, so it is not always dead ahead).
+      if (planted) await ann.faceTo(match.props.get(stolen)!.pos);
       const found = await ann.waitFor('found', async () => (await ann!.rx()).log.some((x) => x.msg.e === 'found' && x.msg.item === stolen), 4000);
       const g = match.chars.get(annId)!, it = match.props.get(stolen)!;
       const sense = match.grandmaSense();

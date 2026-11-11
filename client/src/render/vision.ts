@@ -188,9 +188,15 @@ export class GrandmaVision {
     this.renderer.render(this.quadScene, this.quadCam);
   }
 
-  /** Render `scene` through Grandma's eyes. `target` params ease in over ~0.3 s. */
-  render(scene: THREE.Scene, camera: THREE.PerspectiveCamera, target: VisionParams, dt: number): void {
-    const size = this.renderer.getDrawingBufferSize(new THREE.Vector2());
+  /**
+   * Render `scene` through Grandma's eyes. `target` params ease in over ~0.3 s.
+   * `viewport` (CSS pixels, origin bottom-left) draws into part of the screen
+   * instead of all of it (What Nana Saw's split screen).
+   */
+  render(scene: THREE.Scene, camera: THREE.PerspectiveCamera, target: VisionParams, dt: number, viewport?: { x: number; y: number; w: number; h: number }): void {
+    const full = this.renderer.getDrawingBufferSize(new THREE.Vector2());
+    const pr = this.renderer.getPixelRatio();
+    const size = viewport ? new THREE.Vector2(Math.max(1, Math.round(viewport.w * pr)), Math.max(1, Math.round(viewport.h * pr))) : full;
     if (size.x !== this.rtScene.width || size.y !== this.rtScene.height) this.setSize(size.x, size.y);
     if (!this.cur) this.cur = { ...target };
     const k = damp(target.flash > this.cur.flash ? 40 : 7, dt);
@@ -217,6 +223,17 @@ export class GrandmaVision {
     this.pass(this.matBlur, this.rtB);
     c.tSharp.value = this.rtScene.texture;
     c.tBlur.value = this.rtB.texture;
+    if (viewport) {
+      this.renderer.setViewport(viewport.x, viewport.y, viewport.w, viewport.h);
+      this.renderer.setScissor(viewport.x, viewport.y, viewport.w, viewport.h);
+      this.renderer.setScissorTest(true);
+    }
     this.pass(this.matComp, null);
+    if (viewport) {
+      const w = full.x / pr, h = full.y / pr;
+      this.renderer.setViewport(0, 0, w, h);
+      this.renderer.setScissor(0, 0, w, h);
+      this.renderer.setScissorTest(false);
+    }
   }
 }

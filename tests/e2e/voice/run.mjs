@@ -175,7 +175,8 @@ async function main() {
     await scene(C, 'cousin', [[A, 20], [B, 5]]);
     const grandmaCases = [
       { d: 1, band: 'clear', gain: 1, hz: 20000, drop: [-2, 2] },
-      { d: 4, band: 'muffled', gain: Math.pow(10, -6 / 20), hz: 8000 * Math.pow(0.1, 0.5), drop: [5, 30] },
+      // (Measured across two connections, so allow a decibel or two of codec noise around the -6 dB gain.)
+      { d: 4, band: 'muffled', gain: Math.pow(10, -6 / 20), hz: 8000 * Math.pow(0.1, 0.5), drop: [3, 30] },
       { d: 8, band: 'mumble', gain: 0.18, hz: 300, drop: [14, 60] },
       { d: 12, band: 'silent', gain: 0, hz: 300, drop: [50, 200] },
     ];

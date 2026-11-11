@@ -3,7 +3,7 @@
 import * as THREE from 'three';
 import { COUSINS, type ItemKey } from '../../../shared/constants.js';
 import { canIdentify, visionBand, type GrandmaSenseState, type VisionBand } from '../../../shared/senses.js';
-import type { CharSnap, Role, Vec3, WishInfo } from '../../../shared/types.js';
+import type { CharSnap, PropSnap, ReplayNana, ReplaySeen, Role, Vec3, WishInfo } from '../../../shared/types.js';
 import type { Quality } from '../settings.js';
 import type { View } from '../state.js';
 import { hashStr } from '../util.js';
@@ -38,6 +38,21 @@ export interface RenderFrame {
 }
 
 export interface ScreenPoint { x: number; y: number; onScreen: boolean; behind: boolean }
+
+/** One frame of What Nana Saw, ready to draw (hud/replay.ts builds it from a recorded clip). */
+export interface ReplayView {
+  /** The truth: everyone as they really were. */
+  chars: CharSnap[];
+  props: Map<string, PropSnap>;
+  /** How Grandma perceived each character, by id. */
+  seen: Map<string, ReplaySeen>;
+  /** Her view; null if she was not there. */
+  nana: ReplayNana | null;
+  /** Where the truth camera looks (the moment's actor). */
+  focus: Vec3;
+  /** Seconds into the clip (the truth camera drifts slowly round the focus). */
+  clock: number;
+}
 
 /** Map a vision band to how a character/prop is drawn for Grandma. */
 export function degradeFor(b: VisionBand): Degrade {
@@ -276,7 +291,7 @@ export class GameRenderer {
         specs: !!self?.specsActive && !self?.specsOff, down: self?.state === 'ragdoll', parchment: f.parchment,
       });
       this.candle.position.copy(this.rig.camera.position);
-      this.scene.fog = this.grandmaFog(self, f);
+      this.scene.fog = this.grandmaFog({ flash: f.flash, dark: f.dark, specsOff: !!self?.specsOff, specsActive: !!self?.specsActive });
       this.vision.render(this.scene, this.rig.camera, visionParams({
         specsActive: !!self?.specsActive, specsOff: !!self?.specsOff, dark: f.dark && !f.flash, flash: f.flash,
       }), dt);
@@ -290,8 +305,94 @@ export class GameRenderer {
     }
   }
 
+  private replayNanaCam = new THREE.PerspectiveCamera(70, 1, 0.05, 80);
+  private replayTruthCam = new THREE.PerspectiveCamera(55, 1, 0.05, 80);
+
+  /**
+   * What Nana Saw: the top half through Grandma's own eyes at the time (her
+   * blur, her darkness, only who she perceived: shapes as shapes, anyone she
+   * only heard or missed left out), the bottom half the truth, from a camera
+   * drifting round whoever the moment is about.
+   */
+  frameReplay(v: ReplayView, dt: number, time: number): void {
+    const n = v.nana;
+    const dark = !!n?.dark && !n.flash;
+    const level = dark ? 0.12 : 1;
+    for (const l of this.lights) l.light.intensity = l.base * level;
+    this.lightning.intensity = n?.flash ? 4.5 : 0;
+    this.map.windows.emissiveIntensity = n?.dark ? (n.flash ? 3 : 0.3) : 0.9;
+
+    this.rig.hideViewModel();
+    // Everyone as they really were (animated once a frame).
+    const ids = new Set(v.chars.map((c) => c.id));
+    for (const [id, m] of this.models) if (!ids.has(id)) { m.dispose(); this.models.delete(id); }
+    const chars = new Map(v.chars.map((c) => [c.id, c]));
+    const itemProps = new Map<string, PropSnap>();
+    for (const p of v.props.values()) if (p.kind === 'item' && p.owner) itemProps.set(p.owner, p);
+    for (const c of v.chars) {
+      const m = this.ensureModel(c);
+      const ip = itemProps.get(c.id);
+      m.update(c, dt, { degrade: 'none', itemOnBody: !ip || (ip.heldBy === c.id && c.holding !== ip.id), mouth: 0, holding: !!c.holding });
+    }
+    this.props.update({
+      props: v.props, chars, models: this.models,
+      itemKeyOf: (owner) => this.look?.cousins.find((c) => c.id === owner)?.item ?? null,
+      degradeAt: () => 'none', wishKind: null, showWishMarker: false, isGrandma: false, found: new Map(), time, dt,
+    });
+
+    const W = this.w, H = this.h, half = Math.floor(H / 2);
+    // Top: what Nana saw.
+    if (n) {
+      for (const c of v.chars) {
+        const m = this.models.get(c.id);
+        if (!m) continue;
+        const s = v.seen.get(c.id) ?? 'none';
+        m.root.visible = s === 'sharp' || s === 'soft' || s === 'shape';
+        m.setDegrade(s === 'shape' ? 'shapes' : 'none');
+      }
+      const cam = this.replayNanaCam;
+      cam.aspect = W / Math.max(1, half);
+      cam.fov = n.specs ? 60 : 70;
+      cam.updateProjectionMatrix();
+      cam.position.set(n.x, n.y + 1.75, n.z);
+      cam.rotation.set(n.pitch, n.yaw, 0, 'YXZ');
+      this.candle.intensity = dark ? 7 : 0;
+      this.candle.position.copy(cam.position);
+      this.scene.fog = this.grandmaFog({ flash: n.flash, dark: n.dark, specsOff: false, specsActive: n.specs });
+      this.vision.render(this.scene, cam, visionParams({ specsActive: n.specs, specsOff: false, dark, flash: n.flash }), dt, { x: 0, y: H - half, w: W, h: half });
+    }
+
+    // Bottom: what really happened.
+    for (const m of this.models.values()) { m.root.visible = true; m.setDegrade('none'); }
+    const cam = this.replayTruthCam;
+    cam.aspect = W / Math.max(1, H - half);
+    cam.updateProjectionMatrix();
+    const target = new THREE.Vector3(v.focus.x, v.focus.y + 1.0, v.focus.z);
+    // Drift round the focus; start from the side facing into the hall, and stay inside the walls.
+    const a = 0.6 + v.clock * 0.1;
+    const dir = new THREE.Vector3(Math.sin(a), 0.55, Math.cos(a)).normalize();
+    this.ray.set(target, dir);
+    this.ray.far = 5;
+    const hit = this.ray.intersectObjects(this.map.blockers, false)[0];
+    const dist = hit ? Math.max(1.2, hit.distance - 0.3) : 4.6;
+    cam.position.copy(target).addScaledVector(dir, dist);
+    cam.lookAt(target);
+    this.candle.intensity = dark ? 6 : 0;
+    this.candle.position.copy(cam.position);
+    this.scene.fog = dark ? this.cousinDarkFog : null;
+    this.renderer.setRenderTarget(null);
+    this.renderer.setViewport(0, 0, W, H - half);
+    this.renderer.setScissor(0, 0, W, H - half);
+    this.renderer.setScissorTest(true);
+    this.renderer.render(this.scene, cam);
+    this.renderer.setViewport(0, 0, W, H);
+    this.renderer.setScissor(0, 0, W, H);
+    this.renderer.setScissorTest(false);
+  }
+
   /** Title/lobby backdrop: a slow drift around the empty hall. */
   frameIdle(t: number, keepLights = false): void {
+    this.rig.hideViewModel();
     if (!keepLights) {
       for (const l of this.lights) l.light.intensity = l.base;
       this.lightning.intensity = 0;
@@ -310,12 +411,12 @@ export class GameRenderer {
 
   private cousinDarkFog = new THREE.Fog('#05040a', 2, 16);
   private fogCache = new Map<string, THREE.Fog>();
-  private grandmaFog(self: CharSnap | null, f: RenderFrame): THREE.Fog {
+  private grandmaFog(o: { flash: boolean; dark: boolean; specsOff: boolean; specsActive: boolean }): THREE.Fog {
     let key = 'normal';
-    if (f.flash) key = 'flash';
-    else if (f.dark) key = 'dark';
-    else if (self?.specsOff) key = 'off';
-    else if (self?.specsActive) key = 'specs';
+    if (o.flash) key = 'flash';
+    else if (o.dark) key = 'dark';
+    else if (o.specsOff) key = 'off';
+    else if (o.specsActive) key = 'specs';
     let fog = this.fogCache.get(key);
     if (!fog) {
       const p: Record<string, [string, number, number]> = {

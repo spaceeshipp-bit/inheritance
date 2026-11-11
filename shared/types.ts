@@ -189,6 +189,10 @@ export interface ReplayProp {
   broken: boolean;
   heldBy: string | null;
   hidden: boolean;
+  /** Which heirloom it is (vase, bust...). */
+  variant?: string;
+  /** Whose signature item it is. */
+  owner?: string;
 }
 
 export interface ReplayNana {
