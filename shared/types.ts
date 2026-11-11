@@ -142,7 +142,67 @@ export interface ReadingResult {
   /** Lowest to highest, for the lawyer's reading. */
   order: string[];
   moments: Moment[];
+  /** What Nana Saw: the best moments replayed, the truth beside her perception of it. */
+  replays?: Replay[];
 }
+
+/**
+ * What Nana Saw: a few seconds around a moment, ten frames a second: where
+ * everyone really was and what they did, beside how Grandma perceived each of
+ * them, and what was said beside what she heard. Sent at the reading only.
+ */
+export interface Replay {
+  moment: Moment;
+  /** Match time (s) the clip covers. */
+  from: number;
+  to: number;
+  frames: ReplayFrame[];
+  speech: ReplaySpeech[];
+}
+
+/** How Grandma perceived a character in one frame (her own entry is 'self'). */
+export type ReplaySeen = 'self' | 'sharp' | 'soft' | 'shape' | 'heard' | 'none';
+
+export interface ReplayFrame {
+  t: number;
+  chars: ReplayChar[];
+  /** Props that appeared or changed since the previous frame (all of them in the first). */
+  props: ReplayProp[];
+  /** Grandma's view; null if she was not in the house (a take-over gap). */
+  nana: ReplayNana | null;
+}
+
+export interface ReplayChar {
+  id: string;
+  x: number; y: number; z: number;
+  yaw: number;
+  state: BodyState;
+  holding: string | null;
+  seen: ReplaySeen;
+}
+
+export interface ReplayProp {
+  id: string;
+  kind: PropKind;
+  x: number; y: number; z: number;
+  yaw: number;
+  broken: boolean;
+  heldBy: string | null;
+  hidden: boolean;
+}
+
+export interface ReplayNana {
+  x: number; y: number; z: number;
+  yaw: number;
+  pitch: number;
+  specs: boolean;
+  aid: boolean;
+  dark: boolean;
+  flash: boolean;
+}
+
+/** A line spoken in the clip, and what Grandma heard of it (null: nothing). */
+export interface ReplaySpeech { t: number; from: string; said: string; heard: string | null }
 
 export interface FinalResult extends ReadingResult {
   /** Sabotage points per cousin (revealed only now). */

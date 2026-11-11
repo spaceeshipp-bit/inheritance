@@ -41,6 +41,8 @@ export class EventLog {
   private lastCaught = new Map<string, number>();
   /** Last Love You, Nana moment per actor. */
   private lastLoveYou = new Map<string, number>();
+  /** The log index of the event each moment is about (for its replay). Server-side only. */
+  private momentEvents = new Map<Moment, number>();
 
   constructor(private name: (id: string) => string = (id) => id) {}
 
@@ -55,9 +57,15 @@ export class EventLog {
     return index;
   }
 
-  addMoment(m: Moment): void {
+  addMoment(m: Moment, event?: number): void {
     this.moments.push(m);
+    if (event !== undefined) this.momentEvents.set(m, event);
     for (const l of this.momentListeners) l(m);
+  }
+
+  /** The log index of the event a moment is about, if it has one. */
+  momentEvent(m: Moment): number | undefined {
+    return this.momentEvents.get(m);
   }
 
   count(kind: LogEvent['kind']): number {
@@ -129,7 +137,7 @@ export class EventLog {
       const last = this.lastCaught.get(ev.by) ?? -Infinity;
       if (ev.t - last >= 10) {
         this.lastCaught.set(ev.by, ev.t);
-        this.addMoment({ kind: 'caught-red-handed', t: ev.t, actor: ev.by, text: `${n(ev.by)} was caught red-handed (${describe(ev)}).` });
+        this.addMoment({ kind: 'caught-red-handed', t: ev.t, actor: ev.by, text: `${n(ev.by)} was caught red-handed (${describe(ev)}).` }, this.events.length - 1);
       }
     }
     if (ev.kind === 'shove' && !ev.seen) {
@@ -139,21 +147,21 @@ export class EventLog {
       const last = this.lastLoveYou.get(ev.by) ?? -Infinity;
       if (flattered && ev.t - last >= 30) {
         this.lastLoveYou.set(ev.by, ev.t);
-        this.addMoment({ kind: 'love-you-nana', t: ev.t, actor: ev.by, victim: ev.victim, text: `${n(ev.by)} told Nana they loved her, then shoved ${n(ev.victim)}.` });
+        this.addMoment({ kind: 'love-you-nana', t: ev.t, actor: ev.by, victim: ev.victim, text: `${n(ev.by)} told Nana they loved her, then shoved ${n(ev.victim)}.` }, this.events.length - 1);
       }
     }
     if (ev.kind === 'break' && ev.favourite) {
       this.addMoment({
         kind: 'favourite-broken', t: ev.t, actor: ev.by ?? 'nobody',
         text: ev.by ? `${n(ev.by)} broke Nana's favourite heirloom.` : `Nana's favourite heirloom broke.`,
-      });
+      }, this.events.length - 1);
     }
     if (ev.kind === 'accuse') {
       for (const [i] of this.framedPlants()) {
         const p = this.events[i];
         if (p.kind !== 'plant' || this.framed.has(i)) continue;
         this.framed.add(i);
-        this.addMoment({ kind: 'framed', t: ev.t, actor: p.by, victim: p.owner, text: `${n(p.by)} framed ${n(p.owner)} with their own ${n(p.item).toLowerCase()}, and Nana fell for it.` });
+        this.addMoment({ kind: 'framed', t: ev.t, actor: p.by, victim: p.owner, text: `${n(p.by)} framed ${n(p.owner)} with their own ${n(p.item).toLowerCase()}, and Nana fell for it.` }, i);
       }
     }
   }

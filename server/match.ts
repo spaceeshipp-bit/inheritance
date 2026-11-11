@@ -19,11 +19,12 @@ import { grandmaScore } from '../shared/scoring.js';
 import { dist, flatDist, hearingBand, scrambleText, visionBand, type GrandmaSenseState, type HearingBand, type VisionBand } from '../shared/senses.js';
 import { CHEST_HEIGHT, PROP_MID, eyeOf, lineOfSight } from '../shared/sight.js';
 import type {
-  CharSnap, CousinInfo, FinalResult, MatchOptions, Phase, PropKind, PropSnap, ReadingResult, Role, Vec3, VisitId, WishInfo,
+  CharSnap, CousinInfo, FinalResult, MatchOptions, Phase, PropKind, PropSnap, ReadingResult, ReplaySeen, Role, Vec3, VisitId, WishInfo,
 } from '../shared/types.js';
 import { applyChange, available, createWill, leader, readingOrder, resetVisitBudget, setShare, type WillResult, type WillState } from '../shared/will.js';
 import { CousinBot, GrandmaBot, type Bot } from './bots.js';
 import { EventLog } from './log.js';
+import { ReplayRecorder, type FullFrame } from './replay.js';
 import { hasLOS, levelOf, waypoints } from './nav.js';
 import {
   bodyItemPos, bumpsPedestal, handPos, inFrontClear, knockback, propHitsChar, propOutside, rescueIfLost, separateCharacters,
@@ -271,6 +272,8 @@ export class Match {
   private halfMarked = -1;
   /** The will was read before the last visit ended (Nana fell, too few cousins, her lie-down ran out). */
   private endedEarly = false;
+  /** What Nana Saw: frames and clips around sabotage, for the reading. */
+  private readonly replay = new ReplayRecorder();
   readonly rng: () => number;
   readonly log: EventLog;
   readonly chars = new Map<string, Char>();
@@ -366,7 +369,10 @@ export class Match {
       if (to === this.grandmaId && moment.kind === 'caught-red-handed') return { e: 'moment', moment };
       return null;
     }));
-    this.log.onLog((ev, i) => { for (const b of this.bots.values()) b.onLog(ev, i); });
+    this.log.onLog((ev, i) => {
+      for (const b of this.bots.values()) b.onLog(ev, i);
+      this.replay.event(ev, i, ev.kind === 'shove' ? this.lastComplimentAt(ev.by, ev.t) : null);
+    });
   }
 
   // ───────────── setup ─────────────
@@ -987,6 +993,7 @@ export class Match {
     }
     this.updateProps(h);
     if (this.phase === 'visit') {
+      this.replay.tick(this.time, () => this.replayFrame());
       const v = this.visits[this.visitIndex];
       if (this.halfMarked !== this.visitIndex && this.phaseEndsAt - this.time <= this.durations.visit(v) / 2) {
         this.halfMarked = this.visitIndex;
@@ -1533,15 +1540,22 @@ export class Match {
     const g = this.grandma;
     const range = whisper ? VOICE.whisperRange : VOICE.cousinRange;
     const plain: GameEvent = { e: 'bubble', from: c.id, text, quick, whisper };
+    // What Grandma heard of it (null: nothing), worked out once for her and for the replay.
+    let nanaHeard: string | null = null;
+    if (g && c === g) nanaHeard = text;
+    else if (g) {
+      const band = this.grandmaHears(c.body.pos, whisper);
+      if (band !== 'silent') {
+        nanaHeard = quick && line >= 0 && c.role === 'cousin' ? mishear(line, band, this.secret, this.tick) : scrambleText(text, band, hashStr(`${this.secret}:${c.id}:${this.tick}`));
+      }
+    }
+    if (this.phase === 'visit') this.replay.said({ t: r2(this.time), from: c.id, said: text, heard: nanaHeard });
     this.emitAll((to) => {
       if (to === c.id) return plain;
       if (to === this.grandmaId) {
-        if (!g) return null;
-        const band = this.grandmaHears(c.body.pos, whisper);
-        if (band === 'silent') return null;
-        const heard = quick && line >= 0 && c.role === 'cousin' ? mishear(line, band, this.secret, this.tick) : scrambleText(text, band, hashStr(`${this.secret}:${c.id}:${this.tick}`));
+        if (!g || nanaHeard === null) return null;
         const seen = this.canSeeNow(c.body.pos);
-        return { e: 'bubble', from: seen ? c.id : '', text: heard, quick, whisper: false, ...(seen ? {} : { pos: coarse(c.body.pos) }) };
+        return { e: 'bubble', from: seen ? c.id : '', text: nanaHeard, quick, whisper: false, ...(seen ? {} : { pos: coarse(c.body.pos) }) };
       }
       const o = this.chars.get(to);
       if (!o || dist(o.body.pos, c.body.pos) > range) return null;
@@ -1922,6 +1936,7 @@ export class Match {
 
   private endVisit(): void {
     this.leaders.push({ visit: this.visitIndex, at: 'end', id: leader(this.will) });
+    this.replay.flush();
     const g = this.grandma;
     if (g) {
       this.closeParchment(g);
@@ -1943,7 +1958,10 @@ export class Match {
       this.endedEarly = true;
       this.emitAll({ e: 'toast', text: toast });
     }
-    this.reading = { shares: { ...this.will.shares }, order: readingOrder(this.will), moments: [...this.log.moments] };
+    this.reading = {
+      shares: { ...this.will.shares }, order: readingOrder(this.will), moments: [...this.log.moments],
+      replays: this.replay.replays(this.log.moments, (m) => this.log.momentEvent(m)),
+    };
     this.setPhase('reading', this.durations.reading);
     for (const id of this.humans) this.cfg.send(id, { t: 'reading', result: this.reading });
   }
@@ -1991,6 +2009,40 @@ export class Match {
       return !!c && c.connected && c.state !== 'sleeping';
     }).length;
     if (awake < 3) this.startReading('Too few cousins are left awake. The will is read as it stands.');
+  }
+
+  /** When `id` last sweet-talked Nana, if within the replay's reach before `t`. */
+  private lastComplimentAt(id: string, t: number): number | null {
+    for (let i = this.log.events.length - 1; i >= 0; i--) {
+      const e = this.log.events[i];
+      if (t - e.t > 8) break;
+      if (e.kind === 'compliment' && e.by === id) return e.t;
+    }
+    return null;
+  }
+
+  /** One frame of What Nana Saw: the truth, and how Grandma perceived each character. */
+  private replayFrame(): FullFrame {
+    const g = this.grandma;
+    const chars = [...this.chars.values()].map((c) => {
+      let seen: ReplaySeen = 'none';
+      if (c === g) seen = 'self';
+      else if (g && g.state !== 'sleeping') {
+        const per = this.perceive(c.body.pos);
+        const steps = c.running ? COUSIN.footstepRangeRun : c.sneaking ? COUSIN.footstepRangeSneak : COUSIN.footstepRangeWalk;
+        if (per.visible) seen = per.sharp ? 'sharp' : per.identifiable ? 'soft' : 'shape';
+        else if (per.dist <= Math.max(SENSES.mumble, steps)) seen = 'heard';
+      }
+      return { id: c.id, x: r2(c.body.pos.x), y: r2(c.body.pos.y), z: r2(c.body.pos.z), yaw: r2(c.yaw), state: c.state, holding: c.holding, seen };
+    });
+    const props = [...this.props.values()].map((p) => ({
+      id: p.id, kind: p.kind, x: r2(p.pos.x), y: r2(p.pos.y), z: r2(p.pos.z), yaw: r2(p.yaw), broken: !!p.broken, heldBy: p.heldBy, hidden: !!p.hidden,
+    }));
+    const nana = g ? {
+      x: r2(g.body.pos.x), y: r2(g.body.pos.y), z: r2(g.body.pos.z), yaw: r2(g.yaw), pitch: r2(g.pitch),
+      specs: g.specsT > 0 && !g.specsOff, aid: g.aidT > 0, dark: this.dark, flash: this.flash,
+    } : null;
+    return { t: r2(this.time), chars, props, nana };
   }
 
   /** A player's role in this match, or null if they are not in it. */
