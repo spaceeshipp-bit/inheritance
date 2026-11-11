@@ -34,6 +34,7 @@ export function sdpSession(sdp: string): string | null {
 export interface PeerHost {
   ctx: AudioContext;
   master: AudioNode;
+  /** This peer's copy of our voice (shaped to what they may hear; see mic.ts). */
   outStream: MediaStream;
   outTrack: MediaStreamTrack;
   send(to: string, data: RtcSignal): void;

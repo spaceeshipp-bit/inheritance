@@ -149,14 +149,15 @@ Imports between folders use relative paths with `.js` extensions
 ## Voice (client/src/voice/)
 
 ```ts
-export interface VoiceSpeaker { id: string; pos: Vec3; whispering: boolean }
+/** Another player: where their voice comes from, and who they are as a listener of ours. */
+export interface VoiceSpeaker { id: string; pos: Vec3; whispering: boolean; role?: 'grandma' | 'cousin'; aidActive?: boolean }
 export interface VoiceManager {
   /** Ask for the mic (open mic + noise gate). Resolves micOk=false if denied/unavailable; voice still receives. */
   start(opts: { selfId: string; send: (to: string, data: RtcSignal) => void }): Promise<{ micOk: boolean }>;
   /** Server `peers` message: open/close connections so we hold one per peer (lower id offers). */
   setPeers(ids: string[]): void;
   handleSignal(from: string, data: RtcSignal): void;
-  /** Every frame: listener and speaker positions. Applies Grandma's filter when selfRole === 'grandma'. */
+  /** Every frame: our position and everyone else's. Shapes what we send each of them and what we play of them. */
   update(p: { selfRole: 'grandma' | 'cousin' | 'lobby'; listenerPos: Vec3; listenerYaw: number; aidActive: boolean; speakers: VoiceSpeaker[] }): void;
   /** Whisper / push-to-talk state for our own mic. */
   setWhisper(on: boolean): void;
@@ -170,13 +171,26 @@ export interface VoiceManager {
 export function createVoice(): VoiceManager;
 ```
 
-Audio graph per remote peer: `MediaStreamAudioSourceNode → BiquadFilter (lowpass) → GainNode → PannerNode
-(HRTF) → destination`. Cousins: normal falloff to `VOICE.cousinRange`, zero beyond; a whispering speaker
-is zero beyond `VOICE.whisperRange`. Grandma: `grandmaVoiceFilter()` drives cutoff and gain (the 6–10 m
-"mumble" keeps loudness only). Chrome needs each remote stream also attached to a muted `<audio>` element
-for WebAudio to receive it. In the lobby everyone hears everyone at full volume (mic check).
-STUN: `stun:stun.l.google.com:19302`. Note for the GDD: the GDD wants the host to cull audio Grandma
-should not hear; in this P2P prototype the filter is client-side (known deviation, documented).
+The hearing rules apply at both ends of each connection (client/src/voice/rules.ts):
+
+- **Sending.** Mic → noise gate / push-to-talk → one chain per listener: `BiquadFilter (lowpass) →
+  GainNode → MediaStreamAudioDestinationNode`, whose track only that listener's connection carries
+  (`sendTarget`). Grandma's copy is already shaped by `grandmaVoiceFilter()` (muffled, mumbled — the
+  6–10 m "mumble" keeps loudness only — or silent); a cousin's copy is cut off past `VOICE.cousinRange`
+  (`VOICE.whisperRange` when whispering) plus 1 m. So no client ever receives more of a voice than its
+  player may hear, and a modified client cannot listen in (review S2). Grandma's own client cannot place
+  cousins she does not perceive, so she sends them her voice and their clients fade it.
+- **Receiving.** `MediaStreamAudioSourceNode → BiquadFilter → GainNode → PannerNode (HRTF) → destination`.
+  Cousins fade each other with distance to zero at `VOICE.cousinRange`; Grandma plays what she is sent as
+  it arrives. Local mute is applied here. Mouth flaps and speaking icons use the received level, so they
+  show only what the listener can hear.
+
+Chrome needs each remote stream also attached to a muted `<audio>` element for WebAudio to receive it.
+In the lobby everyone hears everyone at full volume (mic check). STUN: `stun:stun.l.google.com:19302`.
+Deviation from the GDD: the GDD has the host cull audio Grandma should not hear; in this peer-to-peer
+build the speaker's own client does it (the speaker has no reason to reveal more of themselves). Voice
+still connects players directly, so they learn each other's IP addresses; hiding them needs a TURN
+relay (review S21, see README).
 
 ## Testing
 

@@ -305,7 +305,9 @@ export class Game {
     sfx.setListener(this.isGrandma ? lp : { x: camPos.x, y: camPos.y - 1.6, z: camPos.z }, input.yaw, role, aid);
     voice.update({
       selfRole: role, listenerPos: { x: lp.x, y: lp.y + 1.6, z: lp.z }, listenerYaw: input.yaw, aidActive: aid,
-      speakers: [...view.chars.values()].filter((c) => c.id !== s.selfId).map((c) => ({ id: c.id, pos: { x: c.pos.x, y: c.pos.y + 1.6, z: c.pos.z }, whispering: c.whispering })),
+      speakers: [...view.chars.values()].filter((c) => c.id !== s.selfId).map((c) => ({
+        id: c.id, pos: { x: c.pos.x, y: c.pos.y + 1.6, z: c.pos.z }, whispering: c.whispering, role: c.role, aidActive: !!c.aidActive,
+      })),
     });
     if (s.phase === 'visit') this.footsteps(view, dt);
 

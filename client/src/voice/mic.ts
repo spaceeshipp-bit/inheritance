@@ -1,8 +1,32 @@
 // Our own outbound voice: mic → (analyser) + look-ahead delay → gate gain →
-// MediaStreamAudioDestinationNode. The destination's track is what every peer
-// connection sends, so it exists (silent) even when the mic is denied, and the
-// gate / push-to-talk / mute never need a renegotiation.
-import { GATE, levelFromRms, rmsOf } from './rules.js';
+// one send chain per listener: low-pass → gain → MediaStreamAudioDestinationNode,
+// whose track that listener's connection sends. Each listener is sent only what
+// they may hear of us (shape(), from rules.ts): Grandma gets our voice already
+// muffled by her hearing, nobody gets it from beyond earshot. Their own client
+// never holds more than that. The tracks exist (silent) even when the mic is
+// denied, and the gate / push-to-talk / mute never need a renegotiation.
+import type { HearingBand } from '../../../shared/senses.js';
+import { FULL_BAND_HZ, GATE, SMOOTHING, levelFromRms, rmsOf, type VoiceTarget } from './rules.js';
+
+/** One listener's copy of our voice. */
+interface Send {
+  filter: BiquadFilterNode;
+  gain: GainNode;
+  dest: MediaStreamAudioDestinationNode;
+  target: VoiceTarget;
+  applied: { gain: number; hz: number };
+}
+
+/** What we send one listener (for `window.__voiceDebug`). */
+export interface SendDebug {
+  band: HearingBand;
+  gain: number;
+  lowpassHz: number;
+  gainValue: number;
+  lowpassValue: number;
+}
+
+const SILENT: VoiceTarget = { gain: 0, lowpassHz: FULL_BAND_HZ, band: 'silent' };
 
 export const MIC_CONSTRAINTS: MediaTrackConstraints = {
   echoCancellation: true,
@@ -12,9 +36,7 @@ export const MIC_CONSTRAINTS: MediaTrackConstraints = {
 };
 
 export class Outbound {
-  readonly dest: MediaStreamAudioDestinationNode;
-  readonly stream: MediaStream;
-  readonly track: MediaStreamTrack;
+  private readonly sends = new Map<string, Send>();
   private readonly gate: GainNode;
   private readonly delay: DelayNode;
   private readonly analyser: AnalyserNode;
@@ -35,8 +57,6 @@ export class Outbound {
   private gateTarget = 0;
 
   constructor(private readonly ctx: AudioContext) {
-    this.dest = ctx.createMediaStreamDestination();
-    this.dest.channelCount = 1;
     this.gate = ctx.createGain();
     this.gate.gain.value = 0;
     this.delay = ctx.createDelay(0.2);
@@ -46,9 +66,62 @@ export class Outbound {
     this.analyser.smoothingTimeConstant = 0;
     this.buf = new Float32Array(this.analyser.fftSize);
     this.delay.connect(this.gate);
-    this.gate.connect(this.dest);
-    this.stream = this.dest.stream;
-    this.track = this.stream.getAudioTracks()[0];
+  }
+
+  /** The stream and track to send listener `id`: silent until shape() says what they may hear. */
+  sendFor(id: string): { stream: MediaStream; track: MediaStreamTrack } {
+    let s = this.sends.get(id);
+    if (!s) {
+      const ctx = this.ctx;
+      const filter = ctx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.value = FULL_BAND_HZ;
+      filter.Q.value = 0;
+      const gain = ctx.createGain();
+      gain.gain.value = 0;
+      const dest = ctx.createMediaStreamDestination();
+      dest.channelCount = 1;
+      this.gate.connect(filter);
+      filter.connect(gain);
+      gain.connect(dest);
+      s = { filter, gain, dest, target: SILENT, applied: { gain: 0, hz: FULL_BAND_HZ } };
+      this.sends.set(id, s);
+    }
+    return { stream: s.dest.stream, track: s.dest.stream.getAudioTracks()[0] };
+  }
+
+  /** What listener `id` may hear of us now (rules.ts: sendTarget). */
+  shape(id: string, target: VoiceTarget): void {
+    const s = this.sends.get(id);
+    if (!s) return;
+    s.target = target;
+    const t = this.ctx.currentTime;
+    if (Math.abs(target.gain - s.applied.gain) > 0.002) {
+      s.applied.gain = target.gain;
+      s.gain.gain.setTargetAtTime(target.gain, t, SMOOTHING);
+    }
+    if (Math.abs(target.lowpassHz - s.applied.hz) / s.applied.hz > 0.01) {
+      s.applied.hz = target.lowpassHz;
+      s.filter.frequency.setTargetAtTime(target.lowpassHz, t, SMOOTHING);
+    }
+  }
+
+  /** Stop sending to listener `id`. */
+  release(id: string): void {
+    const s = this.sends.get(id);
+    if (!s) return;
+    this.sends.delete(id);
+    try { this.gate.disconnect(s.filter); } catch { /* already gone */ }
+    try { s.filter.disconnect(); s.gain.disconnect(); } catch { /* already gone */ }
+    for (const tr of s.dest.stream.getTracks()) tr.stop();
+  }
+
+  sendDebug(): Record<string, SendDebug> {
+    const out: Record<string, SendDebug> = {};
+    for (const [id, s] of this.sends) {
+      out[id] = { band: s.target.band, gain: s.target.gain, lowpassHz: s.target.lowpassHz, gainValue: s.gain.gain.value, lowpassValue: s.filter.frequency.value };
+    }
+    return out;
   }
 
   get hasMic(): boolean {
@@ -127,7 +200,7 @@ export class Outbound {
     for (const t of this.mic?.getTracks() ?? []) t.stop();
     this.mic = null;
     this.src = null;
+    for (const id of [...this.sends.keys()]) this.release(id);
     try { this.gate.disconnect(); this.delay.disconnect(); } catch { /* already gone */ }
-    this.track.stop();
   }
 }

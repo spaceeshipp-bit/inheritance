@@ -52,6 +52,37 @@ export function voiceTarget(role: ListenerRole, d: number, whispering: boolean, 
   return { gain, lowpassHz: FULL_BAND_HZ, band: gain > 0 ? 'clear' : 'silent' };
 }
 
+/** Past a cousin's hearing range, a sender cuts its voice off this much further out (positions differ a little between clients). */
+export const SEND_MARGIN = 1;
+
+/** Who is listening, as a sender sees them. */
+export interface Listener {
+  role: 'grandma' | 'cousin';
+  /** Metres from us. */
+  d: number;
+  /** Grandma's hearing aid (everyone can see it). */
+  aidActive: boolean;
+}
+
+/**
+ * What we send one listener: only what they may hear of us, so their client
+ * never holds more (a modified client cannot listen in past the rules).
+ * - lobby: everything.
+ * - Grandma: her whole hearing filter (muffled, mumbled, silent), applied
+ *   here; her client plays it as it arrives.
+ * - a cousin: everything within earshot (the cousin's client applies the
+ *   distance fade itself), nothing past it.
+ * - someone we cannot place: nothing, except that Grandma sends to cousins she
+ *   cannot see (their clients fade her by distance).
+ */
+export function sendTarget(selfRole: ListenerRole, listener: Listener | null, whispering: boolean): VoiceTarget {
+  if (selfRole === 'lobby') return LOBBY;
+  if (!listener || !Number.isFinite(listener.d)) return selfRole === 'grandma' ? LOBBY : { gain: 0, lowpassHz: FULL_BAND_HZ, band: 'silent' };
+  if (listener.role === 'grandma') return voiceTarget('grandma', listener.d, whispering, listener.aidActive);
+  const range = (whispering ? VOICE.whisperRange : VOICE.cousinRange) + SEND_MARGIN;
+  return listener.d <= range ? LOBBY : { gain: 0, lowpassHz: FULL_BAND_HZ, band: 'silent' };
+}
+
 /**
  * Direction of `p` as seen by a listener at `listener` facing `yaw` (0 = -Z,
  * three.js convention), in listener space: +X right, +Y up, -Z ahead.

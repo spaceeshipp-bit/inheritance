@@ -1,25 +1,35 @@
 // Proximity voice: a WebRTC full mesh (one RTCPeerConnection per peer, the lower
-// id offers, signalling relayed by the game server as `rtc` messages) feeding a
-// WebAudio graph per peer that applies the game's hearing rules every frame:
-// cousins hear each other with falloff to VOICE.cousinRange, whispers die past
-// VOICE.whisperRange, and Grandma hears through grandmaVoiceFilter()
-// (shared/senses.ts). In the lobby everyone hears everyone at full volume.
+// id offers, signalling relayed by the game server as `rtc` messages) applying
+// the game's hearing rules every frame, on both ends of each connection:
+//
+// - Sending (mic.ts, rules.ts sendTarget): each listener gets its own copy of
+//   our voice with only what they may hear. Grandma's copy is already muffled
+//   by her hearing (grandmaVoiceFilter, shared/senses.ts); nobody's copy carries
+//   anything from beyond earshot (VOICE.cousinRange, VOICE.whisperRange). So a
+//   client never receives more than its player may hear, and a modified client
+//   cannot listen in (review S2).
+// - Receiving (peer.ts): cousins fade each other with distance; Grandma plays
+//   what she is sent as it is. Voices are placed with an HRTF panner. In the
+//   lobby everyone hears everyone at full volume.
 //
 // Outbound: mic (echo cancellation, noise suppression, AGC) → noise gate or
-// push-to-talk → MediaStreamAudioDestinationNode, whose track every connection
-// sends. See docs/ARCHITECTURE.md, "Voice".
-//
-// Known deviation (documented in the architecture doc): the GDD wants the host to
-// cull audio Grandma should not hear; in this P2P prototype every client receives
-// every voice and the filter is applied client-side.
+// push-to-talk → one shaped send chain per peer. See docs/ARCHITECTURE.md, "Voice".
 import type { RtcSignal } from '../../../shared/protocol.js';
 import { dist } from '../../../shared/senses.js';
 import type { Vec3 } from '../../../shared/types.js';
-import { Outbound } from './mic.js';
+import { Outbound, type SendDebug } from './mic.js';
 import { Peer, type PeerDebug, type PeerHost } from './peer.js';
-import { FULL_BAND_HZ, relativeDirection, voiceTarget, type ListenerRole } from './rules.js';
+import { FULL_BAND_HZ, relativeDirection, sendTarget, voiceTarget, type ListenerRole, type VoiceTarget } from './rules.js';
 
-export interface VoiceSpeaker { id: string; pos: Vec3; whispering: boolean }
+/** Another player, as our snapshot shows them: where their voice comes from, and who they are as a listener. */
+export interface VoiceSpeaker {
+  id: string;
+  pos: Vec3;
+  whispering: boolean;
+  role?: 'grandma' | 'cousin';
+  /** Grandma's hearing aid is on (visible to everyone). */
+  aidActive?: boolean;
+}
 
 export interface VoiceUpdate {
   selfRole: 'grandma' | 'cousin' | 'lobby';
@@ -56,6 +66,8 @@ export interface VoiceDebug {
   selfMuted: boolean;
   self: { level: number; inputDb: number; gateOpen: boolean; gateGain: number; transmitting: boolean };
   peers: Record<string, PeerDebug>;
+  /** What we send each peer (their copy of our voice, shaped to what they may hear). */
+  sends: Record<string, SendDebug>;
   /** Recent negotiation / recovery notes, newest last. */
   log: string[];
 }
@@ -70,6 +82,8 @@ const ADHOC_TTL_MS = 15000;
 const WHISPER_RELEASE_GRACE_MS = 600;
 const GESTURES = ['pointerdown', 'keydown', 'touchend', 'mousedown'] as const;
 const AHEAD = { x: 0, y: 0, z: -1 };
+/** Played as it arrives: the sender already shaped it (what Grandma is sent). */
+const AS_SENT: VoiceTarget = { gain: 1, lowpassHz: FULL_BAND_HZ, band: 'clear' };
 
 class Voice implements VoiceManager {
   private ctx: AudioContext | null = null;
@@ -135,13 +149,14 @@ class Voice implements VoiceManager {
     if (this.logLines.length > 60) this.logLines.splice(0, this.logLines.length - 60);
   }
 
-  private host(): PeerHost {
+  private host(id: string): PeerHost {
     const ctx = this.ctx!, out = this.out!;
+    const send = out.sendFor(id);
     return {
       ctx,
       master: this.master!,
-      outStream: out.stream,
-      outTrack: out.track,
+      outStream: send.stream,
+      outTrack: send.track,
       send: (to, data) => this.send?.(to, data),
       ourWhisper: () => this.whisper,
       log: (msg) => this.note(msg),
@@ -149,7 +164,7 @@ class Voice implements VoiceManager {
   }
 
   private addPeer(id: string): Peer {
-    const p = new Peer(id, this.selfId, this.host());
+    const p = new Peer(id, this.selfId, this.host(id));
     p.muted = this.mutedIds.has(id);
     this.peers.set(id, p);
     this.note(`peer ${id} added (${p.polite ? 'waits for offer' : 'offers'})`);
@@ -164,6 +179,7 @@ class Voice implements VoiceManager {
       if (!want.includes(id)) {
         p.close();
         this.peers.delete(id);
+        this.out?.release(id);
         this.note(`peer ${id} removed`);
       }
     }
@@ -201,18 +217,27 @@ class Voice implements VoiceManager {
     const now = performance.now();
     const byId = new Map<string, VoiceSpeaker>();
     for (const s of u.speakers) byId.set(s.id, s);
+    const out = this.out;
     for (const [id, p] of this.peers) {
+      const s = byId.get(id);
+      // What we send them: only what they may hear of us.
+      const d = s ? dist(u.listenerPos, s.pos) : Infinity;
+      out?.shape(id, sendTarget(role, s?.role ? { role: s.role, d, aidActive: !!s.aidActive } : null, this.whisper));
+      // What we hear of them.
       if (role === 'lobby') {
         p.apply(voiceTarget('lobby', 0, false, false), AHEAD, null);
         continue;
       }
-      const s = byId.get(id);
+      if (role === 'grandma') {
+        // Cousins send Grandma only what she may hear: play it as it comes, from where they are if she knows.
+        p.apply(AS_SENT, s ? relativeDirection(u.listenerPos, u.listenerYaw, s.pos) : AHEAD, s ? d : null);
+        continue;
+      }
       if (!s) {
         // In a match we do not know where they are: keep them silent.
         p.apply({ gain: 0, lowpassHz: FULL_BAND_HZ, band: 'silent' }, AHEAD, null);
         continue;
       }
-      const d = dist(u.listenerPos, s.pos);
       // The speaker's own data-channel flag is instant; the snapshot flag lags a
       // little, so right after the speaker stops whispering we trust the channel.
       const snapWhisper = s.whispering && !(p.dcOpen && now - p.remoteWhisperOffAt < WHISPER_RELEASE_GRACE_MS);
@@ -292,6 +317,7 @@ class Voice implements VoiceManager {
       if (p.adhoc && now - p.createdAt > ADHOC_TTL_MS && p.pc.connectionState !== 'connected') {
         p.close();
         this.peers.delete(id);
+        this.out?.release(id);
         this.note(`ad-hoc peer ${id} dropped`);
         continue;
       }
@@ -352,6 +378,7 @@ class Voice implements VoiceManager {
         transmitting: !!out?.transmitting,
       },
       peers,
+      sends: out?.sendDebug() ?? {},
       log: [...this.logLines],
     };
   }

@@ -80,6 +80,8 @@ async function main() {
   const P = (id) => pages.get(id);
   const dbg = (id) => P(id).evaluate(() => window.__voiceDebug());
   const peerDbg = async (id, peer) => (await dbg(id)).peers[peer];
+  /** What `id` sends `to`: its copy of id's voice, shaped to what `to` may hear. */
+  const sendDbg = async (id, to) => (await dbg(id)).sends[to];
 
   async function waitFor(desc, fn, timeoutMs = 20000) {
     const t0 = Date.now();
@@ -129,9 +131,11 @@ async function main() {
 
   const at = (d) => ({ x: 0, y: 1.6, z: -d });
   const LISTENER = { x: 0, y: 1.6, z: 0 };
-  const scene = (id, role, speakers, aidActive = false) => P(id).evaluate((u) => window.__h.setScene(u), {
+  /** In a match A is Grandma and everyone else a cousin; `grandmaAid` = others see her hearing aid on. */
+  const roleOf = (sid) => (sid === A ? 'grandma' : 'cousin');
+  const scene = (id, role, speakers, aidActive = false, grandmaAid = false) => P(id).evaluate((u) => window.__h.setScene(u), {
     selfRole: role, listenerPos: LISTENER, listenerYaw: 0, aidActive,
-    speakers: speakers.map(([sid, d, whispering = false]) => ({ id: sid, pos: at(d), whispering })),
+    speakers: speakers.map(([sid, d, whispering = false]) => ({ id: sid, pos: at(d), whispering, role: roleOf(sid), aidActive: sid === A && grandmaAid })),
   });
   const lobby = (id) => scene(id, 'lobby', []);
 
@@ -158,76 +162,94 @@ async function main() {
         check(`${id} receives ${other}'s audio`, m && m.level > 0.1 && m.heard > 0.1, m ? `level ${fmt(m.level)} heard ${fmt(m.heard)}` : 'no peer');
       }
       const d = await dbg(id);
-      const allFull = Object.values(d.peers).every((p) => p.gain === 1 && p.lowpassHz === 20000 && near(p.gainValue, 1, 0.01));
-      check(`${id}: lobby = everyone at full volume, full band`, allFull);
+      const allFull = Object.values(d.peers).every((p) => p.gain === 1 && p.lowpassHz === 20000 && near(p.gainValue, 1, 0.01))
+        && Object.values(d.sends).every((x) => x.gain === 1 && x.lowpassHz === 20000 && near(x.gainValue, 1, 0.01));
+      check(`${id}: lobby = everyone at full volume, full band, both ways`, allFull);
     }
 
-    // ── 3. Grandma's filter (A is Grandma, B speaks at 1 / 4 / 8 / 12 m) ──
-    await scene(B, 'cousin', [[A, 5], [C, 5]]);
-    await scene(C, 'cousin', [[A, 5], [B, 5]]);
-    // `drop` = how many dB quieter the peer's signal is after her filter + gain,
-    // measured on the real audio (peak RMS of the received vs. the filtered signal).
+    // ── 3. Grandma's hearing, applied by the speaker (A is Grandma, B speaks at 1 / 4 / 8 / 12 m) ──
+    // B sends A only what she may hear (review S2: her client never holds more).
+    // C, a cousin 5 m from B, gets B's voice whole: what C receives is the
+    // yardstick for how much quieter it reaches A.
+    await scene(A, 'grandma', [[B, 5], [C, 20]]);
+    await scene(C, 'cousin', [[A, 20], [B, 5]]);
     const grandmaCases = [
-      { d: 1, band: 'clear', gain: 1, hz: 20000, drop: [-1, 1] },
+      { d: 1, band: 'clear', gain: 1, hz: 20000, drop: [-2, 2] },
       { d: 4, band: 'muffled', gain: Math.pow(10, -6 / 20), hz: 8000 * Math.pow(0.1, 0.5), drop: [5, 30] },
       { d: 8, band: 'mumble', gain: 0.18, hz: 300, drop: [14, 60] },
       { d: 12, band: 'silent', gain: 0, hz: 300, drop: [50, 200] },
     ];
     for (const c of grandmaCases) {
-      await scene(A, 'grandma', [[B, c.d], [C, 20]]);
+      await scene(B, 'cousin', [[A, c.d], [C, 5]]);
       await sleep(450); // > 10 smoothing time constants
-      const p = await peerDbg(A, B);
-      const ok = p.band === c.band && near(p.gain, c.gain, 0.01) && near(p.lowpassHz, c.hz, c.hz * 0.01)
-        && near(p.gainValue, c.gain, 0.02) && (c.gain === 0 || near(p.lowpassValue, c.hz, c.hz * 0.03));
-      check(`Grandma hears B at ${c.d} m: ${c.band}, gain ${fmt(c.gain)}, low-pass ${fmt(c.hz)} Hz`, ok,
-        `band ${p.band} gain ${fmt(p.gain)} (param ${fmt(p.gainValue)}) lp ${fmt(p.lowpassHz)} (param ${fmt(p.lowpassValue)})`);
-      const s = (await sampleMax(A, 1500)).peers[B];
-      const drop = s.levelDb - s.heardDb;
-      const what = c.gain === 0 ? 'is silent' : c.gain === 1 ? 'passes unchanged' : `is ${c.drop[0]}+ dB quieter`;
-      check(`  …and the real signal after her filter ${what} at ${c.d} m`, s.level > 0.1 && drop >= c.drop[0] && drop <= c.drop[1] && (c.gain > 0 || s.heardDb < -70),
-        `received ${fmt(s.levelDb)} dBFS, after filter ${fmt(s.heardDb)} dBFS (−${fmt(drop)} dB)`);
+      const x = await sendDbg(B, A);
+      const ok = x.band === c.band && near(x.gain, c.gain, 0.01) && near(x.lowpassHz, c.hz, c.hz * 0.01)
+        && near(x.gainValue, c.gain, 0.02) && (c.gain === 0 || near(x.lowpassValue, c.hz, c.hz * 0.03));
+      check(`B sends Grandma at ${c.d} m only what she hears: ${c.band}, gain ${fmt(c.gain)}, low-pass ${fmt(c.hz)} Hz`, ok,
+        `band ${x.band} gain ${fmt(x.gain)} (param ${fmt(x.gainValue)}) lp ${fmt(x.lowpassHz)} (param ${fmt(x.lowpassValue)})`);
+      const [sa, sc] = await Promise.all([sampleMax(A, 1500), sampleMax(C, 1500)]);
+      const ra = sa.peers[B], rc = sc.peers[B];
+      const drop = rc.levelDb - ra.levelDb;
+      const what = c.gain === 0 ? 'nothing' : c.gain === 1 ? 'all of it' : `${c.drop[0]}+ dB less`;
+      check(`  …and that is all her client receives at ${c.d} m: ${what}`, rc.level > 0.1 && drop >= c.drop[0] && drop <= c.drop[1] && (c.gain > 0 || ra.levelDb < -70),
+        `C receives ${fmt(rc.levelDb)} dBFS, A receives ${fmt(ra.levelDb)} dBFS (−${fmt(drop)} dB)`);
     }
-    await scene(A, 'grandma', [[B, 4], [C, 20]], true);
-    await sleep(300);
     let p = await peerDbg(A, B);
-    check('Grandma with the hearing aid hears B clearly at 4 m', p.band === 'clear' && p.gain === 1, `band ${p.band} gain ${fmt(p.gain)}`);
+    check('Grandma plays what she is sent as it is (no second filter)', p.gain === 1 && p.lowpassHz === 20000 && near(p.gainValue, 1, 0.02), `gain ${fmt(p.gain)} lp ${fmt(p.lowpassHz)}`);
+    await scene(B, 'cousin', [[A, 4], [C, 5]], false, true);
+    await sleep(300);
+    let x = await sendDbg(B, A);
+    check('Grandma with the hearing aid: B sends her a clear voice at 4 m', x.band === 'clear' && x.gain === 1, `band ${x.band} gain ${fmt(x.gain)}`);
+    await scene(B, 'cousin', [[C, 5]]);
+    await sleep(100);
+    x = await sendDbg(B, A);
+    check('In a match, B sends nothing to someone it cannot place', x.gain === 0, `gain ${fmt(x.gain)}`);
+    await scene(A, 'grandma', []); // she perceives nobody: C is behind her, out of sight and silent
+    await scene(C, 'cousin', [[A, 5], [B, 5]]);
+    await sleep(100);
+    x = await sendDbg(A, C);
+    check('…except Grandma, who sends cousins she cannot see her voice (their clients fade it)', x.gain === 1, `gain ${fmt(x.gain)}`);
     await scene(A, 'grandma', [[C, 20]]);
     await sleep(100);
-    p = await peerDbg(A, B);
-    check('In a match, a peer with no known position is silent', p.gain === 0, `gain ${fmt(p.gain)}`);
+    x = await sendDbg(A, C);
+    check('…but not to a cousin she knows is out of earshot', x.gain === 0, `gain ${fmt(x.gain)}`);
 
-    // ── 4. A whispering speaker at 3 m is silent to everyone ──
-    await scene(A, 'grandma', [[B, 3, true], [C, 6]]);
+    // ── 4. A whispering speaker is cut off past VOICE.whisperRange, for everyone ──
+    await scene(A, 'grandma', [[B, 3], [C, 6]]);
+    await P(B).evaluate(() => window.__h.setWhisper(true));
+    await scene(B, 'cousin', [[A, 3], [C, 3]]);
     await scene(C, 'cousin', [[B, 3, true], [A, 6]]);
     await sleep(450);
-    let pa = await peerDbg(A, B), pc = await peerDbg(C, B);
-    check('Whispering B at 3 m: silent to Grandma (A)', pa.gain === 0 && pa.gainValue < 0.01, `gain ${fmt(pa.gain)} param ${fmt(pa.gainValue)}`);
-    check('Whispering B at 3 m: silent to cousin C', pc.gain === 0 && pc.gainValue < 0.01, `gain ${fmt(pc.gain)} param ${fmt(pc.gainValue)}`);
+    let xa = await sendDbg(B, A), xc = await sendDbg(B, C);
+    check('Whispering B at 3 m sends Grandma (A) nothing', xa.gain === 0 && xa.gainValue < 0.01, `gain ${fmt(xa.gain)} param ${fmt(xa.gainValue)}`);
+    check('Whispering B at 3 m sends cousin C nothing', xc.gain === 0 && xc.gainValue < 0.01, `gain ${fmt(xc.gain)} param ${fmt(xc.gainValue)}`);
     const sa = (await sampleMax(A, 1200)).peers[B], sc = (await sampleMax(C, 1200)).peers[B];
-    check('  …nothing gets through either graph', sa.heardDb < -70 && sc.heardDb < -70 && sa.level > 0.1 && sc.level > 0.1,
-      `received ${fmt(sa.levelDb)} / ${fmt(sc.levelDb)} dBFS, after the filters ${fmt(sa.heardDb)} / ${fmt(sc.heardDb)} dBFS`);
-    await scene(A, 'grandma', [[B, 1, true], [C, 6]]);
+    check('  …and nothing reaches either client', sa.levelDb < -70 && sc.levelDb < -70,
+      `A receives ${fmt(sa.levelDb)} dBFS, C receives ${fmt(sc.levelDb)} dBFS`);
+    await scene(B, 'cousin', [[A, 1], [C, 1]]);
     await scene(C, 'cousin', [[B, 1, true], [A, 6]]);
     await sleep(300);
-    pa = await peerDbg(A, B); pc = await peerDbg(C, B);
-    check('Whispering B at 1 m: heard by Grandma and by C', pa.gain === 1 && pc.gain === 1, `A ${fmt(pa.gain)} C ${fmt(pc.gain)}`);
-    await scene(A, 'grandma', [[B, 3], [C, 6]]);
+    xa = await sendDbg(B, A); xc = await sendDbg(B, C);
+    let pc = await peerDbg(C, B);
+    check('Whispering B at 1 m: sent to Grandma and to C, and C hears it', xa.gain === 1 && xc.gain === 1 && pc.gain === 1, `A ${fmt(xa.gain)} C ${fmt(xc.gain)} (C plays ${fmt(pc.gain)})`);
+    await P(B).evaluate(() => window.__h.setWhisper(false));
+    await scene(B, 'cousin', [[A, 3], [C, 3]]);
     await scene(C, 'cousin', [[B, 3], [A, 6]]);
     await sleep(300);
-    pa = await peerDbg(A, B); pc = await peerDbg(C, B);
-    check('Talking (not whispering) B at 3 m: muffled for Grandma, 2/3 volume for C', pa.band === 'muffled' && pa.gain > 0.5 && near(pc.gain, 2 / 3, 0.01), `A ${pa.band} ${fmt(pa.gain)}, C ${fmt(pc.gain)}`);
+    xa = await sendDbg(B, A); pc = await peerDbg(C, B);
+    check('Talking (not whispering) B at 3 m: muffled for Grandma, 2/3 volume for C', xa.band === 'muffled' && xa.gain > 0.5 && near(pc.gain, 2 / 3, 0.01), `A ${xa.band} ${fmt(xa.gain)}, C ${fmt(pc.gain)}`);
 
-    // Whisper via the speaker's own data channel (before the snapshot says so).
+    // Whisper takes effect at once: B stops sending, and C's client hears of it over the data channel.
     await P(B).evaluate(() => window.__h.setWhisper(true));
-    w = await waitFor('dc whisper', async () => {
-      const [x, y] = [await peerDbg(A, B), await peerDbg(C, B)];
-      return x.remoteWhisper && y.remoteWhisper && x.gain === 0 && y.gain === 0 ? true : { why: `A ${x.remoteWhisper}/${x.gain} C ${y.remoteWhisper}/${y.gain}` };
+    w = await waitFor('whisper on', async () => {
+      const [ya, yc, zc] = [await sendDbg(B, A), await sendDbg(B, C), await peerDbg(C, B)];
+      return ya.gain === 0 && yc.gain === 0 && zc.remoteWhisper ? true : { why: `sends A ${ya.gain} C ${yc.gain}, C dc ${zc.remoteWhisper}` };
     }, 2000);
-    check('B presses Whisper: A and C silence B at once over the data channel', w.ok, w.ok ? `${w.ms} ms` : w.why);
+    check('B presses Whisper: B stops sending to A and C at once (C also learns it over the data channel)', w.ok, w.ok ? `${w.ms} ms` : w.why);
     await P(B).evaluate(() => window.__h.setWhisper(false));
-    w = await waitFor('dc whisper off', async () => {
-      const [x, y] = [await peerDbg(A, B), await peerDbg(C, B)];
-      return !x.remoteWhisper && x.gain > 0 && y.gain > 0 ? true : { why: `A ${x.gain} C ${y.gain}` };
+    w = await waitFor('whisper off', async () => {
+      const [ya, yc, zc] = [await sendDbg(B, A), await sendDbg(B, C), await peerDbg(C, B)];
+      return ya.gain > 0 && yc.gain > 0 && !zc.remoteWhisper && zc.gain > 0 ? true : { why: `sends A ${ya.gain} C ${yc.gain}, C plays ${zc.gain}` };
     }, 2000);
     check('B releases Whisper: audible again', w.ok, w.ok ? `${w.ms} ms` : w.why);
 
@@ -237,6 +259,12 @@ async function main() {
       await sleep(350);
       pc = await peerDbg(C, B);
       check(`Cousin C hears B at ${d} m with gain ${fmt(g)}`, near(pc.gain, g, 0.005) && near(pc.gainValue, g, 0.02), `gain ${fmt(pc.gain)} param ${fmt(pc.gainValue)}`);
+    }
+    for (const [d, g] of [[10, 1], [16, 1], [17, 0]]) {
+      await scene(B, 'cousin', [[C, d], [A, 30]]);
+      await sleep(100);
+      x = await sendDbg(B, C);
+      check(`B sends cousin C at ${d} m ${g ? 'its voice (C fades it)' : 'nothing (out of earshot)'}`, x.gain === g, `gain ${fmt(x.gain)}`);
     }
     pc = await peerDbg(C, A);
     check('Cousin C: A at 30 m (beyond VOICE.cousinRange) is silent', pc.gain === 0, `gain ${fmt(pc.gain)}`);
