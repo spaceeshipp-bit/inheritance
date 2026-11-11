@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { COUSINS, type ItemKey } from '../../../shared/constants.js';
 import { canIdentify, visionBand, type GrandmaSenseState, type VisionBand } from '../../../shared/senses.js';
 import type { CharSnap, Role, Vec3, WishInfo } from '../../../shared/types.js';
+import type { Quality } from '../settings.js';
 import type { View } from '../state.js';
 import { hashStr } from '../util.js';
 import { CameraRig } from './camera.js';
@@ -52,17 +53,25 @@ export class GameRenderer {
   private vision: GrandmaVision;
   private models = new Map<string, CharacterModel>();
   private look: MatchLook | null = null;
-  private lights: { light: THREE.Light; base: number }[] = [];
+  private lights: { light: THREE.Light; base: number; minor: boolean }[] = [];
   private lightning: THREE.DirectionalLight;
   private candle: THREE.PointLight;
   private ray = new THREE.Raycaster();
   private w = 1;
   private h = 1;
   private lastSense: GrandmaSenseState | null = null;
+  private quality: Quality;
+  /** Dynamic resolution ('auto'): fraction of the device pixel ratio actually rendered. */
+  private resScale = 1;
+  private frameMs = 16;
+  private slowFor = 0;
+  private fastFor = 0;
 
-  constructor(private container: HTMLElement) {
-    this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  constructor(private container: HTMLElement, quality: Quality = 'auto') {
+    this.quality = quality;
+    // MSAA is a creation-time choice: on for auto/high, off for the cheaper presets.
+    this.renderer = new THREE.WebGLRenderer({ antialias: quality === 'auto' || quality === 'high', powerPreference: 'high-performance' });
+    this.renderer.setPixelRatio(this.pixelRatio());
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.15;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -75,30 +84,45 @@ export class GameRenderer {
     this.props = new PropViews(this.scene);
     this.vision = new GrandmaVision(this.renderer);
 
-    const add = (l: THREE.Light) => { this.scene.add(l); this.lights.push({ light: l, base: l.intensity }); };
+    // Lights marked minor are switched off on the low preset (every point light
+    // costs every lit pixel); the ambient fill is raised to make up for them.
+    const add = (l: THREE.Light, minor = false) => { this.scene.add(l); this.lights.push({ light: l, base: l.intensity, minor }); };
     add(new THREE.HemisphereLight('#ffe9cc', '#4a3020', 1.1));
     add(new THREE.AmbientLight('#ffdcb0', 0.25));
-    const point = (x: number, y: number, z: number, c: string, i: number, d: number) => {
+    const point = (x: number, y: number, z: number, c: string, i: number, d: number, minor = false) => {
       const l = new THREE.PointLight(c, i, d, 1.4);
       l.position.set(x, y, z);
-      add(l);
+      add(l, minor);
     };
     point(0, 4.6, 0.5, '#ffc98a', 60, 22); // chandelier
-    point(0, 4.2, 4.5, '#ffd29a', 25, 14); // by the front door
-    point(-5, 2.6, 2.5, '#ffbf7a', 14, 8); // Grandma's lamp
+    point(0, 4.2, 4.5, '#ffd29a', 25, 14, true); // by the front door
+    point(-5, 2.6, 2.5, '#ffbf7a', 14, 8, true); // Grandma's lamp
     point(-4, 5, -10.5, '#ffcf96', 22, 11); // gallery sconces
-    point(4, 5, -10.5, '#ffcf96', 22, 11);
-    point(0, 2.4, -9.5, '#ffbf7a', 10, 8); // under the gallery
+    point(4, 5, -10.5, '#ffcf96', 22, 11, true);
+    point(0, 2.4, -9.5, '#ffbf7a', 10, 8, true); // under the gallery
     point(12, 2.45, 0, '#fff0c8', 26, 12); // kitchen lamp
-    point(14.5, 2.6, 4.5, '#fff0d8', 8, 5); // pantry bulb
+    point(14.5, 2.6, 4.5, '#fff0d8', 8, 5, true); // pantry bulb
     this.lightning = new THREE.DirectionalLight('#cfe0ff', 0);
     this.lightning.position.set(-20, 10, 0);
     this.scene.add(this.lightning);
     this.candle = new THREE.PointLight('#ffb070', 0, 6, 1.6);
     this.scene.add(this.candle);
 
+    this.applyLightPreset();
     this.resize();
     window.addEventListener('resize', () => this.resize());
+  }
+
+  /** Low preset: minor point lights off, ambient fill up. */
+  private applyLightPreset(): void {
+    const low = this.quality === 'low';
+    for (const l of this.lights) {
+      if (l.minor) l.light.visible = !low;
+      if (l.light instanceof THREE.HemisphereLight || l.light instanceof THREE.AmbientLight) {
+        l.base = (l.light instanceof THREE.HemisphereLight ? 1.1 : 0.25) * (low ? 1.45 : 1);
+        l.light.intensity = l.base;
+      }
+    }
   }
 
   get canvas(): HTMLCanvasElement { return this.renderer.domElement; }
@@ -107,8 +131,55 @@ export class GameRenderer {
   resize(): void {
     this.w = this.container.clientWidth || window.innerWidth;
     this.h = this.container.clientHeight || window.innerHeight;
+    this.renderer.setPixelRatio(this.pixelRatio());
     this.renderer.setSize(this.w, this.h);
     this.rig.setAspect(this.w / this.h);
+  }
+
+  private pixelRatio(): number {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    switch (this.quality) {
+      case 'high': return dpr;
+      case 'medium': return 1;
+      case 'low': return 0.5;
+      default: return Math.max(0.5, dpr * this.resScale);
+    }
+  }
+
+  /** Change quality live (MSAA only changes after a reload). */
+  setQuality(q: Quality): void {
+    if (q === this.quality) return;
+    this.quality = q;
+    this.resScale = 1;
+    this.applyLightPreset();
+    this.resize();
+  }
+
+  /** The render resolution currently used, as a fraction of the CSS size (for the HUD/debug). */
+  get renderScale(): number { return this.pixelRatio(); }
+
+  /**
+   * Dynamic resolution for 'auto': feed the real time between frames. Holds
+   * about 40+ fps by stepping the render resolution down when frames are slow
+   * for ~1.5 s, and back up when there is headroom for ~4 s.
+   */
+  adapt(frameMs: number): void {
+    if (this.quality !== 'auto' || !(frameMs > 0) || frameMs > 1000) return;
+    this.frameMs += (frameMs - this.frameMs) * 0.1;
+    const dt = frameMs / 1000;
+    if (this.frameMs > 25) { this.slowFor += dt; this.fastFor = 0; }
+    else if (this.frameMs < 14) { this.fastFor += dt; this.slowFor = 0; }
+    else { this.slowFor = 0; this.fastFor = 0; }
+    const minScale = 0.5 / Math.min(window.devicePixelRatio || 1, 2);
+    if (this.slowFor > 1.5 && this.resScale > minScale + 1e-3) {
+      this.resScale = Math.max(minScale, this.resScale - 0.15);
+      this.slowFor = 0;
+      this.resize();
+    } else if (this.fastFor > 4 && this.resScale < 1) {
+      this.resScale = Math.min(1, this.resScale + 0.1);
+      this.fastFor = 0;
+      this.resize();
+    }
   }
 
   setMatch(look: MatchLook | null): void {

@@ -3,6 +3,7 @@
 // face by sampling which room the face looks into); the staircase is drawn as
 // steps with a carpet runner and banisters.
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { BOXES, GALLERY_Y, HALL_HEIGHT, KITCHEN_HEIGHT, RAMPS, type Box } from '../../../shared/map.js';
 import type { Vec3 } from '../../../shared/types.js';
 import { boxGeo, mat, ROOM_COLORS, rug, tiles, wallpaper, wood } from './materials.js';
@@ -231,7 +232,77 @@ export function buildMap(): MapView {
   add(place(new THREE.Mesh(new THREE.ConeGeometry(0.35, 0.3, 16, 1, true), mat('#2f4a3a', { rough: 0.6 })), 12, 2.55, 0, 12, 2.55, 0));
   add(place(new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 6), bulb), 12, 2.42, 0, 12, 2.42, 0));
 
+  mergeStatic(group, blockers);
   return { group, blockers, windows };
+}
+
+/**
+ * Bake the static house into one mesh per material: per-face materials (walls,
+ * floors, steps) are split by geometry group first, so a wall box costs one
+ * draw call per room colour across the whole house instead of six per box.
+ * Hundreds of draw calls become a few dozen; materials are shared objects, so
+ * live changes (window glow in the Storm) still apply. Blockers and decoration
+ * are merged in separate pools, and `blockers` is refilled with the merged
+ * blocker meshes, so the camera and Grandma's crosshair still raycast only
+ * real obstacles.
+ */
+function mergeStatic(group: THREE.Group, blockers: THREE.Object3D[]): void {
+  group.updateMatrixWorld(true);
+  const isBlocker = new Set(blockers);
+  const pools = new Map<string, { material: THREE.Material; blocker: boolean; geos: THREE.BufferGeometry[] }>();
+  const baked: THREE.Mesh[] = [];
+  const put = (material: THREE.Material, blocker: boolean, g: THREE.BufferGeometry) => {
+    const key = `${blocker ? 'b' : 'd'}:${material.uuid}`;
+    let pool = pools.get(key);
+    if (!pool) { pool = { material, blocker, geos: [] }; pools.set(key, pool); }
+    pool.geos.push(g);
+  };
+  group.traverse((o) => {
+    if (!(o instanceof THREE.Mesh)) return;
+    let g = o.geometry.clone();
+    if (!g.attributes.uv || !g.attributes.normal) return;
+    g.applyMatrix4(o.matrixWorld);
+    for (const name of Object.keys(g.attributes)) if (name !== 'position' && name !== 'normal' && name !== 'uv') g.deleteAttribute(name);
+    if (g.index) g = g.toNonIndexed();
+    const blocker = isBlocker.has(o);
+    if (Array.isArray(o.material)) {
+      for (const [m, part] of splitByGroups(g, o.material)) put(m, blocker, part);
+    } else {
+      g.clearGroups();
+      put(o.material, blocker, g);
+    }
+    baked.push(o);
+  });
+  for (const o of baked) o.removeFromParent();
+  for (const child of [...group.children]) if (child instanceof THREE.Group && child.children.length === 0) child.removeFromParent();
+  blockers.length = 0;
+  for (const pool of pools.values()) {
+    const g = mergeGeometries(pool.geos, false);
+    if (!g) continue;
+    g.computeBoundingSphere();
+    const mesh = new THREE.Mesh(g, pool.material);
+    mesh.name = pool.blocker ? 'static-blocker' : 'static-decor';
+    group.add(mesh);
+    if (pool.blocker) blockers.push(mesh);
+  }
+}
+
+/** Split a non-indexed geometry with groups into one geometry per material. */
+function splitByGroups(g: THREE.BufferGeometry, materials: THREE.Material[]): [THREE.Material, THREE.BufferGeometry][] {
+  const out: [THREE.Material, THREE.BufferGeometry][] = [];
+  const groups = g.groups.length ? g.groups : [{ start: 0, count: g.attributes.position.count, materialIndex: 0 }];
+  for (const grp of groups) {
+    const m = materials[grp.materialIndex ?? 0];
+    if (!m) continue;
+    const part = new THREE.BufferGeometry();
+    for (const name of ['position', 'normal', 'uv'] as const) {
+      const a = g.attributes[name] as THREE.BufferAttribute;
+      const arr = (a.array as Float32Array).slice(grp.start * a.itemSize, (grp.start + grp.count) * a.itemSize);
+      part.setAttribute(name, new THREE.BufferAttribute(arr, a.itemSize));
+    }
+    out.push([m, part]);
+  }
+  return out;
 }
 
 function addSkirting(group: THREE.Group, p: Box, faces: string[], m: THREE.Material): void {

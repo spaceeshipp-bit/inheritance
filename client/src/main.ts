@@ -10,6 +10,7 @@ import { Screens } from './hud/screens.js';
 import { Input } from './input.js';
 import { Net, webSocketLink, type LinkFactory } from './net.js';
 import { GameRenderer } from './render/scene.js';
+import { Settings } from './settings.js';
 import { GameState } from './state.js';
 import { createVoice } from './voice/index.js';
 
@@ -28,7 +29,9 @@ async function boot(): Promise<void> {
   const net = new Net(factory);
   const sfx = new Sfx();
   const voice = createVoice();
-  const renderer = new GameRenderer($('stage'));
+  const settings = new Settings();
+  const renderer = new GameRenderer($('stage'), settings.get().quality);
+  settings.onChange((s) => renderer.setQuality(s.quality));
   const input = new Input(renderer.canvas);
   const hud = new Hud($('hud'), $('labels'), $('overlay'), state);
 
@@ -141,6 +144,7 @@ async function boot(): Promise<void> {
   let last = performance.now();
   const loop = (ts: number) => {
     const dt = Math.min(0.1, Math.max(0, (ts - last) / 1000));
+    renderer.adapt(ts - last);
     last = ts;
     const inMatch = !!state.match && state.phase !== 'lobby';
     hud.setVisible(inMatch);
@@ -162,7 +166,7 @@ async function boot(): Promise<void> {
   if (mockRole) join(urlName || (mockRole === 'grandma' ? 'Agatha' : 'You'), urlRoom || 'MOCK1', false);
   else if (urlName && urlRoom) join(urlName, urlRoom, false);
 
-  (window as unknown as { __inh: unknown }).__inh = { state, net, input, renderer };
+  (window as unknown as { __inh: unknown }).__inh = { state, net, input, renderer, settings };
 }
 
 void boot();

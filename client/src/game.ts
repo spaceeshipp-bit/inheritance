@@ -38,8 +38,9 @@ export class Game {
   private target: HudFrame['target'] = null;
   private lastView: View | null = null;
   private tickTimer: ReturnType<typeof setInterval> | undefined;
-  /** Input ticks are paced by the frame loop (several per frame if frames are slow). */
+  /** Input ticks are paced by real time, caught up each frame (several per frame if frames are slow). */
   private tickAcc = 0;
+  private tickClock = performance.now();
   private takeover = el('div', 'takeover');
   private prevCane = 0;
 
@@ -76,8 +77,9 @@ export class Game {
     this.steps.clear();
     clearInterval(this.tickTimer);
     this.tickAcc = 0;
+    this.tickClock = performance.now();
     // Fallback for hidden tabs, where requestAnimationFrame stops.
-    this.tickTimer = setInterval(() => { if (document.hidden) this.tick(); }, 1000 / TICK_HZ);
+    this.tickTimer = setInterval(() => { if (document.hidden) { this.tick(); this.tickClock = performance.now(); } }, 1000 / TICK_HZ);
   }
 
   end(): void {
@@ -240,7 +242,11 @@ export class Game {
     if (this.isGrandma) input.pitch = clamp(input.pitch, -1.2, 1.2);
     else input.pitch = clamp(input.pitch, -1.05, 0.75);
     this.shoveCd = Math.max(0, this.shoveCd - dt);
-    this.tickAcc = Math.min(this.tickAcc + dt, 6 / TICK_HZ);
+    // Real elapsed time, not the frame's capped dt: a slow frame still sends its
+    // share of inputs (up to 8), so the input rate holds even at low frame rates.
+    const nowMs = performance.now();
+    this.tickAcc = Math.min(this.tickAcc + Math.min(0.5, (nowMs - this.tickClock) / 1000), 8 / TICK_HZ);
+    this.tickClock = nowMs;
     while (this.tickAcc >= 1 / TICK_HZ) { this.tickAcc -= 1 / TICK_HZ; this.tick(); }
     const view = s.view(now, dt, input.yaw, input.pitch);
     if (this.needYaw && view.self) { input.yaw = view.self.yaw; input.pitch = 0; this.needYaw = false; }
