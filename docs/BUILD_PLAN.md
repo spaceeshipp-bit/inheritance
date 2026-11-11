@@ -171,6 +171,31 @@ the reading? Keep the GDD's hard rules (only Grandma moves the will; no hidden v
 - Propose further ideas of your own in this file before building them, with the one-line reason
   each widens that gap; then build the best three.
 
+### 5a. Proposals (2026-11-11), with why each widens the gap
+
+The best three are marked ★ and are next once the core work above is done.
+
+- ★ **What Nana Saw** (the brief's first item): the server keeps 10 Hz frames of every
+  character plus what Grandma perceived of each at that instant (band, identified or not, what she
+  heard); at the reading the top three moments replay split-screen, her blurred, muffled view above
+  the truth. *It shows the gap itself, on screen, at the moment everyone is paying attention.*
+- ★ **Nana's reasons in the margin:** each will change records what she had just perceived (a crash
+  heard to her left, Barnaby seen holding the vase); the reading prints her reason beside what really
+  happened ("Tutted Barnaby: heard a crash near him." / "Clementine threw it."). *Her mistakes become
+  readable jokes instead of silent numbers.*
+- ★ **The reading as theatre:** the lawyer reads lowest share first with a pause before the top
+  share; the cousins' characters react (collapse at 0%, a smug dance at the top); each line then
+  reveals who really did what beside who she blamed, ending on the replays. *The reveal lands as a
+  scene, not a table.*
+- **Thunder masks crashes** in the Storm: during a thunderclap her hearing drops to silent for a
+  second, so a vase timed to the thunder is unheard. *Cousins learn to use her senses against her.*
+- **Footsteps she can read:** distinct run, walk and sneak sounds with direction, so she can play
+  half the game by ear. *Gives her real evidence that cousins can learn to fool (sneak past).*
+- **Forgeable evidence:** ash footprints from the urn lead to whoever walked through; a cousin can
+  walk a victim through them. *A second framing tool that she sees with her own eyes.*
+- **Nana's diary:** after the vote, Grandma's private suspicions (who she watched, who she trusted)
+  are shown next to the truth. *Lets her enjoy her own wrongness with everyone else.*
+
 ## Definition of done for the first playable
 
 - A stranger can open the link, read the README, and get five friends into a match in under five
