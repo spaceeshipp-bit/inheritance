@@ -34,6 +34,8 @@ export class Game {
   /** Scroll-locked Bless/Tut name: -1 = none (aim decides). */
   private lockIdx = -1;
   private needYaw = true;
+  /** Take the facing from a snapshot no older than this (match time): the one after a respawn. */
+  private needYawFrom = 0;
   private shoveCd = 0;
   private prevShove = false;
   private steps = new Map<string, StepTrack>();
@@ -75,6 +77,7 @@ export class Game {
     input.role = m.role;
     input.clear();
     this.needYaw = true;
+    this.needYawFrom = 0;
     this.lockIdx = -1;
     this.found.clear();
     this.parchmentOpen = false;
@@ -102,6 +105,8 @@ export class Game {
     if (hud.wheel.isOpen) { hud.wheel.close(); input.lookFrozen = false; }
     if (p.phase !== 'visit' && this.parchmentOpen) this.toggleParchment();
     input.active = p.phase === 'visit' || p.phase === 'intermission';
+    // A new visit puts everyone in a new place, facing a new way (Dinner is round the table).
+    if (p.phase === 'visit') { this.needYaw = true; this.needYawFrom = p.time; }
     if (p.phase === 'reading' || p.phase === 'vote' || p.phase === 'results') input.releaseLock();
   }
 
@@ -265,7 +270,7 @@ export class Game {
     this.tickClock = nowMs;
     while (this.tickAcc >= 1 / TICK_HZ) { this.tickAcc -= 1 / TICK_HZ; this.tick(); }
     const view = s.view(now, dt, input.yaw, input.pitch);
-    if (this.needYaw && view.self) { input.yaw = view.self.yaw; input.pitch = 0; this.needYaw = false; }
+    if (this.needYaw && view.self && (s.latest()?.time ?? 0) >= this.needYawFrom) { input.yaw = view.self.yaw; input.pitch = 0; this.needYaw = false; }
     this.lastView = view;
 
     // Cane swing animation for remote viewers (cooldown jumps up when she swings).

@@ -10,10 +10,10 @@
 import {
   COUSIN, COUSINS, CRIME_SCENE, DISCONNECT, FULL_VISITS, GRANDMA, HEARING_AID, HEIRLOOM, INTERMISSION_TIME, MISHEARD,
   PREFERENCE_CARDS, QUICKCHAT, READING_TIME, RESULTS_TIME, ROLE_REVEAL_TIME, SENSES, SLICE_VISITS, SNAPSHOT_HZ,
-  SPECTACLES, STORM, TICK_HZ, VISITS, VOICE, VOTE_TIME, WILL, WISH, INPUT, PROTOCOL_VERSION,
+  SPECTACLES, STORM, TICK_HZ, VISITS, VOICE, VOTE_TIME, WILL, WISH, INPUT, PROTOCOL_VERSION, DINNER,
 } from '../shared/constants.js';
 import { HEIRLOOM_SPOTS, HEIRLOOM_VARIANTS, SPAWNS, groundHeight } from '../shared/map.js';
-import { createBody, forwardOf, integrateBody, yawToward, type BodyShape, type MoveBody } from '../shared/movement.js';
+import { createBody, forwardOf, integrateBody, wrapAngle, yawToward, type BodyShape, type MoveBody } from '../shared/movement.js';
 import type { GameEvent, GrandmaAction, InputMsg, ServerMsg, ClientMsg } from '../shared/protocol.js';
 import { grandmaScore } from '../shared/scoring.js';
 import { dist, flatDist, hearingBand, scrambleText, visionBand, type GrandmaSenseState, type HearingBand, type VisionBand } from '../shared/senses.js';
@@ -93,6 +93,12 @@ export interface Char extends PhysChar {
   queueWindow: number;
   /** Ticks simulated with a guessed (repeated) input, to replay when the real inputs turn up. */
   guess: Guess | null;
+  /**
+   * After a respawn, the spawn facing holds against inputs still facing the old
+   * way (`yawHoldFrom`: sent before the client saw the respawn) until this match time.
+   */
+  yawHold: number;
+  yawHoldFrom: number;
   last: Btns;
   pressed: Btns;
   released: Btns;
@@ -280,6 +286,11 @@ export class Match {
   private endedEarly = false;
   /** What Nana Saw: frames and clips around sabotage, for the reading. */
   private readonly replay = new ReplayRecorder();
+  /** Family Dinner: seconds each cousin has been away from the table, whose empty chair she has noticed, and excuses. */
+  private dinnerAway = new Map<string, number>();
+  private dinnerNoticed = new Set<string>();
+  private excusedUntil = new Map<string, number>();
+  private excuseUsed = new Set<string>();
   readonly rng: () => number;
   readonly log: EventLog;
   readonly chars = new Map<string, Char>();
@@ -388,7 +399,7 @@ export class Match {
       id: p.id, name: p.name, isBot: p.isBot, connected: true, role,
       body: createBody({ x: 0, y: 0, z: 0 }), yaw: 0, pitch: 0, state: 'normal', ragdollT: 0, knockedBy: null, knockedAt: -Infinity,
       holding: null, sticky: false, running: false, sneaking: false, whispering: false, charge: 0, plantT: 0,
-      input: this.blankInput(), inputQueue: [], lastSeq: 0, repeats: 0, credit: 0, queueLow: Infinity, queueWindow: 0, guess: null, last: noBtns(), pressed: noBtns(), released: noBtns(), ack: 0, shoveCd: 0, shoveBufferUntil: -Infinity,
+      input: this.blankInput(), inputQueue: [], lastSeq: 0, repeats: 0, credit: 0, queueLow: Infinity, queueWindow: 0, guess: null, yawHold: 0, yawHoldFrom: 0, last: noBtns(), pressed: noBtns(), released: noBtns(), ack: 0, shoveCd: 0, shoveBufferUntil: -Infinity,
       cousinIndex, itemId: role === 'cousin' ? `item-${COUSINS[cousinIndex % COUSINS.length].key}` : null,
       parchmentOpen: false, aidT: 0, aidCd: 0, specsT: 0, specsCd: 0, specsOff: false, caneCd: 0, summonCd: 0, quillT: 0, whistleT: 0,
     };
@@ -443,20 +454,27 @@ export class Match {
 
   /** Put everyone at their spawn point (match start and each visit). */
   private spawnAll(): void {
+    // Family Dinner is round the kitchen table; the other visits start in the hall.
+    const dinner = this.visits[this.visitIndex] === 'dinner';
+    const nana = dinner ? SPAWNS.dinnerGrandma : SPAWNS.grandma;
+    const seats = dinner ? SPAWNS.dinnerCousins : SPAWNS.cousins;
     for (const c of this.chars.values()) {
       this.dropHeld(c, false);
       if (c.role === 'grandma') {
-        c.body = createBody(SPAWNS.grandma);
-        c.yaw = SPAWNS.grandmaYaw;
+        c.body = createBody(nana);
+        c.yaw = dinner ? SPAWNS.dinnerGrandmaYaw : SPAWNS.grandmaYaw;
       } else {
         const i = this.cousinIds.indexOf(c.id);
-        const at = SPAWNS.cousins[i % SPAWNS.cousins.length];
+        const at = seats[i % seats.length];
         c.body = createBody(at);
         // Everyone starts facing Nana.
-        c.yaw = yawToward(SPAWNS.grandma.x - at.x, SPAWNS.grandma.z - at.z);
+        c.yaw = yawToward(nana.x - at.x, nana.z - at.z);
       }
       if (c.state === 'ragdoll') c.state = 'normal';
       c.ragdollT = 0;
+      // The client still faces the old way until it sees this snapshot and turns.
+      c.yawHoldFrom = c.input.yaw;
+      c.yawHold = this.time + 1.5;
       c.input = this.blankInput(c.input.seq, c.yaw);
       this.resetInputs(c, c.lastSeq);
     }
@@ -685,8 +703,7 @@ export class Match {
     for (let j = 0; j < g.ticks; j++) {
       if (g.real[j]) inp = g.real[j] as InputMsg;
       else complete = false;
-      c.yaw = inp.yaw;
-      c.pitch = inp.pitch;
+      this.faceInput(c, inp);
       const r = stepCharacter(c, { move: inp.move, yaw: inp.yaw, run: inp.run, sneak: inp.sneak, jump: inp.jump }, h, c.parchmentOpen);
       if (r.fellOver) {
         c.guess = null;
@@ -696,6 +713,18 @@ export class Match {
       }
     }
     if (complete) c.guess = null;
+  }
+
+  /**
+   * Face the way an input says, except an input from before the client saw its
+   * respawn (still facing the old way): the first input that turns, whether to
+   * the new facing or because the player moved the mouse, counts again.
+   */
+  private faceInput(c: Char, inp: InputMsg): void {
+    if (this.time < c.yawHold && Math.abs(wrapAngle(inp.yaw - c.yawHoldFrom)) < 0.02) return;
+    c.yawHold = 0;
+    c.yaw = inp.yaw;
+    c.pitch = inp.pitch;
   }
 
   /** The match is paused: inputs are used up without moving anyone. */
@@ -727,8 +756,7 @@ export class Match {
     this.edges(c, inp);
     c.input = inp;
     c.ack = inp.seq;
-    c.yaw = inp.yaw;
-    c.pitch = inp.pitch;
+    this.faceInput(c, inp);
     const r = stepCharacter(c, { move: inp.move, yaw: c.yaw, run: inp.run, sneak: inp.sneak, jump: inp.jump }, h, c.parchmentOpen);
     if (r.fellOver) {
       this.dropHeld(c, true);
@@ -1005,6 +1033,7 @@ export class Match {
         this.halfMarked = this.visitIndex;
         this.leaders.push({ visit: this.visitIndex, at: 'half', id: leader(this.will) });
       }
+      if (v === 'dinner') this.updateDinner(h);
       this.updateGrandmaSystems(h);
       this.updateWish();
       this.updateStorm();
@@ -1036,10 +1065,7 @@ export class Match {
     const upright = c.state === 'normal';
     const canMove = live && upright && c.connected;
     const canAct = this.phase === 'visit' && upright && c.connected;
-    if (upright && c.connected) {
-      c.yaw = inp.yaw;
-      c.pitch = inp.pitch;
-    }
+    if (upright && c.connected) this.faceInput(c, inp);
     c.shoveCd = Math.max(0, c.shoveCd - h);
     if (c.role === 'grandma') {
       c.aidT = Math.max(0, c.aidT - h);
@@ -1337,6 +1363,8 @@ export class Match {
       this.emit(c.id, { e: 'toast', text: `You pinched ${victim.name}'s ${this.nameOf(it.id).toLowerCase()}! Hold G to plant it somewhere damning.` });
       return;
     }
+    // 5. At Dinner, by the kitchen door: excuse yourself from the table.
+    if (this.tryExcuse(c)) return;
     this.hint(c, this.interactHint(c));
   }
 
@@ -1898,6 +1926,10 @@ export class Match {
 
   private startVisit(i: number): void {
     this.visitIndex = i;
+    this.dinnerAway.clear();
+    this.dinnerNoticed.clear();
+    this.excusedUntil.clear();
+    this.excuseUsed.clear();
     this.visitUsed[i] = this.visitUsed[i] ?? 0;
     resetVisitBudget(this.will);
     this.spawnAll();
@@ -1909,7 +1941,12 @@ export class Match {
     this.nextWishAt = this.time + (this.fast ? 2 : 3) + this.rng() * 3;
     this.summon = null;
     this.setPhase('visit', this.durations.visit(v));
-    this.emitAll({ e: 'toast', text: `${VISITS[v].name} begins.` });
+    this.emitAll((to) => ({
+      e: 'toast',
+      text: v !== 'dinner' ? `${VISITS[v].name} begins.`
+        : to === this.grandmaId ? 'Family Dinner begins. You will notice anyone who leaves the table.'
+          : `Family Dinner begins. Stay near the table: Nana notices an empty chair. (E by the kitchen door excuses you, once.)`,
+    }));
   }
 
   /**
@@ -2017,6 +2054,51 @@ export class Match {
       return !!c && c.connected && c.state !== 'sleeping';
     }).length;
     if (awake < 3) this.startReading('Too few cousins are left awake. The will is read as it stands.');
+  }
+
+  /**
+   * Family Dinner: everyone is meant to stay at the table. Nana notices an
+   * empty chair: after DINNER.notice s away she is told who left (and when
+   * they are back). Information for her only; the will never changes on its own.
+   */
+  private updateDinner(h: number): void {
+    const g = this.grandma;
+    if (!g || g.state === 'sleeping') return;
+    const T = DINNER.table;
+    for (const id of this.cousinIds) {
+      const c = this.chars.get(id);
+      if (!c || c.state === 'sleeping') continue;
+      const p = c.body.pos;
+      const dx = Math.max(T.minX - p.x, 0, p.x - T.maxX), dz = Math.max(T.minZ - p.z, 0, p.z - T.maxZ);
+      const away = Math.hypot(dx, dz) > DINNER.away || p.y > 1.5;
+      const excused = this.time < (this.excusedUntil.get(id) ?? -Infinity);
+      if (away && !excused) {
+        const t = (this.dinnerAway.get(id) ?? 0) + h;
+        this.dinnerAway.set(id, t);
+        if (t >= DINNER.notice && !this.dinnerNoticed.has(id)) {
+          this.dinnerNoticed.add(id);
+          this.log.add({ t: this.time, kind: 'left-table', by: id });
+          this.emit(g.id, { e: 'toast', text: `${c.name} has left the table.` });
+          this.emit(id, { e: 'toast', text: 'Nana has noticed your empty chair.' });
+        }
+      } else if (!away) {
+        this.dinnerAway.set(id, 0);
+        if (this.dinnerNoticed.delete(id)) this.emit(g.id, { e: 'toast', text: `${c.name} is back at the table.` });
+      }
+    }
+  }
+
+  /** "Excuse me, Nana": once a Dinner, by the kitchen door, a bathroom trip she does not count. */
+  private tryExcuse(c: Char): boolean {
+    if (this.visits[this.visitIndex] !== 'dinner' || this.excuseUsed.has(c.id)) return false;
+    if (flatDist(c.body.pos, { x: DINNER.door.x, y: 0, z: DINNER.door.z }) > DINNER.doorRange) return false;
+    this.excuseUsed.add(c.id);
+    this.excusedUntil.set(c.id, this.time + DINNER.excuse);
+    this.dinnerAway.set(c.id, 0);
+    this.emit(c.id, { e: 'toast', text: `"Excuse me, Nana." You have ${DINNER.excuse} seconds before she wonders where you are.` });
+    const g = this.grandma;
+    if (g) this.emit(g.id, { e: 'toast', text: `${c.name} excuses themself from the table.` });
+    return true;
   }
 
   /** When `id` last sweet-talked Nana, if within the replay's reach before `t`. */

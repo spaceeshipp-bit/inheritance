@@ -142,6 +142,13 @@ export const SPAWNS = {
     { x: -0.4, y: 0, z: 3.75 }, { x: 0.7, y: 0, z: 2.0 }, { x: 1.8, y: 0, z: 3.75 }, { x: -1.5, y: 0, z: 2.0 },
     { x: 2.9, y: 0, z: 2.0 }, { x: -2.6, y: 0, z: 3.75 }, { x: 4.0, y: 0, z: 3.75 },
   ] as Vec3[],
+  /** Family Dinner: Nana at the head of the kitchen table, looking down it; cousins round it. */
+  dinnerGrandma: { x: 9.7, y: 0, z: 0 } as Vec3,
+  dinnerGrandmaYaw: -Math.PI / 2,
+  dinnerCousins: [
+    { x: 11.0, y: 0, z: -1.65 }, { x: 11.0, y: 0, z: 1.65 }, { x: 12.5, y: 0, z: -1.65 }, { x: 12.5, y: 0, z: 1.65 },
+    { x: 13.8, y: 0, z: -0.7 }, { x: 13.8, y: 0, z: 0.7 }, { x: 11.75, y: 0, z: 2.7 },
+  ] as Vec3[],
   cat: { x: 4, y: 0, z: 2 } as Vec3,
   /** The teacup sits on the kitchen counter. */
   teacup: { x: 12, y: 0.95, z: -5.5 } as Vec3,

@@ -159,6 +159,7 @@ export class EventLog {
         const found = before((e) => e.kind === 'found' && e.owner === d.target);
         const saw = before((e) => isSabotage(e) && e.by === d.target && !!e.seen);
         const tat = before((e) => e.kind === 'tattle' && e.accused === d.target);
+        const left = before((e) => e.kind === 'left-table' && e.by === d.target);
         const accE = acc >= 0 ? ev[acc] : null;
         const crime = accE && accE.kind === 'accuse' && accE.crime !== null ? ev[accE.crime] : null;
         if (found >= 0) {
@@ -171,6 +172,11 @@ export class EventLog {
           truth = crime.by && crime.by !== d.target ? `${nm(crime.by)} did it.` : null;
         } else if (saw >= 0) {
           why = `saw ${who} at ${describe(ev[saw] as SabotageEvent)}`;
+        } else if (left >= 0) {
+          const lt = ev[left];
+          why = `${who} left the dinner table`;
+          const bad = sabotageBy(d.target, lt.t - 20, d.t);
+          truth = bad ? null : `${who} only went for a wander.`;
         } else if (tat >= 0) {
           const tt = ev[tat] as Extract<LogEvent, { kind: 'tattle' }>;
           why = `${nm(tt.by)} told her it was ${who}`;

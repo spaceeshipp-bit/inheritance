@@ -172,6 +172,25 @@ export const FULL_VISITS: VisitId[] = ['tea', 'dinner', 'storm'];
 export const ROLE_REVEAL_TIME = 12;
 export const INTERMISSION_TIME = 20;
 export const READING_TIME = 20;
+/**
+ * Family Dinner (GDD: "everyone has to stay near the table; sabotage happens
+ * under it and on bathroom trips"). Nana notices an empty chair: whoever is
+ * away from the table too long is pointed out to her (never a will change).
+ */
+export const DINNER = {
+  /** The kitchen table everyone sits round (matches the 'table' box in the kitchen). */
+  table: { minX: 10.5, maxX: 13.0, minZ: -1.0, maxZ: 1.0 },
+  /** Further than this from the table's edge counts as away from it (m)... */
+  away: 2.4,
+  /** ...and after this long away, Nana notices the empty chair (s). */
+  notice: 8,
+  /** "Excuse me, Nana": once a visit, pressing E by the kitchen door buys this long away unnoticed (s). */
+  excuse: 25,
+  /** The kitchen door (the gap in the wall at x 8), and how close to it counts. */
+  door: { x: 8, z: 0 },
+  doorRange: 2,
+} as const;
+
 /** What Nana Saw at the reading: each replay's title card and the pause after it (s). */
 export const REPLAY = { title: 1.6, gap: 1.0 } as const;
 export const VOTE_TIME = 20;

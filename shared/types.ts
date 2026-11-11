@@ -125,6 +125,8 @@ export type LogEvent =
   | { t: number; kind: 'will'; target: string; moved: number; via: 'bless' | 'tut' | 'parchment' | 'takeover' }
   | { t: number; kind: 'wish'; by: string; wish: WishInfo['kind'] }
   | { t: number; kind: 'cane'; victim: string }
+  /** Family Dinner: Nana noticed this cousin's empty chair. */
+  | { t: number; kind: 'left-table'; by: string }
   | { t: number; kind: 'knock-specs'; by: string; seen?: boolean; sharp?: boolean };
 
 export interface MatchOptions {
