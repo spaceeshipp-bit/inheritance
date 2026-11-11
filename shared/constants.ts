@@ -269,3 +269,96 @@ export const QUICKCHAT = {
     'Out of my sight!',
   ],
 } as const;
+
+/**
+ * Bots (server/bots.ts): how often bot cousins misbehave, their manners around
+ * Nana, and how the bot Grandma reacts. Times are for real visits (Afternoon
+ * Tea and longer); shorter test visits compress them in proportion.
+ */
+export const BOTS = {
+  /** A bot cousin waits this long (random in between) after each act of sabotage. */
+  sabotageGapMin: 20,
+  sabotageGapMax: 30,
+  /** No sabotage in a visit's opening: this many seconds, or this fraction of a short visit. */
+  openingMax: 20,
+  openingFrac: 0.15,
+  /** The bots' first acts are spread over this long after the opening. */
+  openingStagger: 10,
+  /** Visits shorter than this compress the bots' timers in proportion, but never below paceFloor. */
+  paceVisit: 180,
+  paceFloor: 0.25,
+  /** No bot picks on the same human again within this long. */
+  humanCooldown: 30,
+  /** While a human is in their first visit, a bot choosing a victim considers them only this often. */
+  newHumanChance: 0.15,
+  /** A bot tattles at most once in this long... */
+  tattleGap: 30,
+  /** ...and compliments Nana at most once in this long (up to half as long again). */
+  complimentGap: 15,
+  /** A bot free to misbehave follows its compliment with a shove behind her back ("Love You, Nana") this often, times its mischief. */
+  loveYouNana: 0.6,
+  /** About one plan in six is careless: the bot does not check whether Nana can see it. */
+  carelessChance: 1 / 6,
+  /** House-wide: bots set out to break at most this many heirlooms a visit, this many seconds apart. */
+  breaksPerVisit: 2,
+  breakGap: 35,
+  /** Bots leave a victim alone while they stand this close to Nana. */
+  victimClearOfNana: 2.5,
+  /** A bot looking for its stolen item spots it in someone's hands this far away, lying on the floor only this close. */
+  spotCarried: 12,
+  spotLying: 5,
+  /** Once a bot notices its item is gone, the chance it goes looking each time it picks something to do. */
+  retrieveChance: 0.35,
+  /** Bots do not plant evidence with less than this many seconds of the visit left (Nana would never find it). */
+  plantMinLeft: 12,
+  /** Evidence left beside Nana goes at least this far round from her facing (radians): out of her view cone... */
+  plantBesideMin: 1.75,
+  /** ...planted from about this far from her (up to 0.3 m more): outside her sharp sight, within her find range once dropped. */
+  plantBesideDist: 2.4,
+  /** A careful framer carrying stolen goods keeps this far off while Nana is facing its way (circling to her flank)... */
+  holdBack: 7,
+  /** ...and if she will not look away for this long, leaves it somewhere else. */
+  holdBackPatience: 10,
+  /** Nana's personal space: bots never come closer. */
+  personalSpace: 1.2,
+  /** Compliments are paid from between these distances (she hears clearly within SENSES.clear). */
+  complimentMin: 1.3,
+  complimentMax: 1.6,
+  /** Wishes are handed over from about this far (WISH.deliverRange is the limit). */
+  deliverAt: 1.4,
+  /** The bot Grandma: chances she reacts to what she perceives. */
+  grandma: {
+    blessWish: 0.9,
+    blessCompliment: 0.7,
+    /** She thanks the same flatterer at most once in this long. */
+    complimentMemory: 15,
+    /** Tut someone she saw misbehave (or saw carrying what then broke or turned up planted). */
+    tutSeen: 0.85,
+    tutTattle: 0.25,
+    tutNearCrash: 0.4,
+    tutNearShove: 0.15,
+    /** Tut someone she sees carrying another cousin's signature item. */
+    tutThief: 0.3,
+    /**
+     * Whose signature item someone is carrying: each glance, up close (sharp sight) she notices
+     * this often; through the blur only when looking right at them (within noticeCone degrees),
+     * and this seldom...
+     */
+    noticeItemSharp: 0.7,
+    noticeCone: 30,
+    noticeItemSoft: 0.2,
+    /** ...and remembers who had it for this long. */
+    itemMemory: 15,
+    /** Blame the owner of planted evidence she finds, when she has no better suspect. */
+    accuseFound: 0.82,
+    /** Walk over to look at a crash she heard. */
+    investigate: 0.85,
+    /**
+     * Quick edits she keeps in hand: none for what she saw or found herself,
+     * this many for fair grounds (an errand, a thief caught carrying), more for a hunch or a compliment.
+     */
+    keepInHand: { fair: 1, weak: 2 },
+    /** ...and points of the visit's budget she keeps back for what she sees or finds herself. */
+    budgetReserve: { fair: 15, weak: 25 },
+  },
+} as const;

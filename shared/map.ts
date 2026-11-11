@@ -132,10 +132,15 @@ export const HEIRLOOM_VARIANTS = ['vase', 'bust', 'clock', 'urn', 'portrait', 't
 export const SPAWNS = {
   grandma: { x: -5, y: 0, z: 1.6 } as Vec3,
   grandmaYaw: -Math.PI / 2, // facing east, toward the stairs and the kitchen door
-  /** Cousins spawn near the front door, spread along x. */
+  /**
+   * Cousins spawn in the open hall in front of Grandma (two staggered rows,
+   * more than 2 m apart, clear of the side table and her chair), so a camera
+   * behind each of them looking at her has the room it needs; the first four
+   * (a 5-player match) are the most central.
+   */
   cousins: [
-    { x: -3, y: 0, z: 4.5 }, { x: -1, y: 0, z: 4.5 }, { x: 1, y: 0, z: 4.5 }, { x: 3, y: 0, z: 4.5 },
-    { x: -2, y: 0, z: 5.3 }, { x: 0, y: 0, z: 5.3 }, { x: 2, y: 0, z: 5.3 },
+    { x: -0.4, y: 0, z: 3.75 }, { x: 0.7, y: 0, z: 2.0 }, { x: 1.8, y: 0, z: 3.75 }, { x: -1.5, y: 0, z: 2.0 },
+    { x: 2.9, y: 0, z: 2.0 }, { x: -2.6, y: 0, z: 3.75 }, { x: 4.0, y: 0, z: 3.75 },
   ] as Vec3[],
   cat: { x: 4, y: 0, z: 2 } as Vec3,
   /** The teacup sits on the kitchen counter. */

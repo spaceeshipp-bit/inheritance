@@ -45,19 +45,26 @@ export function levelOf(p: Vec3): Level {
 }
 
 function segHitsRect(ax: number, az: number, bx: number, bz: number, r: Rect): boolean {
-  // Slab test in 2D.
+  // Slab test in 2D (no closures: this runs thousands of times a second for the bots).
   let t0 = 0, t1 = 1;
   const dx = bx - ax, dz = bz - az;
-  const test = (p: number, q: number): boolean => {
-    if (Math.abs(p) < 1e-12) return q >= 0;
-    const t = q / p;
-    if (p < 0) { if (t > t1) return false; if (t > t0) t0 = t; } else { if (t < t0) return false; if (t < t1) t1 = t; }
-    return true;
-  };
-  if (!test(-dx, ax - r.minX)) return false;
-  if (!test(dx, r.maxX - ax)) return false;
-  if (!test(-dz, az - r.minZ)) return false;
-  if (!test(dz, r.maxZ - az)) return false;
+  if (Math.abs(dx) < 1e-12) {
+    if (ax < r.minX || ax > r.maxX) return false;
+  } else {
+    let ta = (r.minX - ax) / dx, tb = (r.maxX - ax) / dx;
+    if (ta > tb) { const s = ta; ta = tb; tb = s; }
+    if (ta > t0) t0 = ta;
+    if (tb < t1) t1 = tb;
+    if (t0 > t1) return false;
+  }
+  if (Math.abs(dz) < 1e-12) {
+    if (az < r.minZ || az > r.maxZ) return false;
+  } else {
+    let ta = (r.minZ - az) / dz, tb = (r.maxZ - az) / dz;
+    if (ta > tb) { const s = ta; ta = tb; tb = s; }
+    if (ta > t0) t0 = ta;
+    if (tb < t1) t1 = tb;
+  }
   return t0 < t1;
 }
 
