@@ -221,6 +221,25 @@ async function boot(): Promise<void> {
   else if (urlName && urlRoom) join(urlName, urlRoom, false);
 
   (window as unknown as { __inh: unknown }).__inh = { state, net, input, renderer, settings };
+  // The game is up: fade out the boot splash (index.html).
+  const splash = document.getElementById('boot');
+  if (splash) {
+    splash.classList.add('gone');
+    setTimeout(() => splash.remove(), 450);
+  }
 }
 
-void boot();
+boot().catch((err: unknown) => {
+  // Say so on the splash instead of leaving a blank page (most often: no WebGL).
+  console.error('[boot]', err);
+  const splash = document.getElementById('boot');
+  if (!splash) return;
+  splash.querySelector('.dots')?.remove();
+  const msg = document.createElement('div');
+  msg.className = 'err';
+  const webgl = /webgl/i.test(String(err));
+  msg.textContent = webgl
+    ? 'Inheritance needs WebGL, and this browser could not start it. Try an up-to-date Chrome, Edge or Firefox, with hardware acceleration on.'
+    : `Inheritance could not start: ${err instanceof Error ? err.message : String(err)}. Reloading the page usually helps.`;
+  splash.appendChild(msg);
+});
