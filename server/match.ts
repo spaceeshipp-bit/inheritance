@@ -48,6 +48,11 @@ export interface MatchConfig {
   botsIdle?: boolean;
   /** Seed for the match's random numbers (tests use it for determinism). */
   seed?: number;
+  /**
+   * Humans playing their first match in this room: bots mostly leave them be in
+   * the first visit. Unset: every human counts as new.
+   */
+  newcomers?: string[];
   /** Deliver one message to one human player. */
   send: (to: string, msg: ServerMsg) => void;
   /** Called once when the results phase ends. */
@@ -2043,6 +2048,11 @@ export class Match {
       specs: g.specsT > 0 && !g.specsOff, aid: g.aidT > 0, dark: this.dark, flash: this.flash,
     } : null;
     return { t: r2(this.time), chars, props, nana };
+  }
+
+  /** A human new to the game here (see MatchConfig.newcomers). */
+  isNewcomer(id: string): boolean {
+    return this.isHuman(id) && (this.cfg.newcomers ? this.cfg.newcomers.includes(id) : true);
   }
 
   /** A player's role in this match, or null if they are not in it. */

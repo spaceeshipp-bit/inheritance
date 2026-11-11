@@ -326,12 +326,12 @@ export class CousinBot implements Bot {
   }
 
   /**
-   * A human is still in their first visit, so bots pick on each other. (A match
-   * cannot see a player's earlier matches: its own first visit counts.)
+   * A human new to the game here (their first match in this room, as the room
+   * tells the match) is still in their first visit, so bots mostly pick on each other.
    */
   private newcomers(): boolean {
     const m = this.m;
-    return m.visitIndex === 0 && m.cousinIds.some((id) => m.isHuman(id));
+    return m.visitIndex === 0 && m.cousinIds.some((id) => m.isNewcomer(id));
   }
 
   /** House rules for heirlooms: only a few broken per visit, well apart. */
@@ -446,7 +446,7 @@ export class CousinBot implements Bot {
       if (g && sameFloor(o.body.pos, g.body.pos) && flatDist(o.body.pos, g.body.pos) < BOTS.victimClearOfNana) continue;
       if (!this.fairGame(id)) continue;
       // A new human only now and then comes into it at all (not merely as a last resort).
-      if (newcomers && m.isHuman(id) && m.rng() >= BOTS.newHumanChance) continue;
+      if (newcomers && m.isNewcomer(id) && m.rng() >= BOTS.newHumanChance) continue;
       let w = 1;
       if ((m.will.shares[id] ?? 0) === top) w *= 1.5;
       if (o.body.pos.y > 1) w *= 1.5;

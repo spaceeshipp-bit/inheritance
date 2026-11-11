@@ -109,6 +109,23 @@ describe('playtest records', () => {
   });
 });
 
+describe('newcomers', () => {
+  it('humans count as new in their first match in a room, not in the next', () => {
+    const w = playedRoom();
+    const m1 = w.room.match!;
+    expect(m1.isNewcomer(w.ann.id)).toBe(true);
+    expect(m1.isNewcomer(w.bob.id)).toBe(true);
+    w.run(400, () => w.room.match === null);
+    w.send(w.ann, { t: 'start' });
+    const m2 = w.room.match!;
+    expect(m2).not.toBe(m1);
+    expect(m2.isNewcomer(w.ann.id)).toBe(false);
+    expect(m2.isNewcomer(w.bob.id)).toBe(false);
+    // A friend who just arrived is new, bots never are.
+    expect(m2.cousinIds.filter((id) => !m2.isHuman(id)).some((id) => m2.isNewcomer(id))).toBe(false);
+  });
+});
+
 describe('the leader-flip metric', () => {
   it('compares the winner with the leader at the halfway mark of a one-visit match', () => {
     const { m } = makeMatch({ humans: ['g', 'a', 'b', 'c', 'd'], grandmaId: 'g', seed: 4 });

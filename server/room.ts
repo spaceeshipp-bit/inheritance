@@ -24,6 +24,8 @@ export interface RoomPlayer {
   willingGrandma: boolean;
   conn: Conn | null;
   disconnectedAt: number;
+  /** Matches this player has played to the end in this room (bots go easy on newcomers). */
+  matchesPlayed: number;
   chat: RateLimiter;
   slowToastAt: number;
   /** WebRTC signalling this player may still relay: messages, and characters. */
@@ -360,7 +362,7 @@ export class Room {
     const now = this.mgr.now();
     const L = this.mgr.limits;
     return {
-      id, name, token: isBot ? '' : token(), isBot, willingGrandma: false, conn, disconnectedAt: 0,
+      id, name, token: isBot ? '' : token(), isBot, willingGrandma: false, conn, disconnectedAt: 0, matchesPlayed: 0,
       chat: new RateLimiter(5, isBot ? 1 : 1 / 1.5, now), slowToastAt: 0,
       rtc: new RateLimiter(L.rtcBurst, L.rtcPerSec, now), rtcChars: new RateLimiter(L.rtcCharsBurst, L.rtcCharsPerSec, now),
       lobby: new RateLimiter(L.lobbyBurst, L.lobbyPerSec, now),
@@ -578,7 +580,8 @@ export class Room {
       players, grandmaId: grandmaId!, options: { ...this.options }, fast: this.mgr.opts.fast, visitSeconds: this.mgr.opts.visitSeconds, botsIdle: this.mgr.opts.botsIdle,
       seed: this.mgr.opts.seed,
       send: (to, msg) => this.sendTo(to, msg),
-      onEnd: () => this.endMatch(),
+      onEnd: () => { for (const id of this.match?.humanIds() ?? []) { const q = this.players.get(id); if (q) q.matchesPlayed++; } this.endMatch(); },
+      newcomers: humans.filter((h) => h.matchesPlayed === 0).map((h) => h.id),
     });
     this.idleSince = null;
     this.nextSpectatorRefresh = 0;
