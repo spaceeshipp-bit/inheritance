@@ -268,15 +268,17 @@ export async function run(): Promise<Report> {
       r.check('...and is told whose it is', (await ann.rx()).log.some((x) => x.msg.e === 'found' && x.msg.owner === owner));
       r.check('the cousin is not told she found it', !(await bob.rx()).log.some((x) => x.msg.e === 'found'));
       await ann.shot('grandma-found');
-      // Ann looks away from everyone and tuts the owner by locking their name with the scroll wheel.
+      // Ann looks away from everyone and tuts the owner by locking their name with
+      // the scroll wheel (the lock starts on nobody; each notch moves one cousin on).
       await ann.setYaw(Math.PI / 2);
       await sleep(300);
       const idx = match.cousinIds.indexOf(owner);
-      for (let i = 0; i < idx; i++) { await ann.page.mouse.wheel(0, 120); await sleep(80); }
+      for (let i = 0; i <= idx; i++) { await ann.page.mouse.wheel(0, 120); await sleep(80); }
       await sleep(250);
       await ann.tap('KeyQ');
-      framed = await bob.waitFor('framed moment', async () => (await bob!.rx()).log.some((x) => x.msg.e === 'moment' && (x.msg.moment as { kind: string }).kind === 'framed'), 3000);
-      r.check('tutting the owner frames them: the framer gets the Framed moment', framed);
+      framed = await ann.waitFor('accusation', async () => match.log.events.some((e) => e.kind === 'accuse' && e.target === owner), 3000, 50);
+      r.check('tutting the owner frames them (a framing, in the secret log)', framed && match.log.framedPlants().size > 0);
+      r.check('…and the framer is not told until the reading', !(await bob.rx()).log.some((x) => x.msg.e === 'moment' && (x.msg.moment as { kind: string }).kind === 'framed'));
       r.check('server logs the accusation of the owner', match.log.events.some((e) => e.kind === 'accuse' && e.target === owner));
     }
 

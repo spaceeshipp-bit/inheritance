@@ -105,6 +105,27 @@ describe('inputs: one per tick, in order', () => {
     expect(m.log.events.some((e) => e.kind === 'shove' && e.by === 'a' && e.victim === 'b')).toBe(true);
   });
 
+  it('F shoves the way you faced when you pressed it, even when your inputs arrive bunched up', () => {
+    const { m } = humanMatch();
+    const east = -Math.PI / 2;
+    place(m, 'g', -5, 1.6, Math.PI / 2); // looking away
+    place(m, 'a', 2, 1.6, 0); // facing north...
+    place(m, 'b', 2.8, 1.6, 0); // ...with b just east of a
+    const a = m.chars.get('a')!;
+    const still = { ...walk(1), move: { x: 0, z: 0 }, run: false, sneak: false, jump: false };
+    m.handleInput('a', { ...still, yaw: 0, seq: 1 });
+    tick(m);
+    // A slow frame sends a burst: still facing north for five inputs, then turn east and press F.
+    for (let i = 2; i <= 6; i++) m.handleInput('a', { ...still, yaw: 0, seq: i });
+    m.handleInput('a', { ...still, yaw: east, shove: true, seq: 7 });
+    m.handleInput('a', { ...still, yaw: east, shove: false, seq: 8 });
+    tick(m);
+    expect(m.log.events.some((e) => e.kind === 'shove')).toBe(false); // not yet: still working through the burst
+    tick(m, 8);
+    expect(a.inputQueue.length).toBe(0);
+    expect(m.log.events.some((e) => e.kind === 'shove' && e.by === 'a' && e.victim === 'b')).toBe(true);
+  });
+
   it('after a long gap the character waits, then works off the backlog a step ahead each tick', () => {
     const { m, start } = setup(-4.2, -4.5);
     const a = m.chars.get('a')!;

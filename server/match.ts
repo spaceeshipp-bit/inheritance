@@ -526,8 +526,10 @@ export class Match {
    * character moves exactly once per input, just as the client's prediction
    * moved it (`ack` tells the client how far the server has got).
    *
-   * - Button presses and releases latch the moment they arrive, so a tap
-   *   shorter than a tick, or one that arrives late, still counts.
+   * - Button presses and releases count with the input that carries them, in
+   *   order, so F shoves the way you were facing when you pressed it. (The
+   *   client latches a tap shorter than its own tick into the next input, so
+   *   none is lost; an input that arrives late presses its buttons at once.)
    * - When the next input has not arrived in time (network jitter, a lost
    *   packet), the last one is repeated in its place for up to
    *   INPUT.repeatMax ticks (a Guess). When the real ones turn up, those ticks
@@ -552,13 +554,10 @@ export class Match {
       this.resetInputs(c, msg.seq - 1);
     }
     c.lastSeq = msg.seq;
-    for (const k of BTNS) {
-      if (msg[k] && !c.last[k]) c.pressed[k] = true;
-      if (!msg[k] && c.last[k]) c.released[k] = true;
-      c.last[k] = msg[k];
-    }
     if (msg.seq <= c.ack) {
-      // Late: its tick was guessed. Keep it for the replay; it is also what to repeat now.
+      // Late: its tick was guessed. Its buttons count now; keep it for the
+      // replay; it is also what to repeat from now on.
+      this.edges(c, msg);
       const g = c.guess;
       if (g && msg.seq > g.base && msg.seq <= g.base + g.ticks) g.real[msg.seq - g.base - 1] = msg;
       c.input = msg;
@@ -567,7 +566,17 @@ export class Match {
     c.inputQueue.push(msg);
     if (c.inputQueue.length > INPUT.queueMax) {
       const dropped = c.inputQueue.shift() as InputMsg;
+      this.edges(c, dropped);
       c.ack = dropped.seq;
+    }
+  }
+
+  /** The presses and releases in one input, against the input before it. */
+  private edges(c: Char, msg: InputMsg): void {
+    for (const k of BTNS) {
+      if (msg[k] && !c.last[k]) c.pressed[k] = true;
+      if (!msg[k] && c.last[k]) c.released[k] = true;
+      c.last[k] = msg[k];
     }
   }
 
@@ -595,6 +604,7 @@ export class Match {
     if (next) {
       // Inputs arrive in order, so any guessed ticks before this one have been replayed.
       c.guess = null;
+      this.edges(c, next);
       c.input = next;
       c.ack = next.seq;
       c.repeats = 0;
@@ -669,6 +679,7 @@ export class Match {
     if (!(drift || backlog) || c.inputQueue.length === 0 || !live || c.state !== 'normal' || !c.connected) return;
     if (!drift) c.credit -= 1;
     const inp = c.inputQueue.shift() as InputMsg;
+    this.edges(c, inp);
     c.input = inp;
     c.ack = inp.seq;
     c.yaw = inp.yaw;

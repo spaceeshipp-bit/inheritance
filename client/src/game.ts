@@ -27,6 +27,9 @@ export interface GameDeps {
 
 interface StepTrack { acc: number; last: number }
 
+/** Most inputs one frame may send (half a second's worth). */
+const INPUT_BURST = TICK_HZ / 2;
+
 export class Game {
   /** Scroll-locked Bless/Tut name: -1 = none (aim decides). */
   private lockIdx = -1;
@@ -253,9 +256,11 @@ export class Game {
     else input.pitch = clamp(input.pitch, -1.05, 0.75);
     this.shoveCd = Math.max(0, this.shoveCd - dt);
     // Real elapsed time, not the frame's capped dt: a slow frame still sends its
-    // share of inputs (up to 8), so the input rate holds even at low frame rates.
+    // share of inputs (up to half a second's worth), so the input rate, and with
+    // it movement, charging a throw and holding to plant, keeps pace with real
+    // time down to 2 frames a second. The server takes a burst one input a tick.
     const nowMs = performance.now();
-    this.tickAcc = Math.min(this.tickAcc + Math.min(0.5, (nowMs - this.tickClock) / 1000), 8 / TICK_HZ);
+    this.tickAcc = Math.min(this.tickAcc + Math.min(0.5, (nowMs - this.tickClock) / 1000), INPUT_BURST / TICK_HZ);
     this.tickClock = nowMs;
     while (this.tickAcc >= 1 / TICK_HZ) { this.tickAcc -= 1 / TICK_HZ; this.tick(); }
     const view = s.view(now, dt, input.yaw, input.pitch);
