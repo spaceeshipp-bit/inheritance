@@ -170,6 +170,8 @@ export function makeRng(seed: number): () => number {
 }
 
 const r3 = (v: number): number => Math.round(v * 1000) / 1000;
+/** Seconds into Grandma's lie-down before a cousin may take over (time for her to reconnect). */
+export const GRANDMA_TAKEOVER_GRACE = 2;
 /** A position rounded to the metre: "somewhere over there" for things Grandma only heard. */
 const coarse = (p: Vec3): Vec3 => ({ x: Math.round(p.x), y: Math.round(p.y), z: Math.round(p.z) });
 
@@ -228,7 +230,8 @@ export class Match {
   willFrozen = false;
   /** "Nana's Pet": the leader as of the last intermission (none during the first visit). */
   petId: string | null = null;
-  pause: { until: number } | null = null;
+  /** Grandma's lie-down: she dropped; `since` when, `until` when the will is read if nobody takes over. */
+  pause: { since: number; until: number } | null = null;
   reading: ReadingResult | null = null;
   results: FinalResult | null = null;
   readonly votes = new Map<string, string>();
@@ -597,9 +600,17 @@ export class Match {
         this.emitAll({ e: 'toast', text: `${c.name} dozed off.` });
         this.checkFewCousins();
       } else if (live && !this.pause) {
+        // Grandma's lie-down: she shows as asleep (so cousins get the take-over
+        // prompt), the match clock stops, and after GRANDMA_TAKEOVER_GRACE s a
+        // willing human cousin may take over; nobody does → the will is read.
         this.closeParchment(c);
-        this.pause = { until: this.time + DISCONNECT.grandmaLieDown };
-        this.emitAll({ e: 'toast', text: `Nana is having a lie-down. A willing cousin can take over in the next ${DISCONNECT.grandmaLieDown} s.` });
+        this.dropHeld(c, false);
+        c.state = 'sleeping';
+        c.ragdollT = 0;
+        this.pause = { since: this.time, until: this.time + DISCONNECT.grandmaLieDown };
+        this.emitAll({ e: 'toast', text: `Nana is having a lie-down. A willing cousin can take over (press J) in a moment.` });
+      } else if (!live) {
+        c.state = 'sleeping';
       }
     } else {
       if (c.state === 'sleeping') { c.state = 'normal'; c.ragdollT = 0; }
@@ -611,25 +622,44 @@ export class Match {
     }
   }
 
-  /** During Grandma's lie-down, a willing human cousin takes over as Grandma. */
+  /**
+   * During Grandma's lie-down, a willing human cousin takes over as Grandma.
+   * Only while the match is live, and not in the first GRANDMA_TAKEOVER_GRACE
+   * seconds (the real Grandma gets a moment to reconnect).
+   */
   takeOverGrandma(id: string): boolean {
     if (!this.pause) return false;
+    if (!(this.phase === 'roles' || this.phase === 'visit' || this.phase === 'intermission')) return false;
     const c = this.chars.get(id);
     if (!c || c.role !== 'cousin' || c.isBot || !c.connected) return false;
+    if (this.time - this.pause.since < GRANDMA_TAKEOVER_GRACE) {
+      this.emit(id, { e: 'toast', text: 'Give Nana a moment to come back...' });
+      return false;
+    }
     const old = this.grandma;
     if (old) {
       this.chars.delete(old.id);
       this.humans = this.humans.filter((h) => h !== old.id);
     }
-    // Take the new Grandma out of the will: her share is shared out to the others.
-    // (A free move still obeys the 20-point rolling cap per call, so repeat until it is all out.)
-    for (let i = 0; i < 10 && (this.will.shares[id] ?? 0) > 0; i++) {
-      if (!this.applyWill(id, 0, 'parchment', true, 0, true).ok) break;
-    }
+    // The new Grandma leaves the will. Her share is split equally between all
+    // the other cousins (awake or not), any odd points to the lowest shares
+    // first, and everybody is told: the game never moves shares in secret.
+    const mine = this.will.shares[id] ?? 0;
+    const rest = this.cousinIds.filter((x) => x !== id);
     const shares: Record<string, number> = {};
-    for (const cid of this.cousinIds) if (cid !== id) shares[cid] = this.will.shares[cid];
+    for (const cid of rest) shares[cid] = this.will.shares[cid] ?? 0;
+    const each = rest.length ? Math.floor(mine / rest.length) : 0;
+    let odd = mine - each * rest.length;
+    const lowestFirst = [...rest].sort((a, b) => shares[a] - shares[b] || rest.indexOf(a) - rest.indexOf(b));
+    const gain: Record<string, number> = {};
+    for (const cid of lowestFirst) {
+      gain[cid] = each + (odd > 0 ? 1 : 0);
+      if (odd > 0) odd--;
+      shares[cid] += gain[cid];
+    }
     this.will.shares = shares;
-    this.cousinIds = this.cousinIds.filter((x) => x !== id);
+    for (const cid of rest) if (gain[cid] > 0) this.log.add({ t: this.time, kind: 'will', target: cid, moved: gain[cid], via: 'takeover' });
+    this.cousinIds = rest;
     this.dropHeld(c, false);
     if (c.itemId) {
       const item = this.props.get(c.itemId);
@@ -646,7 +676,7 @@ export class Match {
     this.pause = null;
     for (const h of this.humans) this.cfg.send(h, this.matchMsgFor(h));
     this.broadcastPhase();
-    this.emitAll({ e: 'toast', text: `${c.name} is Grandma now!` });
+    this.emitAll({ e: 'toast', text: `${c.name} is Grandma now! Their ${mine}% of the will is shared out equally between the others.` });
     this.checkFewCousins();
     return true;
   }
@@ -696,7 +726,10 @@ export class Match {
     this.tick++;
     this.time += h;
     if (this.pause) {
-      this.phaseEndsAt += h;
+      // The match stands still: every deadline moves with the clock, and
+      // buttons pressed meanwhile do not all fire at once on resume.
+      this.shiftDeadlines(h);
+      for (const c of this.chars.values()) { c.pressed = noBtns(); c.released = noBtns(); }
       if (this.time >= this.pause.until) {
         this.pause = null;
         this.startReading('Nana has gone to bed. The will is read as it stands.');
@@ -726,6 +759,20 @@ export class Match {
     }
     this.checkPhase();
     this.snapshots(h);
+  }
+
+  /** Push every running deadline back by `h` seconds (the match is paused). */
+  private shiftDeadlines(h: number): void {
+    this.phaseEndsAt += h;
+    if (this.wish) this.wish.info = { ...this.wish.info, endsAt: r3(this.wish.info.endsAt + h) };
+    this.nextWishAt += h;
+    if (this.summon) this.summon.endsAt += h;
+    this.nextLightning += h;
+    this.flashUntil += h;
+    for (const r of this.will.recent) r.t += h;
+    for (const cr of this.crimes) cr.t += h;
+    for (const c of this.chars.values()) c.knockedAt += h;
+    for (const p of this.props.values()) p.thrownAt += h;
   }
 
   private updateChar(c: Char, h: number): void {
@@ -1080,7 +1127,8 @@ export class Match {
     if (pr.primary && g.caneCd <= 0) this.doCane(g);
     if (pr.secondary && g.aidCd <= 0 && g.aidT <= 0) {
       g.aidT = HEARING_AID.duration;
-      g.aidCd = HEARING_AID.cooldown;
+      // 6 s of clear hearing, then a 25 s recharge.
+      g.aidCd = HEARING_AID.duration + HEARING_AID.cooldown;
       g.whistleT = 0;
     }
     if (pr.shove) {
@@ -1620,6 +1668,7 @@ export class Match {
 
   private startReading(toast?: string): void {
     if (this.phase === 'reading' || this.phase === 'vote' || this.phase === 'results') return;
+    this.pause = null;
     if (this.phase === 'visit') this.endVisit();
     if (toast) this.emitAll({ e: 'toast', text: toast });
     this.reading = { shares: { ...this.will.shares }, order: readingOrder(this.will), moments: [...this.log.moments] };

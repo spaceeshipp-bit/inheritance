@@ -36,6 +36,19 @@ again; if it still fails, ask the user to create the empty repo and grant the Cl
 access. Then `git remote add origin … && git push -u origin main`. Push after every milestone
 from then on: the container is ephemeral and local commits are the only copy.
 
+## Decisions from the owner
+
+- **Final graphics need the owner's approval.** Grey-box and stand-in art (CC0 packs
+  such as Quaternius, Poly Haven, ambientCG; licences checked and listed in an
+  attributions file) are fine for building and playtesting. Before any final art
+  direction, character style, environment kit or animation set is locked in,
+  present options (screenshots or short clips) and get an explicit yes.
+- Art track order (agreed 2026-11-11): finish and verify the current build work
+  first; then the code side of animation (skeleton-based characters with the
+  primitive models as fallback, an asset pipeline, browser-side physics
+  ragdolls); stand-in art for the Gate 1 playtest; the final style only after
+  Gate 1 and the owner's approval.
+
 ## How to work
 
 - **Commit after every milestone** with a clear message. The last session lost nothing only by

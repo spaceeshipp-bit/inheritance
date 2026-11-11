@@ -122,7 +122,7 @@ export type LogEvent =
   | { t: number; kind: 'tattle'; by: string; accused: string }
   /** A Tut that landed on a cousin linked to a crime (`crime` = log index of it). */
   | { t: number; kind: 'accuse'; target: string; crime: number | null }
-  | { t: number; kind: 'will'; target: string; moved: number; via: 'bless' | 'tut' | 'parchment' }
+  | { t: number; kind: 'will'; target: string; moved: number; via: 'bless' | 'tut' | 'parchment' | 'takeover' }
   | { t: number; kind: 'wish'; by: string; wish: WishInfo['kind'] }
   | { t: number; kind: 'cane'; victim: string }
   | { t: number; kind: 'knock-specs'; by: string; seen?: boolean; sharp?: boolean };

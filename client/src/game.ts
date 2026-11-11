@@ -299,7 +299,8 @@ export class Game {
     if (s.phase === 'visit') this.footsteps(view, dt);
 
     // A cousin may take over if Grandma drops.
-    const gDown = !this.isGrandma && s.phase === 'visit' && g?.state === 'sleeping';
+    // (`live` above: roles, visit or intermission.)
+    const gDown = !this.isGrandma && live && g?.state === 'sleeping';
     show(this.takeover, gDown);
     if (gDown) this.takeover.textContent = 'Nana has nodded off (disconnected). Press J to take over as Grandma.';
   }
