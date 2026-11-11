@@ -23,6 +23,8 @@ export class Predictor {
   private parchment = false;
   /** False while ragdolled/asleep or before the server sends `ack`: callers fall back to extrapolation. */
   active = false;
+  /** How far the latest snapshot moved our predicted position (m); 0 when the prediction was exact. */
+  lastError = 0;
 
   reset(): void {
     this.body = null;
@@ -49,6 +51,7 @@ export class Predictor {
     const usable = me.state === 'normal' && typeof me.ack === 'number';
     if (!usable) { this.active = false; this.body = null; return; }
     const shownBefore = this.body && this.active ? this.display(false) : null;
+    const predicted = this.body && this.active ? { ...this.body.pos } : null;
     const ack = me.ack as number;
     this.pending = this.pending.filter((p) => p.seq > ack);
     const g = groundHeight(me.pos.x, me.pos.z, me.pos.y);
@@ -60,6 +63,7 @@ export class Predictor {
       stepMovement(b, p.cmd, STEP, { role: this.role, ragdoll: false, parchmentOpen: this.parchment });
     }
     if (!this.pending.length) this.prev = { ...b.pos };
+    this.lastError = predicted ? Math.hypot(predicted.x - b.pos.x, predicted.y - b.pos.y, predicted.z - b.pos.z) : 0;
     this.body = b;
     this.active = true;
     if (shownBefore) {

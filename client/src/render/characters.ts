@@ -27,6 +27,11 @@ export interface CharFrame {
   /** Voice level 0..1 for the mouth. */
   mouth: number;
   holding: boolean;
+  /**
+   * The viewing camera's world position. A body closer than ~0.5 m to it fades
+   * out, so a crowd around Grandma never fills her first-person view (review P13).
+   */
+  cam?: THREE.Vector3;
 }
 
 interface Joint { obj: THREE.Object3D; rx: number; rz: number; vx: number; vz: number; tx: number; tz: number }

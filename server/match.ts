@@ -10,7 +10,7 @@
 import {
   COUSIN, COUSINS, CRIME_SCENE, DISCONNECT, FULL_VISITS, GRANDMA, HEARING_AID, HEIRLOOM, INTERMISSION_TIME, MISHEARD,
   PREFERENCE_CARDS, QUICKCHAT, READING_TIME, RESULTS_TIME, ROLE_REVEAL_TIME, SENSES, SLICE_VISITS, SNAPSHOT_HZ,
-  SPECTACLES, STORM, TICK_HZ, VISITS, VOICE, VOTE_TIME, WILL, WISH,
+  SPECTACLES, STORM, TICK_HZ, VISITS, VOICE, VOTE_TIME, WILL, WISH, INPUT,
 } from '../shared/constants.js';
 import { HEIRLOOM_SPOTS, HEIRLOOM_VARIANTS, SPAWNS, groundHeight } from '../shared/map.js';
 import { createBody, forwardOf, integrateBody, yawToward, type BodyShape, type MoveBody } from '../shared/movement.js';
@@ -71,7 +71,21 @@ export interface Char extends PhysChar {
   whispering: boolean;
   charge: number;
   plantT: number;
+  /** The input in effect: this tick's, or the last one, repeated while the next is late. */
   input: InputMsg;
+  /** Inputs received for ticks not simulated yet, in seq order. */
+  inputQueue: InputMsg[];
+  /** Highest input seq received (stale or duplicate inputs are dropped). */
+  lastSeq: number;
+  /** Ticks in a row stood in for by repeating `input` because the next had not arrived. */
+  repeats: number;
+  /** Extra steps owed for ticks spent waiting for input, to catch up a backlog with. */
+  credit: number;
+  /** Fewest inputs left waiting after a tick, over the current drift window, and that window's ticks so far. */
+  queueLow: number;
+  queueWindow: number;
+  /** Ticks simulated with a guessed (repeated) input, to replay when the real inputs turn up. */
+  guess: Guess | null;
   last: Btns;
   pressed: Btns;
   released: Btns;
@@ -170,6 +184,27 @@ export function makeRng(seed: number): () => number {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 }
+
+/**
+ * Ticks simulated by repeating the last input because the next had not
+ * arrived. When the real inputs turn up, the character is put back where it
+ * was and those ticks are simulated again with them, so a stall costs the
+ * player nothing as long as nothing else moved them meanwhile.
+ */
+interface Guess {
+  /** The body before the first guessed tick (a copy), and the body it was (respawns replace it). */
+  from: MoveBody;
+  body: MoveBody;
+  /** Seq of the last real input simulated before the guessing began. */
+  base: number;
+  /** Ticks guessed so far: they stand for seq base+1 .. base+ticks. */
+  ticks: number;
+  /** The input repeated, and the real ones as they turn up (index 0 is seq base+1). */
+  held: InputMsg;
+  real: (InputMsg | undefined)[];
+}
+
+const copyBody = (b: MoveBody): MoveBody => ({ pos: { ...b.pos }, vel: { ...b.vel }, onGround: b.onGround, peakY: b.peakY });
 
 const r3 = (v: number): number => Math.round(v * 1000) / 1000;
 /** Seconds into Grandma's lie-down before a cousin may take over (time for her to reconnect). */
@@ -308,7 +343,7 @@ export class Match {
       id: p.id, name: p.name, isBot: p.isBot, connected: true, role,
       body: createBody({ x: 0, y: 0, z: 0 }), yaw: 0, pitch: 0, state: 'normal', ragdollT: 0, knockedBy: null, knockedAt: -Infinity,
       holding: null, sticky: false, running: false, sneaking: false, whispering: false, charge: 0, plantT: 0,
-      input: this.blankInput(), last: noBtns(), pressed: noBtns(), released: noBtns(), ack: 0, shoveCd: 0, shoveBufferUntil: -Infinity,
+      input: this.blankInput(), inputQueue: [], lastSeq: 0, repeats: 0, credit: 0, queueLow: Infinity, queueWindow: 0, guess: null, last: noBtns(), pressed: noBtns(), released: noBtns(), ack: 0, shoveCd: 0, shoveBufferUntil: -Infinity,
       cousinIndex, itemId: role === 'cousin' ? `item-${COUSINS[cousinIndex % COUSINS.length].key}` : null,
       parchmentOpen: false, aidT: 0, aidCd: 0, specsT: 0, specsCd: 0, specsOff: false, caneCd: 0, summonCd: 0, quillT: 0, whistleT: 0,
     };
@@ -378,6 +413,7 @@ export class Match {
       if (c.state === 'ragdoll') c.state = 'normal';
       c.ragdollT = 0;
       c.input = this.blankInput(c.input.seq, c.yaw);
+      this.resetInputs(c, c.lastSeq);
     }
     for (const p of this.props.values()) if (p.heldBy && p.onBody) this.followHolder(p);
   }
@@ -484,17 +520,164 @@ export class Match {
     }
   }
 
+  /**
+   * An input from a client (or a bot). Inputs carry consecutive seq numbers,
+   * one per client tick, and the server simulates one per tick, in order, so a
+   * character moves exactly once per input, just as the client's prediction
+   * moved it (`ack` tells the client how far the server has got).
+   *
+   * - Button presses and releases latch the moment they arrive, so a tap
+   *   shorter than a tick, or one that arrives late, still counts.
+   * - When the next input has not arrived in time (network jitter, a lost
+   *   packet), the last one is repeated in its place for up to
+   *   INPUT.repeatMax ticks (a Guess). When the real ones turn up, those ticks
+   *   are simulated again with them. Meanwhile the player's own snapshots
+   *   show where they were before the guessing, so their prediction is never
+   *   disturbed by a wrong guess.
+   * - After a longer gap the character stands still and the ticks spent
+   *   waiting become credit: the backlog that then arrives is caught up a
+   *   second step per tick. Credit, and one step a second for a client whose
+   *   clock runs fast (INPUT.driftWindow), are the only ways to take two steps
+   *   in a tick, so sending inputs faster than the tick rate cannot make
+   *   anyone faster.
+   */
   handleInput(id: string, msg: InputMsg): void {
     const c = this.chars.get(id);
     if (!c) return;
-    // Ignore stale/out-of-order inputs (but accept a client that restarted its counter).
-    if (msg.seq <= c.input.seq && c.input.seq - msg.seq < 300 && msg.seq !== 0) return;
+    if (c.lastSeq === 0 || msg.seq <= c.lastSeq) {
+      // A duplicate or out-of-order input: ignored. The first input (of the
+      // match, or since a reconnect), or a client that restarted its counter
+      // (a reloaded page): the count starts from here.
+      if (c.lastSeq !== 0 && c.lastSeq - msg.seq < 300 && msg.seq !== 0) return;
+      this.resetInputs(c, msg.seq - 1);
+    }
+    c.lastSeq = msg.seq;
     for (const k of BTNS) {
       if (msg[k] && !c.last[k]) c.pressed[k] = true;
       if (!msg[k] && c.last[k]) c.released[k] = true;
       c.last[k] = msg[k];
     }
-    c.input = msg;
+    if (msg.seq <= c.ack) {
+      // Late: its tick was guessed. Keep it for the replay; it is also what to repeat now.
+      const g = c.guess;
+      if (g && msg.seq > g.base && msg.seq <= g.base + g.ticks) g.real[msg.seq - g.base - 1] = msg;
+      c.input = msg;
+      return;
+    }
+    c.inputQueue.push(msg);
+    if (c.inputQueue.length > INPUT.queueMax) {
+      const dropped = c.inputQueue.shift() as InputMsg;
+      c.ack = dropped.seq;
+    }
+  }
+
+  /** Forget queued inputs: the client starts afresh after `seq` (a new page, a respawn). */
+  private resetInputs(c: Char, seq: number): void {
+    c.inputQueue = [];
+    c.ack = Math.max(0, seq);
+    c.repeats = 0;
+    c.credit = 0;
+    c.queueLow = Infinity;
+    c.queueWindow = 0;
+    c.guess = null;
+  }
+
+  /**
+   * Pick this tick's input. True: simulate one step with `c.input` (the next
+   * input, or the last one repeated as a guess). False: no input for this
+   * tick: none yet from this player, or none after a long gap (then the
+   * character waits and is owed the tick).
+   */
+  private takeInput(c: Char, h: number): boolean {
+    this.settleGuess(c, h);
+    if (c.lastSeq === 0) return false;
+    const next = c.inputQueue.shift();
+    if (next) {
+      // Inputs arrive in order, so any guessed ticks before this one have been replayed.
+      c.guess = null;
+      c.input = next;
+      c.ack = next.seq;
+      c.repeats = 0;
+      return true;
+    }
+    if (c.repeats < INPUT.repeatMax) {
+      c.guess ??= { from: copyBody(c.body), body: c.body, base: c.ack, ticks: 0, held: c.input, real: [] };
+      c.guess.ticks++;
+      c.repeats++;
+      c.ack++;
+      return true;
+    }
+    c.credit = Math.min(INPUT.creditMax, c.credit + 1);
+    return false;
+  }
+
+  /**
+   * Real inputs have turned up for guessed ticks: put the character back where
+   * it was before the guessing and simulate those ticks again with them (and
+   * the latest real input for any still missing). A guess stands when the
+   * character was knocked over, respawned or rescued meanwhile.
+   */
+  private settleGuess(c: Char, h: number): void {
+    const g = c.guess;
+    if (!g) return;
+    if (c.body !== g.body || c.state !== 'normal' || !c.connected) { c.guess = null; return; }
+    if (!g.real.some(Boolean)) return;
+    c.body.pos = { ...g.from.pos };
+    c.body.vel = { ...g.from.vel };
+    c.body.onGround = g.from.onGround;
+    c.body.peakY = g.from.peakY;
+    let inp = g.held, complete = true;
+    for (let j = 0; j < g.ticks; j++) {
+      if (g.real[j]) inp = g.real[j] as InputMsg;
+      else complete = false;
+      c.yaw = inp.yaw;
+      c.pitch = inp.pitch;
+      const r = stepCharacter(c, { move: inp.move, yaw: inp.yaw, run: inp.run, sneak: inp.sneak, jump: inp.jump }, h, c.parchmentOpen);
+      if (r.fellOver) {
+        c.guess = null;
+        this.dropHeld(c, true);
+        if (c.role === 'grandma') this.grandmaFell();
+        return;
+      }
+    }
+    if (complete) c.guess = null;
+  }
+
+  /** The match is paused: inputs are used up without moving anyone. */
+  private skipInputs(c: Char): void {
+    const last = c.inputQueue[c.inputQueue.length - 1];
+    if (last) c.input = last;
+    this.resetInputs(c, Math.max(c.ack, c.lastSeq));
+  }
+
+  /**
+   * Take one more queued input's step this tick: to work off a backlog after a
+   * gap (paid for with credit), or once a window when inputs have been piling
+   * up the whole time (a client clock running fast). Buttons need nothing
+   * here: they latched on arrival.
+   */
+  private catchUp(c: Char, h: number): void {
+    c.queueLow = Math.min(c.queueLow, c.inputQueue.length);
+    let drift = false;
+    if (++c.queueWindow >= INPUT.driftWindow) {
+      drift = c.queueLow >= 2;
+      c.queueLow = Infinity;
+      c.queueWindow = 0;
+    }
+    const backlog = c.credit >= 1 && c.inputQueue.length >= INPUT.catchUpAt;
+    const live = this.phase === 'visit' || this.phase === 'intermission';
+    if (!(drift || backlog) || c.inputQueue.length === 0 || !live || c.state !== 'normal' || !c.connected) return;
+    if (!drift) c.credit -= 1;
+    const inp = c.inputQueue.shift() as InputMsg;
+    c.input = inp;
+    c.ack = inp.seq;
+    c.yaw = inp.yaw;
+    c.pitch = inp.pitch;
+    const r = stepCharacter(c, { move: inp.move, yaw: c.yaw, run: inp.run, sneak: inp.sneak, jump: inp.jump }, h, c.parchmentOpen);
+    if (r.fellOver) {
+      this.dropHeld(c, true);
+      if (c.role === 'grandma') this.grandmaFell();
+    }
   }
 
   /** Bots drive their characters through exactly the same path as humans. */
@@ -617,6 +800,9 @@ export class Match {
         c.state = 'sleeping';
       }
     } else {
+      // A new connection counts its inputs afresh (a reloaded page starts at 1).
+      c.lastSeq = 0;
+      this.resetInputs(c, 0);
       if (c.state === 'sleeping') { c.state = 'normal'; c.ragdollT = 0; }
       if (c.role === 'grandma' && this.pause) {
         this.pause = null;
@@ -733,7 +919,7 @@ export class Match {
       // The match stands still: every deadline moves with the clock, and
       // buttons pressed meanwhile do not all fire at once on resume.
       this.shiftDeadlines(h);
-      for (const c of this.chars.values()) { c.pressed = noBtns(); c.released = noBtns(); }
+      for (const c of this.chars.values()) { c.pressed = noBtns(); c.released = noBtns(); this.skipInputs(c); }
       if (this.time >= this.pause.until) {
         this.pause = null;
         this.startReading('Nana has gone to bed. The will is read as it stands.');
@@ -747,6 +933,7 @@ export class Match {
       }
     }
     for (const c of this.chars.values()) this.updateChar(c, h);
+    for (const c of this.chars.values()) this.catchUp(c, h);
     const all = [...this.chars.values()];
     const g = this.grandma;
     separateCharacters(all, g && !this.options.pushGrandma ? new Set<PhysChar>([g]) : new Set<PhysChar>());
@@ -781,6 +968,7 @@ export class Match {
   }
 
   private updateChar(c: Char, h: number): void {
+    const has = this.takeInput(c, h);
     const inp = c.input;
     const live = this.phase === 'visit' || this.phase === 'intermission';
     const upright = c.state === 'normal';
@@ -809,14 +997,19 @@ export class Match {
     c.pressed = noBtns();
     c.released = noBtns();
 
-    const cmd = canMove ? { move: inp.move, yaw: c.yaw, run: inp.run, sneak: inp.sneak, jump: inp.jump } : null;
-    const r = stepCharacter(c, cmd, h, c.parchmentOpen);
-    const moving = Math.hypot(c.body.vel.x, c.body.vel.z) > 0.3;
-    c.running = !!cmd && c.role === 'cousin' && inp.run && !inp.sneak && moving;
-    c.sneaking = !!cmd && c.role === 'cousin' && inp.sneak && moving;
+    // Waiting for a lagging player's inputs: on the ground, stand exactly still
+    // (so the backlog carries on from here once it arrives); in the air, fall.
+    const waiting = canMove && !has;
+    const frozen = waiting && c.body.onGround;
+    const cmd = !canMove ? null : !waiting
+      ? { move: inp.move, yaw: c.yaw, run: inp.run, sneak: inp.sneak, jump: inp.jump }
+      : { move: { x: 0, z: 0 }, yaw: c.yaw, run: false, sneak: false, jump: false };
+    const r = frozen ? null : stepCharacter(c, cmd, h, c.parchmentOpen);
+    const moving = !frozen && Math.hypot(c.body.vel.x, c.body.vel.z) > 0.3;
+    c.running = !!cmd && !waiting && c.role === 'cousin' && inp.run && !inp.sneak && moving;
+    c.sneaking = !!cmd && !waiting && c.role === 'cousin' && inp.sneak && moving;
     c.whispering = c.role === 'cousin' && inp.whisper && c.connected;
-    c.ack = inp.seq;
-    if (r.fellOver) {
+    if (r?.fellOver) {
       this.dropHeld(c, true);
       if (c.role === 'grandma') this.grandmaFell();
     }
@@ -1771,11 +1964,17 @@ export class Match {
 
   /** One character as `forId` may see it (Grandma-only fields only for her own record). */
   private charSnap(c: Char, petId: string | null, forId: string): CharSnap {
+    // While ticks are guessed, a player's own snapshot shows where they were
+    // before the guessing (with that ack), which their prediction carries on
+    // from with the inputs it knows are real: a wrong guess never shows.
+    const g = forId === c.id ? c.guess : null;
     const s: CharSnap = {
-      id: c.id, role: c.role, pos: v3(c.body.pos), yaw: r3(c.yaw), pitch: r3(c.pitch), vel: v3(c.body.vel), state: c.state,
+      id: c.id, role: c.role, pos: v3(g ? g.from.pos : c.body.pos), yaw: r3(c.yaw), pitch: r3(c.pitch), vel: v3(g ? g.from.vel : c.body.vel), state: c.state,
       ragdollT: r2(c.ragdollT), holding: c.holding, running: c.running, sneaking: c.sneaking, whispering: c.whispering,
-      charge: r2(c.charge), plant: r2(Math.min(1, c.plantT / COUSIN.plantHold)), leader: c.id === petId, ack: c.ack,
+      charge: r2(c.charge), plant: r2(Math.min(1, c.plantT / COUSIN.plantHold)), leader: c.id === petId,
     };
+    // How far the server has got with your inputs is for your own prediction only.
+    if (forId === c.id) s.ack = g ? g.base : c.ack;
     if (c.role === 'grandma') {
       // Everyone can see her writing, her hearing aid whistling and her spectacles.
       s.parchmentOpen = c.parchmentOpen;
@@ -1868,10 +2067,15 @@ export class Match {
     if (this.snapAcc + 1e-9 < every) return;
     this.snapAcc = Math.min(this.snapAcc - every, every);
     if (this.humans.length === 0) return;
-    let cousinSnap: ServerMsg | null = null;
+    // Cousins all see the same house; only their own entry differs (their ack,
+    // and where their real inputs put them), so it is built once and patched.
+    let shared: Extract<ServerMsg, { t: 'snap' }> | null = null;
     for (const id of this.humans) {
-      if (id === this.grandmaId) this.cfg.send(id, this.snapshotFor(id));
-      else this.cfg.send(id, cousinSnap ??= this.snapshotFor(id));
+      if (id === this.grandmaId) { this.cfg.send(id, this.snapshotFor(id)); continue; }
+      shared ??= this.snapshotFor('') as Extract<ServerMsg, { t: 'snap' }>;
+      const c = this.chars.get(id);
+      const own = c ? this.charSnap(c, this.petId, id) : null;
+      this.cfg.send(id, own ? { ...shared, chars: shared.chars.map((s) => (s.id === id ? own : s)) } : shared);
     }
   }
 }

@@ -24,7 +24,11 @@ export function place(m: Match, id: string, x: number, z: number, yaw: number, y
   c.body.onGround = true;
   c.body.peakY = gy;
   c.yaw = yaw;
-  press(m, id, { yaw });
+  // Face that way now (not through the input queue, which applies one input a tick),
+  // and forget any guessed ticks (a replay would put the character back).
+  c.inputQueue = [];
+  c.guess = null;
+  c.input = { ...c.input, yaw, move: { x: 0, z: 0 } };
   return c;
 }
 
@@ -48,6 +52,21 @@ export function humanMatch(seed = 5, options = {}) {
 }
 
 export const tick = (m: Match, n = 1): void => { for (let i = 0; i < n; i++) m.step(1 / 30); };
+
+/**
+ * A player's walk, input number `i` (from 1): forward, a running strafe, a
+ * stop, backward, a running strafe back, a creep with a jump, looking slowly
+ * left and right throughout. It stays near where it started.
+ */
+export function walkInput(i: number): Omit<InputMsg, 'seq'> {
+  const k = i % 120;
+  const move = k < 30 ? { x: 0, z: 1 } : k < 45 ? { x: 1, z: 0 } : k < 60 ? { x: 0, z: 0 } : k < 90 ? { x: 0, z: -1 } : k < 105 ? { x: -1, z: 0 } : { x: 0, z: 0.5 };
+  return {
+    t: 'input', move, yaw: 0.6 * Math.sin((2 * Math.PI * i) / 300), pitch: 0,
+    run: (k >= 30 && k < 45) || (k >= 90 && k < 105), sneak: k >= 105, jump: k === 20,
+    whisper: false, primary: false, secondary: false, shove: false, interact: false, plant: false,
+  };
+}
 
 export type Snap = Extract<ServerMsg, { t: 'snap' }>;
 export function lastSnap(box: { of(id: string): ServerMsg[] }, id: string): Snap {

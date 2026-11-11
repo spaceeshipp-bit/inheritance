@@ -12,6 +12,26 @@ export const MAX_PLAYERS = 8;
 /** Simulation. */
 export const TICK_HZ = 30;
 export const SNAPSHOT_HZ = 20;
+/**
+ * How the server applies each player's inputs (one per tick, in order; see
+ * Match.handleInput). Counts are ticks.
+ */
+export const INPUT = {
+  /** At most this many inputs wait per player (a second's worth); older ones are dropped. */
+  queueMax: 30,
+  /** A late input is stood in for by repeating the last one for up to this many ticks; then the character waits. */
+  repeatMax: 6,
+  /** With this many inputs waiting, a player owed ticks takes a second step in a tick. */
+  catchUpAt: 2,
+  /** Most ticks a player can be owed (ticks spent waiting for input). */
+  creditMax: 30,
+  /**
+   * A client whose clock runs a little fast: if inputs never ran short (always
+   * two or more waiting) for this many ticks, one extra step is taken (so at
+   * most 1 in 60, under 2% faster, however fast inputs are sent).
+   */
+  driftWindow: 60,
+} as const;
 export const GRAVITY = 18;
 
 /** Grandma's senses (one table drives audio, text scramble, HUD and vision). */

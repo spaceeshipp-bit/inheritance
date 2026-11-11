@@ -120,7 +120,11 @@ function place(m: Match, id: string, x: number, z: number, yaw: number, atY?: nu
   c.body.onGround = true;
   c.body.peakY = y;
   c.yaw = yaw;
-  press(m, id, { yaw });
+  // Face that way now (not through the input queue, which applies one input a tick),
+  // and forget any guessed ticks (a replay would put the character back).
+  c.inputQueue = [];
+  c.guess = null;
+  c.input = { ...c.input, yaw, move: { x: 0, z: 0 } };
   return c;
 }
 
@@ -174,6 +178,8 @@ describe('match rules', () => {
     expect(snaps.length).toBeGreaterThanOrEqual(19);
     expect(snaps.length).toBeLessThanOrEqual(21);
     const me = snaps[snaps.length - 1].chars.find((c) => c.id === 'a')!;
+    // One input arrived; the server guessed the ticks after it (no more came),
+    // but a player's own snapshots only ever count real inputs.
     expect(me.ack).toBe(seqs.get('a'));
     expect(me.pos.z).toBeLessThan(4.5);
   });
