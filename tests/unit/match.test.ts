@@ -496,6 +496,7 @@ describe('match rules', () => {
   it('Grandma drops: a willing cousin takes over', () => {
     const { m, box } = humanMatch();
     m.setConnected('g', false);
+    tick(m, 2 * 30 + 3); // past the grace that lets the real Grandma reconnect
     box.clear();
     expect(m.takeOverGrandma('a')).toBe(true);
     expect(m.grandmaId).toBe('a');

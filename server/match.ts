@@ -26,8 +26,8 @@ import { CousinBot, GrandmaBot, type Bot } from './bots.js';
 import { EventLog } from './log.js';
 import { hasLOS, levelOf, waypoints } from './nav.js';
 import {
-  bodyItemPos, bumpsPedestal, handPos, knockback, propHitsChar, rescueIfLost, separateCharacters, setDownPos,
-  stepCharacter, stepProp, type PhysChar, type PhysProp,
+  bodyItemPos, bumpsPedestal, handPos, inFrontClear, knockback, propHitsChar, propOutside, rescueIfLost, separateCharacters,
+  setDownPos, stepCharacter, stepProp, type PhysChar, type PhysProp,
 } from './physics.js';
 
 // ───────────────────────── Types ─────────────────────────
@@ -744,7 +744,8 @@ export class Match {
     }
     for (const c of this.chars.values()) this.updateChar(c, h);
     const all = [...this.chars.values()];
-    separateCharacters(all);
+    const g = this.grandma;
+    separateCharacters(all, g && !this.options.pushGrandma ? new Set<PhysChar>([g]) : new Set<PhysChar>());
     for (const c of all) {
       const spawn = c.role === 'grandma' ? SPAWNS.grandma : SPAWNS.cousins[Math.max(0, this.cousinIds.indexOf(c.id)) % SPAWNS.cousins.length];
       if (rescueIfLost(c, spawn)) this.dropHeld(c, false);
@@ -1100,8 +1101,7 @@ export class Match {
   }
 
   private doPlant(c: Char, item: Prop): void {
-    const f = forwardOf(c.yaw);
-    const x = c.body.pos.x + f.x * 0.35, z = c.body.pos.z + f.z * 0.35;
+    const { x, z } = inFrontClear(c, 0.35, 0.4);
     const y = groundHeight(x, z, c.body.pos.y + 0.4, 0.5);
     this.release(c, item);
     item.pos = { x, y, z };
@@ -1323,6 +1323,7 @@ export class Match {
       if (p.resting) continue;
       const speed = Math.hypot(p.vel.x, p.vel.y, p.vel.z);
       const impact = stepProp(p, h);
+      if (propOutside(p.pos)) { this.rescueProp(p); continue; }
       if (speed > 3 && !p.resting) {
         const ignore = this.time - p.thrownAt < 0.3 ? p.thrownBy : null;
         const victim = propHitsChar(p, this.chars.values(), ignore);
@@ -1334,6 +1335,26 @@ export class Match {
         if (p.kind === 'cat' && p.cat) p.cat.body = createBody(p.pos);
       }
     }
+  }
+
+  /** A prop that somehow left the house comes back somewhere sensible. */
+  private rescueProp(p: Prop): void {
+    p.vel = { x: 0, y: 0, z: 0 };
+    p.resting = true;
+    p.thrownBy = null;
+    const owner = p.kind === 'item' && p.owner ? this.chars.get(p.owner) : undefined;
+    if (owner) {
+      p.heldBy = owner.id;
+      p.onBody = true;
+      p.planted = false;
+      p.found = false;
+      p.resting = false;
+      this.followHolder(p);
+      return;
+    }
+    const home = p.kind === 'cat' ? SPAWNS.cat : p.kind === 'teacup' ? SPAWNS.teacup : { x: 0, y: 0, z: 2 };
+    p.pos = { ...home };
+    if (p.kind === 'cat' && p.cat) p.cat.body = createBody(p.pos);
   }
 
   private propHitChar(p: Prop, victim: Char, speed: number): void {
@@ -1561,8 +1582,7 @@ export class Match {
     } else if (w.info.kind === 'pills') {
       this.hideProp('pills');
     } else {
-      const f = forwardOf(g.yaw);
-      const at = { x: g.body.pos.x + f.x * 0.7, z: g.body.pos.z + f.z * 0.7 };
+      const at = inFrontClear(g, 0.7, 0.5);
       p.pos = { x: at.x, y: groundHeight(at.x, at.z, g.body.pos.y + 0.5, 0.6), z: at.z };
       p.vel = { x: 0, y: 0, z: 0 };
       p.resting = true;

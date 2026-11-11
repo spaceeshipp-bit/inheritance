@@ -5,7 +5,7 @@
 import { FALL_RAGDOLL_HEIGHT, GRAVITY, HEIRLOOM, RAGDOLL_TIME } from '../shared/constants.js';
 import { BOXES, RAMPS, groundHeight } from '../shared/map.js';
 import {
-  CHAR_SHAPE, createBody, forwardOf, rampHeightAt, stepMovement,
+  CHAR_SHAPE, createBody, forwardOf, rampHeightAt, resolveHorizontal, stepMovement,
   type MoveBody, type MoveCmd, type MoveResult,
 } from '../shared/movement.js';
 import type { BodyState, PropKind, Role, Vec3 } from '../shared/types.js';
@@ -72,29 +72,71 @@ export function knockback(c: PhysChar, dir: { x: number; z: number }, impulse: n
   c.knockedAt = now;
 }
 
-/** Push overlapping characters apart (flat), so bodies never stack. */
-export function separateCharacters(chars: PhysChar[]): void {
+/**
+ * Push overlapping characters apart (flat), so bodies never stack. Anyone in
+ * `immovable` (Grandma, when cousins may not push her) does not budge: the
+ * other body takes the whole push. Every body that moved is then resolved
+ * against the map again, so a crowd can never squeeze someone through a wall
+ * or the gallery railing.
+ */
+export function separateCharacters(chars: PhysChar[], immovable: ReadonlySet<PhysChar> = new Set()): void {
   const minD = CHAR_SHAPE.radius * 2;
+  const moved = new Set<PhysChar>();
   for (let i = 0; i < chars.length; i++) {
     for (let j = i + 1; j < chars.length; j++) {
-      const a = chars[i].body.pos, b = chars[j].body.pos;
+      const ca = chars[i], cb = chars[j];
+      const a = ca.body.pos, b = cb.body.pos;
       if (Math.abs(a.y - b.y) > CHAR_SHAPE.height * 0.8) continue;
       let dx = b.x - a.x, dz = b.z - a.z;
       let d = Math.hypot(dx, dz);
       if (d >= minD) continue;
       if (d < 1e-6) { dx = 1; dz = 0; d = 1e-6; }
-      const push = (minD - d) / 2;
+      const fixA = immovable.has(ca), fixB = immovable.has(cb);
+      if (fixA && fixB) continue;
       const nx = dx / d, nz = dz / d;
-      a.x -= nx * push; a.z -= nz * push;
-      b.x += nx * push; b.z += nz * push;
+      const pushA = fixA ? 0 : fixB ? minD - d : (minD - d) / 2;
+      const pushB = fixB ? 0 : fixA ? minD - d : (minD - d) / 2;
+      a.x -= nx * pushA; a.z -= nz * pushA;
+      b.x += nx * pushB; b.z += nz * pushB;
+      if (pushA > 0) moved.add(ca);
+      if (pushB > 0) moved.add(cb);
     }
   }
+  for (const c of moved) resolveHorizontal(c.body.pos, c.body.vel, CHAR_SHAPE, c.state === 'ragdoll');
 }
 
-/** Where a character's hands are (a carried prop sits here). */
-export function handPos(c: { body: MoveBody; yaw: number }): Vec3 {
+/** Does the flat segment a→b at height y cross a solid box (props see railings as solid)? */
+function crossesBox(a: Vec3, b: Vec3, y: number, box: { min: Vec3; max: Vec3 }, r: number): boolean {
+  if (y < box.min.y || y >= box.max.y) return false;
+  let t0 = 0, t1 = 1;
+  for (const ax of ['x', 'z'] as const) {
+    const lo = box.min[ax] - r, hi = box.max[ax] + r;
+    const d = b[ax] - a[ax];
+    if (Math.abs(d) < 1e-9) { if (a[ax] <= lo || a[ax] >= hi) return false; continue; }
+    let ta = (lo - a[ax]) / d, tb = (hi - a[ax]) / d;
+    if (ta > tb) { const s = ta; ta = tb; tb = s; }
+    t0 = Math.max(t0, ta); t1 = Math.min(t1, tb);
+    if (t0 >= t1) return false;
+  }
+  return true;
+}
+
+/**
+ * A point `reach` m in front of a character at height `dy` above their feet,
+ * pulled back to their own centre if a wall (or anything solid) is in the way:
+ * what they hold, drop, throw or plant never starts inside a wall.
+ */
+export function inFrontClear(c: { body: MoveBody; yaw: number }, reach: number, dy: number): Vec3 {
   const f = forwardOf(c.yaw);
-  return { x: c.body.pos.x + f.x * 0.45, y: c.body.pos.y + 1.05, z: c.body.pos.z + f.z * 0.45 };
+  const centre = { x: c.body.pos.x, y: c.body.pos.y + dy, z: c.body.pos.z };
+  const p = { x: centre.x + f.x * reach, y: centre.y, z: centre.z + f.z * reach };
+  for (const b of PROP_BOXES) if (crossesBox(centre, p, centre.y, b, PROP_RADIUS)) return centre;
+  return p;
+}
+
+/** Where a character's hands are (a carried prop sits here), never inside a wall. */
+export function handPos(c: { body: MoveBody; yaw: number }): Vec3 {
+  return inFrontClear(c, 0.45, 1.05);
 }
 
 /** Where an item carried "on the body" sits (hip). */
@@ -165,10 +207,20 @@ export function stepProp(p: PhysProp, dt: number): number {
         p.pos.y = b.min.y - 0.01;
         impact = Math.max(impact, Math.abs(p.vel.y));
         p.vel.y = -Math.abs(p.vel.y) * 0.3;
-      } else {
-        // Started inside (e.g. spawned in a wall): pop out on top.
+      } else if (b.max.y - p.pos.y <= 0.15) {
+        // Barely inside the top: it is resting on that surface.
         p.pos.y = b.max.y;
         p.vel.y = 0;
+      } else {
+        // Started inside a wall: push it out sideways through the nearest face,
+        // never up onto the top of the wall.
+        const outs = [
+          { d: p.pos.x - (b.min.x - r), set: () => { p.pos.x = b.min.x - r; p.vel.x = -Math.abs(p.vel.x) * 0.3; } },
+          { d: (b.max.x + r) - p.pos.x, set: () => { p.pos.x = b.max.x + r; p.vel.x = Math.abs(p.vel.x) * 0.3; } },
+          { d: p.pos.z - (b.min.z - r), set: () => { p.pos.z = b.min.z - r; p.vel.z = -Math.abs(p.vel.z) * 0.3; } },
+          { d: (b.max.z + r) - p.pos.z, set: () => { p.pos.z = b.max.z + r; p.vel.z = Math.abs(p.vel.z) * 0.3; } },
+        ];
+        outs.sort((m, n) => m.d - n.d)[0].set();
       }
     }
     // The staircase: a surface from above, a wall from the sides.
@@ -245,6 +297,12 @@ export function bumpsPedestal(c: PhysChar, spot: Vec3): boolean {
   const dx = c.body.pos.x - spot.x, dz = c.body.pos.z - spot.z;
   if (Math.hypot(dx, dz) > HEIRLOOM.topplePushRange + CHAR_SHAPE.radius) return false;
   return c.body.pos.y > spot.y - 1.6 && c.body.pos.y < spot.y + 0.3;
+}
+
+/** Is a prop outside the house (escaped through a gap, or lost)? */
+export function propOutside(p: Vec3): boolean {
+  return !Number.isFinite(p.x + p.y + p.z) || p.y < -1 || p.y > 6.5 || p.x < -8.4 || p.x > 16.4 || p.z < -12.4 || p.z > 6.4
+    || (p.x > 8.3 && (p.z < -6.3 || p.z > 6.3 || p.y > 3.3));
 }
 
 /** Keep a character inside the house; returns true if it had to be rescued. */

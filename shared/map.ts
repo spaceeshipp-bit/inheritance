@@ -14,7 +14,7 @@
 //   z=6   └──────────────────── front door (south) ───────────┘└──────────────────┴──3..6┘──┘
 import type { Vec3 } from './types.js';
 
-export type BoxKind = 'floor' | 'wall' | 'slab' | 'railing' | 'counter' | 'table' | 'pedestal' | 'chair' | 'door';
+export type BoxKind = 'floor' | 'wall' | 'slab' | 'railing' | 'counter' | 'table' | 'pedestal' | 'chair' | 'door' | 'ceiling';
 
 export interface Box {
   min: Vec3;
@@ -55,6 +55,10 @@ export const BOXES: Box[] = [
 
   // Gallery slab (top surface at y = 3), with the stair opening between x -1.5..1.5 at z -8..-7.6 handled by the ramp
   box('slab', -8, GALLERY_Y - 0.2, -12, 8, GALLERY_Y, -8, 'Heirloom gallery'),
+
+  // Ceilings (the client draws them as planes): nothing thrown can leave the house.
+  box('ceiling', -8.3, HALL_HEIGHT, -12.3, 8.3, HALL_HEIGHT + 0.3, 6.3, 'Hall ceiling'),
+  box('ceiling', 8, KITCHEN_HEIGHT, -6.3, 16.3, KITCHEN_HEIGHT + 0.3, 6.3, 'Kitchen ceiling'),
 
   // Gallery railing along z = -8, leaving a gap for the stairs (x -1.5..1.5)
   box('railing', -8, GALLERY_Y, -8.1, -1.5, GALLERY_Y + 1, -7.9, 'Gallery railing west'),
