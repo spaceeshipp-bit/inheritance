@@ -9,6 +9,7 @@
 // tab joined with our rejoin token, and redialling would kick it, which would
 // kick us, forever. Status 'replaced' lets the screens say so instead.
 import { PROTOCOL_VERSION } from '../../shared/constants.js';
+import { NetLink, type NetSimConfig } from '../../shared/netsim.js';
 import { CLOSE_CODES, encode, type ClientMsg, type ServerMsg } from '../../shared/protocol.js';
 import { localSec } from './util.js';
 
@@ -42,6 +43,32 @@ export function webSocketLink(url = defaultWsUrl()): LinkFactory {
     return {
       send: (s) => { if (ws.readyState === WebSocket.OPEN) ws.send(s); },
       close: () => ws.close(),
+    };
+  };
+}
+
+/**
+ * A link through a simulated slow, lossy network (`?netsim=150,20,2`: round
+ * trip ms, jitter ms, loss %; see shared/netsim.ts). Everything sent and
+ * received is delayed in order, as over a real WebSocket. For feeling how the
+ * game plays on a bad connection; never on unless asked for.
+ */
+export function simulatedLink(inner: LinkFactory, cfg: NetSimConfig): LinkFactory {
+  return (h) => {
+    const up = new NetLink(cfg), down = new NetLink(cfg);
+    let dropped = false;
+    const later = (link: NetLink, fn: () => void): void => {
+      const now = localSec();
+      setTimeout(() => { if (!dropped) fn(); }, Math.max(0, (link.deliverAt(now) - now) * 1000));
+    };
+    const link = inner({
+      open: () => later(down, () => h.open()),
+      message: (data) => later(down, () => h.message(data)),
+      close: (code) => later(down, () => h.close(code)),
+    });
+    return {
+      send: (data) => later(up, () => link.send(data)),
+      close: () => { dropped = true; link.close(); },
     };
   };
 }

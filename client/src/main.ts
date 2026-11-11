@@ -8,7 +8,8 @@ import { Game } from './game.js';
 import { Hud } from './hud/hud.js';
 import { Screens } from './hud/screens.js';
 import { Input } from './input.js';
-import { BoundedQueue, Net, lobbyEndsOurMatch, webSocketLink, type LinkFactory } from './net.js';
+import { BoundedQueue, Net, lobbyEndsOurMatch, simulatedLink, webSocketLink, type LinkFactory } from './net.js';
+import { parseNetSim } from '../../shared/netsim.js';
 import { GameRenderer } from './render/scene.js';
 import { Settings } from './settings.js';
 import { GameState } from './state.js';
@@ -23,6 +24,12 @@ async function boot(): Promise<void> {
   if (mockRole) {
     const { mockLink } = await import('./dev/mock.js');
     factory = mockLink({ role: mockRole === 'grandma' ? 'grandma' : 'cousin', phase: params.get('phase') ?? 'visit', params });
+  }
+  // ?netsim=150,20,2: play through a simulated slow, lossy connection (round trip ms, jitter ms, loss %).
+  const netsim = parseNetSim(params.get('netsim'));
+  if (netsim) {
+    factory = simulatedLink(factory, netsim);
+    console.info(`[netsim] ${netsim.rtt * 1000} ms round trip, ±${netsim.jitter * 1000} ms, ${netsim.loss * 100}% loss`);
   }
 
   const state = new GameState();
