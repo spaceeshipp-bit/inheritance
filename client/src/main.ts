@@ -31,9 +31,18 @@ async function boot(): Promise<void> {
   const voice = createVoice();
   const settings = new Settings();
   const renderer = new GameRenderer($('stage'), settings.get().quality);
-  settings.onChange((s) => renderer.setQuality(s.quality));
   const input = new Input(renderer.canvas);
   const hud = new Hud($('hud'), $('labels'), $('overlay'), state);
+  // Settings: applied now and whenever they change (the HUD's settings panel writes them).
+  hud.settings = settings;
+  const applySettings = () => {
+    const s = settings.get();
+    renderer.setQuality(s.quality);
+    input.applySettings(s);
+    sfx.applySettings(s);
+  };
+  applySettings();
+  settings.onChange(applySettings);
 
   // Voice: started once we know our id (after the Join click); signals that
   // arrive before it is ready are queued.

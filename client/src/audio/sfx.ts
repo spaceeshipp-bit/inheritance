@@ -4,6 +4,7 @@
 // crash) count as closer so she still hears them, muffled, from afar.
 import { grandmaVoiceFilter } from '../../../shared/senses.js';
 import type { Vec3 } from '../../../shared/types.js';
+import type { SettingsData } from '../settings.js';
 import { rng } from '../util.js';
 import { synth, type SfxKind } from './synth.js';
 
@@ -42,6 +43,12 @@ export class Sfx {
   }
 
   get ready(): boolean { return !!this.ctx && this.ctx.state === 'running'; }
+
+  /** Apply player settings (master x effects volume). */
+  applySettings(s: SettingsData): void {
+    this.volume = s.masterVolume * s.sfxVolume;
+    if (this.master && this.ctx) this.master.gain.setTargetAtTime(this.volume, this.ctx.currentTime, 0.05);
+  }
 
   setListener(pos: Vec3, yaw: number, role: 'grandma' | 'cousin' | 'lobby', aid: boolean): void {
     this.pos = pos;

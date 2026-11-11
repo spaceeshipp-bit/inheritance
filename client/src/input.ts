@@ -12,6 +12,7 @@
 // Both:    B push-to-talk (when enabled in the lobby), H controls help.
 import type { InputMsg } from '../../shared/protocol.js';
 import type { Role } from '../../shared/types.js';
+import type { SettingsData } from './settings.js';
 import { clamp } from './util.js';
 
 export type Action =
@@ -43,6 +44,7 @@ export class Input {
   cursor = { x: 0, y: 0 };
   sensitivity = 0.0024;
   padSensitivity = 2.8;
+  invertY = false;
   onAction: (a: Action, down: boolean) => void = () => {};
   /** Last input device used (for on-screen prompts). */
   lastDevice: 'kbm' | 'pad' = 'kbm';
@@ -84,7 +86,7 @@ export class Input {
       }
       if (this.parchmentOpen) return;
       this.yaw -= e.movementX * this.sensitivity;
-      this.pitch = clamp(this.pitch - e.movementY * this.sensitivity, -1.25, 1.25);
+      this.pitch = clamp(this.pitch - (this.invertY ? -1 : 1) * e.movementY * this.sensitivity, -1.25, 1.25);
     });
     window.addEventListener('wheel', (e) => {
       if (!this.active || this.typing || this.parchmentOpen) return;
@@ -92,6 +94,13 @@ export class Input {
       else if (e.deltaY < 0) this.onAction('lockPrev', true);
     }, { passive: true });
     document.addEventListener('pointerlockchange', () => { if (!this.locked) this.mouse = 0; });
+  }
+
+  /** Apply player settings (look sensitivity, invert Y). */
+  applySettings(s: SettingsData): void {
+    this.sensitivity = 0.0024 * s.mouseSensitivity;
+    this.padSensitivity = 2.8 * s.padSensitivity;
+    this.invertY = s.invertY;
   }
 
   get locked(): boolean { return document.pointerLockElement === this.canvas; }

@@ -3,6 +3,7 @@
 // into toasts, bubbles and pings.
 import { QUICKCHAT } from '../../../shared/constants.js';
 import type { GameEvent } from '../../../shared/protocol.js';
+import type { Settings } from '../settings.js';
 import type { GameState } from '../state.js';
 import { el, setText, show } from '../util.js';
 import type { BubbleFrame } from './bubbles.js';
@@ -44,6 +45,8 @@ export class Hud {
   private help = el('div', 'help-card');
   private lockHint = el('div', 'lock-hint', 'Click to look around');
   private net = el('div', 'net-banner');
+  /** Player settings (the settings panel reads and writes these). */
+  settings: Settings | null = null;
   onVote: (id: string) => void = () => {};
   onParchmentSet: (target: string, value: number) => void = () => {};
 
