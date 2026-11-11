@@ -1,5 +1,6 @@
 // Shared materials and procedural canvas textures (no asset files).
 import * as THREE from 'three';
+import { COUSINS, type ItemKey } from '../../../shared/constants.js';
 
 export const ROOM_COLORS: Record<string, string> = {
   'Front hall': '#8a4a3f', // oxblood damask
@@ -139,6 +140,71 @@ export function blob(): THREE.CanvasTexture {
 
 export function blobMaterial(): THREE.MeshBasicMaterial {
   return new THREE.MeshBasicMaterial({ map: blob(), transparent: true, depthWrite: false });
+}
+
+/** A soft white puff (radial gradient) for dust clouds; tint it with the material colour. */
+let puffTex: THREE.CanvasTexture | null = null;
+export function puff(): THREE.CanvasTexture {
+  if (puffTex) return puffTex;
+  puffTex = canvasTex(64, 64, (g) => {
+    const grd = g.createRadialGradient(32, 32, 1, 32, 32, 31);
+    grd.addColorStop(0, 'rgba(255,255,255,0.95)');
+    grd.addColorStop(0.45, 'rgba(255,255,255,0.55)');
+    grd.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = grd;
+    g.fillRect(0, 0, 64, 64);
+  });
+  puffTex.wrapS = puffTex.wrapT = THREE.ClampToEdgeWrapping;
+  return puffTex;
+}
+
+/**
+ * Colour-band patterns, one per cousin slot (the order of COUSINS), so a band
+ * reads by its pattern as well as its colour (colour-blind players). The HUD
+ * swatches draw the same patterns in CSS (style.css, `.swatch[data-pat]`).
+ */
+export const BAND_PATTERNS = ['stripes', 'dots', 'diagonal', 'checks', 'zigzag', 'grid', 'bars', 'rings'] as const;
+
+/** Pattern index for a cousin's signature item (their slot in COUSINS), or -1. */
+export function bandPatternIndex(item: ItemKey | null | undefined): number {
+  return item ? COUSINS.findIndex((c) => c.key === item) % BAND_PATTERNS.length : -1;
+}
+
+const patternTex = new Map<number, THREE.CanvasTexture>();
+/**
+ * The pattern as a tiling texture: white with dark marks, so the material
+ * colour tints the white and the marks stay dark in any colour. One repeat is
+ * meant to cover about 0.11 m (the sash width; see boxGeo's `tile`).
+ */
+export function bandPatternTexture(i: number): THREE.CanvasTexture {
+  let t = patternTex.get(i);
+  if (t) return t;
+  const kind = BAND_PATTERNS[((i % BAND_PATTERNS.length) + BAND_PATTERNS.length) % BAND_PATTERNS.length];
+  t = canvasTex(64, 64, (g) => {
+    g.fillStyle = '#ffffff';
+    g.fillRect(0, 0, 64, 64);
+    g.fillStyle = 'rgba(20,16,14,0.85)';
+    g.strokeStyle = 'rgba(20,16,14,0.85)';
+    g.lineWidth = 9;
+    switch (kind) {
+      case 'stripes': g.fillRect(0, 8, 64, 14); g.fillRect(0, 40, 64, 14); break;
+      case 'dots':
+        for (const [x, y] of [[16, 16], [48, 48], [48, 16], [16, 48]]) { g.beginPath(); g.arc(x, y, 8, 0, Math.PI * 2); g.fill(); }
+        break;
+      case 'diagonal':
+        for (let k = -64; k <= 64; k += 32) { g.beginPath(); g.moveTo(k, 64); g.lineTo(k + 64, 0); g.stroke(); }
+        break;
+      case 'checks': g.fillRect(0, 0, 32, 32); g.fillRect(32, 32, 32, 32); break;
+      case 'zigzag':
+        for (const y0 of [18, 50]) { g.beginPath(); g.moveTo(0, y0); g.lineTo(16, y0 - 12); g.lineTo(32, y0); g.lineTo(48, y0 - 12); g.lineTo(64, y0); g.stroke(); }
+        break;
+      case 'grid': g.lineWidth = 7; g.strokeRect(16, 16, 32, 32); g.beginPath(); g.moveTo(32, 0); g.lineTo(32, 64); g.moveTo(0, 32); g.lineTo(64, 32); g.stroke(); break;
+      case 'bars': g.fillRect(8, 0, 14, 64); g.fillRect(40, 0, 14, 64); break;
+      default: g.lineWidth = 6; for (const [x, y] of [[16, 16], [48, 48]]) { g.beginPath(); g.arc(x, y, 10, 0, Math.PI * 2); g.stroke(); } break;
+    }
+  });
+  patternTex.set(i, t);
+  return t;
 }
 
 /** Scale a BoxGeometry's UVs so one texture repeat covers `tile` metres. */

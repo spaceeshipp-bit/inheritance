@@ -5,7 +5,12 @@
 //
 // Extra URL params: &phase=lobby|roles|visit|intermission|reading|vote|results
 // (jump straight there), &storm=1 (power out + lightning), &flash=1 (lightning
-// stays on), &specsoff=1, &lineup=1 (bots stand still in a row), &reveal=N.
+// stays on), &specsoff=1, &lineup=1 (bots stand still in a row), &reveal=N,
+// &near=M (with lineup: one cousin stands M metres in front of you), &wallbot=1
+// (a cousin stands in the kitchen behind the wall you face), &holding=1 (start
+// holding another cousin's item), &smash=1 (an heirloom breaks in front of you
+// at 2.5 s), &tie=1 (the reading and results end in a tie for the top share).
+// Bots are named like the real server's ("Bertie (bot)").
 import {
   COUSINS, PREFERENCE_CARDS, PROTOCOL_VERSION, QUICKCHAT, READING_TIME, RESULTS_TIME, ROLE_REVEAL_TIME, SNAPSHOT_HZ,
   VISITS, VOTE_TIME, INTERMISSION_TIME, type VisitId,
@@ -58,7 +63,7 @@ class MockServer {
         this.send({ t: 'welcome', you: this.me, token: 'mock-token', room: m.room || 'MOCK1', protocol: PROTOCOL_VERSION });
         this.players = [
           { id: this.me, name: m.name, isBot: false, isHost: true, willingGrandma: this.o.role === 'grandma', connected: true },
-          ...BOT_NAMES.slice(0, 5).map((n, i) => ({ id: `b${i + 2}`, name: n, isBot: true, isHost: false, willingGrandma: false, connected: true })),
+          ...BOT_NAMES.slice(0, 5).map((n, i) => ({ id: `b${i + 2}`, name: `${n} (bot)`, isBot: true, isHost: false, willingGrandma: false, connected: true })),
         ];
         this.sendLobby();
         this.send({ t: 'peers', ids: [] });
@@ -97,11 +102,13 @@ class MockServer {
     const p = this.o.params;
     const storm = p.get('storm') === '1';
     this.visits = this.options.fullMatch ? ['tea', 'dinner', 'storm'] : storm ? ['storm'] : ['tea'];
+    // Jumping to an intermission needs a match with a visit after it.
+    if (this.o.phase === 'intermission' && this.visits.length < 2) this.visits = ['tea', 'dinner', 'storm'];
     const bots = this.players.slice(1);
     let cousinPlayers: PlayerInfo[];
     if (this.o.role === 'grandma') { this.grandmaId = this.me; cousinPlayers = bots; }
     else { this.grandmaId = bots[bots.length - 1].id; cousinPlayers = [this.players[0], ...bots.slice(0, -1)]; }
-    this.names = Object.fromEntries(this.players.map((x) => [x.id, x.id === this.grandmaId && this.o.role === 'cousin' ? 'Nana Agatha' : x.name]));
+    this.names = Object.fromEntries(this.players.map((x) => [x.id, x.id === this.grandmaId && this.o.role === 'cousin' ? 'Nana Agatha (bot)' : x.name]));
     this.cousins = cousinPlayers.map((x, i) => ({ id: x.id, name: x.name, color: COUSINS[i].color, item: COUSINS[i].key, itemName: COUSINS[i].item }));
     this.send({
       t: 'match', role: this.o.role, grandmaId: this.grandmaId, cousins: this.cousins, names: this.names, visits: this.visits,
@@ -111,12 +118,14 @@ class MockServer {
     this.sim = new MockSim({
       me: this.me, role: this.o.role, grandmaId: this.grandmaId, cousins: this.cousins, names: this.names, storm,
       specsOff: p.get('specsoff') === '1', lineup: p.get('lineup') === '1', flash: p.get('flash') === '1',
+      near: Number(p.get('near') ?? 0) || 0, wallBot: p.get('wallbot') === '1', holding: p.get('holding') === '1', smash: p.get('smash') === '1',
       emit: (ev: GameEvent, onlyGrandma?: boolean) => { if (!onlyGrandma || this.o.role === 'grandma') this.send({ t: 'ev', ...ev }); },
     });
     const jump = this.o.phase;
     this.visit = this.visits[0];
-    if (jump === 'roles') this.setPhase('roles', 600);
-    else if (jump === 'intermission') { this.fastForward(15); this.setPhase('intermission', INTERMISSION_TIME, 'tea'); }
+    if (jump === 'roles') this.setPhase('roles', ROLE_REVEAL_TIME);
+    // Like the server, an intermission names the visit that comes next.
+    else if (jump === 'intermission') { this.fastForward(15); this.setPhase('intermission', INTERMISSION_TIME, this.visits[1]); }
     else if (jump === 'reading' || jump === 'vote' || jump === 'results') { this.fastForward(20); this.toReading(); }
     else this.setPhase('roles', p.get('reveal') ? Number(p.get('reveal')) : Math.min(3, ROLE_REVEAL_TIME));
     this.hold = jump === 'reading' || jump === 'vote' || jump === 'results' || jump === 'roles' || jump === 'intermission';
@@ -134,23 +143,29 @@ class MockServer {
   private toReading(): void {
     const sim = this.sim;
     if (!sim) return;
-    // Make the reading interesting: one cousin cut off, one favourite.
+    // Make the reading interesting: one cousin cut off, one favourite (or, with
+    // &tie=1, two cousins sharing the top share).
     const ids = this.cousins.map((c) => c.id);
     const shares: Record<string, number> = {};
-    const preset = [34, 22, 18, 14, 12, 0];
+    const tie = this.o.params.get('tie') === '1';
+    const preset = tie ? [30, 30, 20, 20, 0, 0] : [34, 22, 18, 14, 12, 0];
     ids.forEach((id, i) => { shares[id] = preset[(i + 2) % ids.length] ?? 10; });
     const sum = Object.values(shares).reduce((a, b) => a + b, 0);
-    shares[ids[0]] += 100 - sum;
+    shares[ids[tie ? 2 : 0]] += 100 - sum;
     sim.will.shares = shares;
     const order = readingOrder(sim.will);
     const n = (id: string) => this.names[id] ?? id;
+    // More moments than the reading shows: it must pick three, people first, one per actor.
     const moments = [
-      { kind: 'love-you-nana' as const, t: 41, actor: ids[1], text: `${n(ids[1])} said "Love you, Nana!" and shoved ${n(ids[2])} three seconds later.` },
+      { kind: 'caught-red-handed' as const, t: 22, actor: ids[2], text: `${n(ids[2])} was caught red-handed (a shove).` },
+      { kind: 'love-you-nana' as const, t: 41, actor: ids[1], victim: ids[2], text: `${n(ids[1])} said "Love you, Nana!" and shoved ${n(ids[2])} three seconds later.` },
+      { kind: 'caught-red-handed' as const, t: 52, actor: ids[1], text: `${n(ids[1])} was caught red-handed (a theft).` },
       { kind: 'framed' as const, t: 77, actor: ids[3], victim: ids[2], text: `${n(ids[3])} planted ${n(ids[2])}'s item, and Nana fell for it.` },
+      { kind: 'favourite-broken' as const, t: 95, actor: ids[0], text: `${n(ids[0])} broke Nana's favourite heirloom.` },
       { kind: 'big-cut' as const, t: 120, actor: this.grandmaId, victim: ids[4], text: `Nana took 28 points off ${n(ids[4])} in one sitting.` },
     ];
     this.send({ t: 'reading', result: { shares, order, moments } });
-    this.setPhase('reading', this.hold ? 600 : READING_TIME);
+    this.setPhase('reading', READING_TIME);
   }
 
   private toResults(dur = RESULTS_TIME): void {
@@ -158,15 +173,16 @@ class MockServer {
     if (!sim) return;
     const shares = sim.will.shares;
     const ids = this.cousins.map((c) => c.id);
+    const tie = this.o.params.get('tie') === '1';
     const sabotage: Record<string, number> = {};
-    ids.forEach((id, i) => { sabotage[id] = [0, 6, 2, 9, 1, 3][i % 6]; });
+    ids.forEach((id, i) => { sabotage[id] = (tie ? [0, 6, 2, 6, 1, 3] : [0, 6, 2, 9, 1, 3])[i % 6]; });
     const votes: Record<string, number> = {};
-    ids.forEach((id, i) => { votes[id] = i === 3 ? 3 : i === 1 ? 2 : 0; });
+    ids.forEach((id, i) => { votes[id] = i === 3 ? (tie ? 2 : 3) : i === 1 ? 2 : 0; });
     const order = readingOrder(sim.will);
     this.send({
       t: 'results',
       result: {
-        shares, order, moments: [], sabotage, grandmaScore: grandmaScore(shares, sabotage), votes, votedWorst: ids[3],
+        shares, order, moments: [], sabotage, grandmaScore: grandmaScore(shares, sabotage), votes, votedWorst: tie ? null : ids[3],
         metrics: { plants: 2, plantsAccusedOwner: 1, framingAccuracy: 0.5, shoves: 7, breaks: 3 },
       },
     });
@@ -203,14 +219,14 @@ class MockServer {
       case 'roles': this.setPhase('visit', VISITS[this.visits[0]].duration, this.visits[0]); break;
       case 'visit': {
         const i = this.visit ? this.visits.indexOf(this.visit) : -1;
-        if (i >= 0 && i < this.visits.length - 1) this.setPhase('intermission', INTERMISSION_TIME);
+        // The intermission's phase message carries the visit that comes next, as on the server.
+        if (i >= 0 && i < this.visits.length - 1) this.setPhase('intermission', INTERMISSION_TIME, this.visits[i + 1]);
         else this.toReading();
         break;
       }
       case 'intermission': {
-        const i = this.visit ? this.visits.indexOf(this.visit) : -1;
-        const next = this.visits[i + 1] ?? 'tea';
-        if (this.sim) { this.sim.will.usedThisVisit = 0; this.sim.will.recent = []; }
+        const next = this.visit ?? 'tea';
+        if (this.sim) this.sim.will.usedThisVisit = 0;
         this.setPhase('visit', VISITS[next].duration, next);
         break;
       }

@@ -4,10 +4,18 @@
 import * as THREE from 'three';
 import type { ItemKey } from '../../../shared/constants.js';
 import type { CharSnap, PropSnap, Vec3, WishInfo } from '../../../shared/types.js';
-import { hashStr } from '../util.js';
+import { hashStr, rng } from '../util.js';
 import type { CharacterModel, Degrade } from './characters.js';
-import { makeCat, makeHeirloom, makeItem, makePills, makeShards, makeTeacup, type CatParts } from './items.js';
-import { blobMaterial, mat } from './materials.js';
+import { HEIRLOOM_COLORS, makeCat, makeHeirloom, makeItem, makePills, makeShards, makeTeacup, type CatParts } from './items.js';
+import { blobMaterial, mat, puff } from './materials.js';
+
+/** A shard flying out of a smash: bounces on the floor, then lies still. */
+interface Flying { mesh: THREE.Object3D; vel: THREE.Vector3; spin: THREE.Vector3; bounces: number }
+/** One puff of the dust cloud a smash throws up. */
+interface Puff { sprite: THREE.Sprite; vel: THREE.Vector3; age: number; life: number; size: number }
+
+const SHARD_GRAVITY = 14;
+const DUST_LIFE = 1.6;
 
 export interface PropFrame {
   props: Map<string, PropSnap>;
@@ -41,6 +49,10 @@ class PropView {
   meshes: THREE.Mesh[] = [];
   lastPos = new THREE.Vector3();
   walk = 0;
+  /** Seen in one piece: a later break is animated (shards fly, dust rises). */
+  seenWhole = false;
+  flying: Flying[] = [];
+  dust: Puff[] = [];
 
   constructor(readonly snap: PropSnap, itemKey: ItemKey | null) {
     switch (snap.kind) {
@@ -75,13 +87,86 @@ export class PropViews {
   constructor(private scene: THREE.Scene) {}
 
   clear(): void {
-    for (const v of this.views.values()) v.root.removeFromParent();
+    for (const v of this.views.values()) { v.root.removeFromParent(); this.endBurst(v); }
     this.views.clear();
+  }
+
+  /**
+   * A smash seen as it happens: the shards start in the middle and fly out,
+   * bounce and settle; a dust cloud puffs up and fades (review P9).
+   */
+  private burst(v: PropView, variant: string, seed: number): void {
+    const shards = v.shards;
+    if (!shards) return;
+    const r = rng(seed ^ 0x5eed);
+    for (const s of shards.children) {
+      const out = new THREE.Vector3(s.position.x, 0, s.position.z);
+      const dir = out.lengthSq() > 1e-6 ? out.normalize() : new THREE.Vector3(1, 0, 0);
+      const speed = 1.6 + r() * 2.4;
+      s.position.set(dir.x * 0.05, 0.3 + r() * 0.25, dir.z * 0.05);
+      // Bigger pieces than the ones a late arrival finds, so the flight reads from across the room.
+      s.scale.multiplyScalar(1.5);
+      v.flying.push({
+        mesh: s,
+        vel: new THREE.Vector3(dir.x * speed, 2.6 + r() * 2.2, dir.z * speed),
+        spin: new THREE.Vector3((r() - 0.5) * 18, (r() - 0.5) * 18, (r() - 0.5) * 18),
+        bounces: 0,
+      });
+    }
+    // A mid-grey cloud reads against white pedestals and dark floors alike.
+    const tint = new THREE.Color(HEIRLOOM_COLORS[variant] ?? '#dddddd').lerp(new THREE.Color('#a99f8b'), 0.75);
+    for (let i = 0; i < 12; i++) {
+      const a = (i / 12) * Math.PI * 2 + r() * 0.5;
+      const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: puff(), color: tint, transparent: true, depthWrite: false, opacity: 0.9 }));
+      sprite.position.set(Math.cos(a) * 0.1, 0.25 + r() * 0.35, Math.sin(a) * 0.1);
+      const size = 0.45 + r() * 0.4;
+      sprite.scale.setScalar(size);
+      v.root.add(sprite);
+      v.dust.push({ sprite, vel: new THREE.Vector3(Math.cos(a) * (0.9 + r() * 1.0), 0.5 + r() * 0.8, Math.sin(a) * (0.9 + r() * 1.0)), age: 0, life: DUST_LIFE * (0.8 + r() * 0.5), size });
+    }
+  }
+
+  /** Step a burst: shards bounce on the floor (local y = 0), dust drifts out and fades. */
+  private stepBurst(v: PropView, dt: number): void {
+    if (dt <= 0) return;
+    v.flying = v.flying.filter((f) => {
+      f.vel.y -= SHARD_GRAVITY * dt;
+      f.mesh.position.addScaledVector(f.vel, dt);
+      f.mesh.rotation.x += f.spin.x * dt;
+      f.mesh.rotation.y += f.spin.y * dt;
+      f.mesh.rotation.z += f.spin.z * dt;
+      if (f.mesh.position.y <= 0.02) {
+        f.mesh.position.y = 0.02;
+        f.bounces++;
+        f.vel.y = -f.vel.y * 0.38;
+        f.vel.x *= 0.55;
+        f.vel.z *= 0.55;
+        f.spin.multiplyScalar(0.5);
+        if (f.bounces >= 3 || Math.abs(f.vel.y) < 0.4) return false;
+      }
+      return true;
+    });
+    v.dust = v.dust.filter((d) => {
+      d.age += dt;
+      const k = d.age / d.life;
+      if (k >= 1) { d.sprite.removeFromParent(); d.sprite.material.dispose(); return false; }
+      d.sprite.position.addScaledVector(d.vel, dt);
+      d.vel.multiplyScalar(Math.exp(-2.2 * dt));
+      d.sprite.scale.setScalar(d.size * (1 + k * 2));
+      d.sprite.material.opacity = 0.9 * (1 - k * k);
+      return true;
+    });
+  }
+
+  private endBurst(v: PropView): void {
+    for (const d of v.dust) { d.sprite.removeFromParent(); d.sprite.material.dispose(); }
+    v.dust = [];
+    v.flying = [];
   }
 
   update(f: PropFrame): void {
     for (const [id, v] of this.views) {
-      if (!f.props.has(id)) { v.root.removeFromParent(); this.views.delete(id); }
+      if (!f.props.has(id)) { v.root.removeFromParent(); this.endBurst(v); this.views.delete(id); }
     }
     for (const p of f.props.values()) {
       let v = this.views.get(p.id);
@@ -116,10 +201,14 @@ export class PropViews {
 
     if (p.kind === 'heirloom') {
       v.body.visible = !p.broken;
+      if (!p.broken) v.seenWhole = true;
       if (p.broken && !v.shards) {
         v.shards = makeShards(p.variant ?? 'vase', hashStr(p.id));
         v.root.add(v.shards);
+        // Only a break we watch happen flies apart; one we arrive to find just lies there.
+        if (v.seenWhole) this.burst(v, p.variant ?? 'vase', hashStr(p.id));
       }
+      if (v.flying.length || v.dust.length) this.stepBurst(v, f.dt);
       if (p.favourite && f.isGrandma && !v.ring && !p.broken) {
         v.ring = new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.02, 6, 28), mat('#ffd75a', { emissive: '#ffbf33', emissiveIntensity: 1.2 }));
         v.ring.rotation.x = Math.PI / 2;

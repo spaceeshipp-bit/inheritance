@@ -8,11 +8,17 @@ import type { SettingsData } from '../settings.js';
 import { rng } from '../util.js';
 import { synth, type SfxKind } from './synth.js';
 
-const LOUDNESS: Partial<Record<SfxKind, number>> = { crash: 3, thunder: 10, whistle: 1.5, summon: 2, oof: 1.2 };
+/** How much closer than it is a sound counts for Grandma's ears (a crash carries). */
+export const LOUDNESS: Partial<Record<SfxKind, number>> = { crash: 3, thunder: 10, whistle: 1.5, summon: 2, oof: 1.2 };
 /** Beyond this many metres cousins don't hear it at all. */
-const RANGE: Partial<Record<SfxKind, number>> = { step: 10, quill: 12, whistle: 14, oof: 16, cane: 14, clink: 8 };
+export const RANGE: Partial<Record<SfxKind, number>> = { step: 10, quill: 12, whistle: 14, oof: 16, cane: 14, clink: 8 };
 
 export class Sfx {
+  /**
+   * The page's sound effects (main.ts makes exactly one). The HUD plays its own
+   * feedback through it (the shove whoosh) without owning a reference.
+   */
+  static main: Sfx | null = null;
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
   private noise: AudioBuffer | null = null;
@@ -21,6 +27,10 @@ export class Sfx {
   private pos: Vec3 = { x: 0, y: 0, z: 0 };
   private aid = false;
   volume = 0.7;
+
+  constructor() {
+    Sfx.main ??= this;
+  }
 
   /** Create/resume the AudioContext. Call from a user gesture. */
   unlock(): void {

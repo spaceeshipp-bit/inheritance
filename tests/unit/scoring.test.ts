@@ -34,10 +34,21 @@ describe("Grandma's score", () => {
   });
 
   it('labels winners, partial winners and the disgraced', () => {
-    const shares = { a: 50, b: 50, c: 0 };
+    const shares = { a: 50, b: 30, c: 20, d: 0 };
     expect(cousinOutcome(shares, 'a')).toBe('winner');
+    expect(cousinOutcome(shares, 'b')).toBe('partial');
     expect(cousinOutcome({ a: 60, b: 40 }, 'b')).toBe('partial');
-    expect(cousinOutcome(shares, 'c')).toBe('disgraced');
+    expect(cousinOutcome(shares, 'd')).toBe('disgraced');
+  });
+
+  it('a tie for the biggest share splits the lot: nobody inherits it alone (review P6/P20)', () => {
+    const shares = { a: 40, b: 40, c: 20, d: 0 };
+    expect(cousinOutcome(shares, 'a')).toBe('tied');
+    expect(cousinOutcome(shares, 'b')).toBe('tied');
+    expect(cousinOutcome(shares, 'c')).toBe('partial');
+    expect(cousinOutcome(shares, 'd')).toBe('disgraced');
+    const flat = { a: 25, b: 25, c: 25, d: 25 };
+    expect(Object.keys(flat).map((id) => cousinOutcome(flat, id))).toEqual(['tied', 'tied', 'tied', 'tied']);
   });
 });
 

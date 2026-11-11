@@ -1,15 +1,32 @@
 // Full-screen phase cards: role reveal, intermission, the "who was worst" vote.
 import { VISITS } from '../../../shared/constants.js';
+import type { VisitId } from '../../../shared/types.js';
 import type { GameState } from '../state.js';
-import { el, fmtTime, setText } from '../util.js';
+import { el, fmtTime, setStyle, setText } from '../util.js';
+import { botGlyph, isBot, nameOf, swatch } from './ident.js';
 import { WillList } from './willview.js';
 
 export const COUSIN_KEYS = 'WASD move - Shift run - Ctrl/C sneak - Space jump - LMB grab - RMB throw - F shove - E interact/steal - G plant - Q quick-chat - T tattle - Alt whisper - Enter chat';
 export const GRANDMA_KEYS = 'WASD move - E Bless - Q Tut - Scroll lock name - Tab parchment - LMB cane - RMB hearing aid - F spectacles - R summon - C pin - V quick-chat - Enter chat';
 
+/** The one-line goal on each role card (review P3: no stated goal). */
+export const ROLE_GOAL = {
+  cousin: 'Biggest share when the will is read wins. Only Nana changes the will.',
+  grandma: "Leave the least to whoever really misbehaved. That's your score.",
+} as const;
+
+/** The intermission card's "Next:" line. The server sends the upcoming visit in `phase.visit` (review P5). */
+export function nextVisitText(upcoming: VisitId | null, visits: VisitId[]): string {
+  if (!upcoming) return 'Next visit';
+  const i = visits.indexOf(upcoming);
+  return `Next: ${VISITS[upcoming].name}${i >= 0 && visits.length > 1 ? ` (visit ${i + 1} of ${visits.length})` : ''}`;
+}
+
 export class RoleReveal {
   readonly root = el('div', 'phase-card reveal');
   private timer = el('div', 'phase-timer');
+  private bar = el('div', 'reveal-progress-fill');
+  private total = 0;
 
   constructor(s: GameState) {
     const m = s.match;
@@ -19,6 +36,7 @@ export class RoleReveal {
       this.root.appendChild(el('div', 'reveal-kicker', 'You are'));
       this.root.appendChild(el('div', 'reveal-name', 'GRANDMA'));
       this.root.appendChild(el('div', 'reveal-sub', 'Rich, ninety-one, and very hard of hearing. The will is yours to rewrite, live.'));
+      this.root.appendChild(this.goal(ROLE_GOAL.grandma));
       const ul = el('ul', 'reveal-list');
       for (const t of [
         'Bless (E) the dears who flatter you, Tut (Q) the wicked ones. Tab opens the full parchment.',
@@ -37,13 +55,12 @@ export class RoleReveal {
       const me = s.cousin(s.selfId);
       this.root.classList.add('cousin');
       this.root.appendChild(el('div', 'reveal-kicker', 'You are a cousin'));
-      const name = el('div', 'reveal-name', me?.name ?? s.name(s.selfId));
+      const name = el('div', 'reveal-name', nameOf(s, s.selfId));
       name.style.color = me?.color ?? '#fff';
       this.root.appendChild(name);
+      this.root.appendChild(this.goal(ROLE_GOAL.cousin));
       const band = el('div', 'reveal-band');
-      const sw = el('span', 'swatch huge');
-      sw.style.background = me?.color ?? '#888';
-      band.append(sw, el('span', '', `Your colour band. Your signature item: ${me?.itemName ?? '?'} (worn on your back).`));
+      band.append(swatch(me?.color ?? '#888', me?.item, 'huge'), el('span', '', `Your colour band. Your signature item: ${me?.itemName ?? '?'} (worn on your back).`));
       this.root.appendChild(band);
       const ul = el('ul', 'reveal-list');
       for (const t of [
@@ -54,11 +71,23 @@ export class RoleReveal {
       this.root.appendChild(ul);
       this.root.appendChild(el('div', 'reveal-keys', COUSIN_KEYS));
     }
-    this.root.appendChild(this.timer);
+    this.root.appendChild(el('div', 'reveal-help', 'Press H any time for the controls. The gear (top right) has the settings.'));
+    const progress = el('div', 'reveal-progress');
+    progress.appendChild(this.bar);
+    this.root.append(this.timer, progress);
+  }
+
+  private goal(text: string): HTMLElement {
+    const g = el('div', 'reveal-goal');
+    g.append(el('span', 'goal-kicker', 'Your goal'), el('span', '', text));
+    return g;
   }
 
   frame(s: GameState, now: number): void {
-    setText(this.timer, `The visit begins in ${Math.max(0, Math.ceil(s.phaseEndsAt - now))}`);
+    const left = Math.max(0, s.phaseEndsAt - now);
+    if (!this.total) this.total = Math.max(1, left);
+    setText(this.timer, `The visit begins in ${Math.ceil(left)}`);
+    setStyle(this.bar, 'width', `${Math.max(0, Math.min(100, (left / this.total) * 100)).toFixed(1)}%`);
   }
 }
 
@@ -81,10 +110,7 @@ export class Intermission {
   }
 
   frame(s: GameState, now: number, t: number): void {
-    const m = s.match;
-    const idx = m && s.visit ? m.visits.indexOf(s.visit) : -1;
-    const nextVisit = m && idx >= 0 ? m.visits[idx + 1] : undefined;
-    setText(this.next, nextVisit ? `Next: ${VISITS[nextVisit].name}` : 'Next visit');
+    setText(this.next, nextVisitText(s.visit, s.match?.visits ?? []));
     setText(this.timer, `Resuming in ${fmtTime(s.phaseEndsAt - now)}`);
     this.will?.frame({ shares: s.shares, changes: {}, t, self: s.selfId });
   }
@@ -102,9 +128,11 @@ export class VoteScreen {
     const grid = el('div', 'vote-grid');
     for (const c of s.match?.cousins ?? []) {
       const b = el('button', 'vote-btn');
-      const sw = el('span', 'swatch big');
-      sw.style.background = c.color;
-      b.append(sw, el('span', '', c.name + (c.id === s.selfId ? ' (you)' : '')));
+      const name = el('span', 'vote-name', nameOf(s, c.id));
+      name.title = nameOf(s, c.id);
+      b.append(swatch(c.color, c.item, 'big'), name);
+      if (isBot(s, c.id)) b.appendChild(botGlyph());
+      if (c.id === s.selfId) b.appendChild(el('span', 'badge you', 'you'));
       b.disabled = c.id === s.selfId;
       b.addEventListener('click', () => {
         onVote(c.id);

@@ -8,7 +8,7 @@ import * as THREE from 'three';
 import type { ItemKey } from '../../../shared/constants.js';
 import type { CharSnap } from '../../../shared/types.js';
 import { clamp, damp, rng } from '../util.js';
-import { blobMaterial, mat } from './materials.js';
+import { bandPatternIndex, bandPatternTexture, blobMaterial, boxGeo, mat } from './materials.js';
 import { makeItem } from './items.js';
 
 export type Degrade = 'none' | 'heavy' | 'shapes';
@@ -33,6 +33,22 @@ export interface CharFrame {
    */
   cam?: THREE.Vector3;
 }
+
+/** Seconds of the shove gesture (wind back, then both arms thrust forward). */
+const PUSH_TIME = 0.38;
+/** Shove gestures cued by the HUD (character id -> cue time, ms). */
+const pushCues = new Map<string, number>();
+/**
+ * Play the shove gesture on a character: your own on every shove press (hit or
+ * miss), anyone else's when their shove lands (review P12).
+ */
+export function cuePush(id: string): void {
+  if (id) pushCues.set(id, performance.now());
+}
+
+/** Draw each cousin's band pattern on their sash (settings: colour-band patterns). */
+let bandPatterns = true;
+export function setBandPatterns(on: boolean): void { bandPatterns = on; }
 
 interface Joint { obj: THREE.Object3D; rx: number; rz: number; vx: number; vz: number; tx: number; tz: number }
 type JointName = 'armL' | 'armR' | 'legL' | 'legR' | 'head';
@@ -69,8 +85,17 @@ export class CharacterModel {
   private degrade: Degrade = 'none';
   private flopTimer = 0;
   private swingT = 0;
+  private pushT = 0;
   private rand: () => number;
   private headTop = new THREE.Object3D();
+  /** The sash and belt: plain colour, or colour plus the cousin's pattern. */
+  private bandMeshes: THREE.Mesh[] = [];
+  private bandPlain: THREE.Material | null = null;
+  private bandPatterned: THREE.Material | null = null;
+  private patternsShown: boolean | null = null;
+  /** Near-camera fade: current opacity and per-material transparent copies. */
+  private fade = 1;
+  private fadeMats = new Map<THREE.Material, THREE.Material>();
 
   constructor(look: CharLook) {
     this.look = look;
@@ -148,10 +173,18 @@ export class CharacterModel {
       const pearls = this.part(L, new THREE.TorusGeometry(0.11, 0.018, 6, 18), mat('#f4f0ea', { rough: 0.2 }), 0, 0.6, -0.03);
       pearls.rotation.x = Math.PI / 2 - 0.3;
     } else {
-      // The colour sash, diagonally across the chest and back.
-      const sash = this.part(L, new THREE.BoxGeometry(0.11, 0.8, 0.335), band, 0, 0.33, 0);
+      // The colour sash, diagonally across the chest and back, and a belt: the
+      // band's pattern (one texture repeat per sash width) tells cousins apart
+      // without relying on colour alone.
+      const sash = this.part(L, boxGeo(0.11, 0.8, 0.335, 0.11), band, 0, 0.33, 0);
       sash.rotation.z = 0.72;
-      this.part(L, new THREE.BoxGeometry(0.4, 0.07, 0.25), band, 0, 0.12, 0);
+      const belt = this.part(L, boxGeo(0.4, 0.07, 0.25, 0.11), band, 0, 0.12, 0);
+      this.bandMeshes.push(sash, belt);
+      this.bandPlain = band;
+      const pi = bandPatternIndex(this.look.item);
+      this.bandPatterned = pi >= 0
+        ? mat(this.look.color, { rough: 0.55, emissive: this.look.color, emissiveIntensity: 0.12, map: bandPatternTexture(pi) })
+        : band;
     }
     // Arms (pivot at the shoulder).
     for (const s of [-1, 1]) {
@@ -223,14 +256,67 @@ export class CharacterModel {
   setDegrade(d: Degrade): void {
     if (d === this.degrade) return;
     this.degrade = d;
-    for (const m of this.meshes) m.material = d === 'none' ? (m.userData.mat as THREE.Material) : d === 'heavy' ? greyMat : darkMat;
+    this.applyMaterials();
+  }
+
+  /** The material a mesh shows before any fade: its own, or Grandma's grey/dark degraded look. */
+  private baseMaterial(m: THREE.Mesh): THREE.Material {
+    return this.degrade === 'none' ? (m.userData.mat as THREE.Material) : this.degrade === 'heavy' ? greyMat : darkMat;
+  }
+
+  /** Put the right material on every mesh for the current degrade, pattern and fade. */
+  private applyMaterials(): void {
+    for (const m of this.meshes) {
+      const base = this.baseMaterial(m);
+      if (this.fade >= 0.999) { m.material = base; continue; }
+      let faded = this.fadeMats.get(base);
+      if (!faded) {
+        faded = base.clone();
+        faded.transparent = true;
+        faded.depthWrite = false;
+        this.fadeMats.set(base, faded);
+      }
+      faded.opacity = this.fade;
+      m.material = faded;
+    }
+  }
+
+  /** Swap the sash between plain colour and colour + pattern when the setting changes. */
+  private syncPatterns(): void {
+    if (this.patternsShown === bandPatterns || !this.bandPlain || !this.bandPatterned) return;
+    this.patternsShown = bandPatterns;
+    const use = bandPatterns ? this.bandPatterned : this.bandPlain;
+    for (const m of this.bandMeshes) m.userData.mat = use;
+    this.applyMaterials();
+  }
+
+  /** Opacity for a body this close to the camera: fully drawn from 0.5 m out, a ghost when touching. */
+  private fadeFor(c: CharSnap, cam: THREE.Vector3 | undefined): number {
+    if (!cam) return 1;
+    const flat = Math.hypot(cam.x - c.pos.x, cam.z - c.pos.z);
+    const top = c.pos.y + 1.85 * this.scale;
+    const dy = cam.y > top ? cam.y - top : cam.y < c.pos.y ? c.pos.y - cam.y : 0;
+    const d = Math.hypot(Math.max(0, flat - 0.3 * this.scale), dy);
+    const k = clamp((d - 0.1) / 0.4, 0, 1);
+    return 0.12 + 0.88 * k * k * (3 - 2 * k);
   }
 
   update(c: CharSnap, dt: number, f: CharFrame): void {
     const s = this.scale;
     this.root.position.set(c.pos.x, c.pos.y, c.pos.z);
     this.yawG.rotation.y = c.yaw;
+    this.syncPatterns();
     this.setDegrade(f.degrade);
+    const fade = this.fadeFor(c, f.cam);
+    if (Math.abs(fade - this.fade) > 0.01 || (fade >= 0.999) !== (this.fade >= 0.999)) {
+      this.fade = fade;
+      this.applyMaterials();
+    }
+    const cue = pushCues.get(c.id);
+    if (cue !== undefined) {
+      pushCues.delete(c.id);
+      if (performance.now() - cue < 500 && c.state === 'normal') this.pushT = PUSH_TIME;
+    }
     if (this.item) this.item.visible = f.itemOnBody && f.degrade === 'none';
     this.halo.visible = c.leader && f.degrade === 'none';
     if (this.specs) this.specs.visible = !c.specsOff;
@@ -316,7 +402,18 @@ export class CharacterModel {
       J.head.tx = clamp(-c.pitch * 0.5, -0.5, 0.5);
       J.head.tz = 0;
       this.leanG.rotation.x = -(c.running ? 0.18 : 0) - (c.sneaking ? 0.3 : 0);
+      if (this.pushT > 0) {
+        // The shove: a quick wind-back, then both arms thrust out, elbows wide (it reads
+        // from behind, where the camera usually is), and the body lunges in.
+        this.pushT -= dt;
+        const windUp = this.pushT > PUSH_TIME - 0.1;
+        J.armL.tx = J.armR.tx = windUp ? -0.6 : 1.45;
+        J.armL.tz = windUp ? -0.2 : -0.6;
+        J.armR.tz = windUp ? 0.2 : 0.6;
+        this.leanG.rotation.x = windUp ? 0.14 : -0.45;
+      }
     } else {
+      this.pushT = 0;
       this.flopTimer -= dt;
       if (this.flopTimer <= 0) {
         this.flopTimer = 0.12 + this.rand() * 0.25;
@@ -350,5 +447,7 @@ export class CharacterModel {
     this.root.traverse((o) => {
       if (o instanceof THREE.Mesh) o.geometry.dispose();
     });
+    for (const m of this.fadeMats.values()) m.dispose();
+    this.fadeMats.clear();
   }
 }

@@ -29,9 +29,18 @@ export function grandmaScore(shares: Record<string, number>, sabotage: Record<st
   return Math.round(50 * (1 - r));
 }
 
-/** Cousin outcome labels for the results screen. */
-export function cousinOutcome(shares: Record<string, number>, id: string): 'winner' | 'partial' | 'disgraced' {
-  const max = Math.max(...Object.values(shares));
+export type CousinOutcome = 'winner' | 'tied' | 'partial' | 'disgraced';
+
+/**
+ * Cousin outcome labels for the reading and the results screen. The biggest
+ * share wins ("inherits the lot"); when several cousins share the biggest
+ * share, none of them takes the lot alone: they are 'tied' ("split the lot").
+ * Anyone else above 0% gets a share; 0% is disgraced.
+ */
+export function cousinOutcome(shares: Record<string, number>, id: string): CousinOutcome {
+  const values = Object.values(shares);
+  const max = Math.max(...values);
   if (shares[id] === 0) return 'disgraced';
-  return shares[id] === max ? 'winner' : 'partial';
+  if (shares[id] !== max) return 'partial';
+  return values.filter((v) => v === max).length > 1 ? 'tied' : 'winner';
 }

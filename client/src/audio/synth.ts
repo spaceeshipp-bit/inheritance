@@ -2,7 +2,8 @@
 // its own nodes into `out` starting at `t` and returns its duration.
 
 export type SfxKind =
-  | 'crash' | 'step' | 'quill' | 'whistle' | 'cane' | 'oof' | 'ding' | 'thunder' | 'clink' | 'tut' | 'bless' | 'pop' | 'summon';
+  | 'crash' | 'step' | 'quill' | 'whistle' | 'cane' | 'oof' | 'ding' | 'thunder' | 'clink' | 'tut' | 'bless' | 'pop' | 'summon'
+  | 'whoosh';
 
 export interface SynthCtx { ctx: AudioContext; noise: AudioBuffer; out: AudioNode; t: number; rand: () => number }
 
@@ -169,6 +170,17 @@ export function synth(kind: SfxKind, s: SynthCtx): number {
         }
       });
       return 1;
+    }
+    case 'whoosh': {
+      // A shove's swing through the air: band-passed noise sweeping up, then away.
+      const n = noiseSrc(s, t, 0.3);
+      const bp = filter(ctx, 'bandpass', 380, 1.4);
+      bp.frequency.setValueAtTime(380, t);
+      bp.frequency.exponentialRampToValueAtTime(1900, t + 0.13);
+      bp.frequency.exponentialRampToValueAtTime(700, t + 0.27);
+      const e = env(ctx, t, 0.04, 0.7, 0.22);
+      n.connect(bp).connect(e).connect(out);
+      return 0.32;
     }
     case 'pop':
     default: {

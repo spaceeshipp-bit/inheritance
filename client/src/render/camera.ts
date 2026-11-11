@@ -10,6 +10,28 @@ import { mat } from './materials.js';
 const ORBIT_DIST = 4.2;
 const SHOULDER = 0.45;
 
+/**
+ * Camera shake requested by the HUD (a crash right next to you). The HUD only
+ * cues it when the player has not asked for reduced motion. Decays in ~0.4 s.
+ */
+let shakeAmp = 0;
+export function cueShake(strength: number): void {
+  if (!(strength > 0)) return;
+  shakeAmp = Math.min(0.3, Math.max(shakeAmp, strength));
+}
+
+/** The rig that draws this page's view (one GameRenderer per page). */
+let activeRig: CameraRig | null = null;
+
+/**
+ * Can the player's camera see world point `p`, or is a wall or floor of the
+ * manor in the way? Used by the HUD to hide name tags behind walls. Before the
+ * first third-person frame (no blockers known yet) everything counts as visible.
+ */
+export function lineOfSight(p: Vec3): boolean {
+  return activeRig ? activeRig.sees(p) : true;
+}
+
 /** Vertical FOV (degrees) whose horizontal half-angle is `halfDeg` at this aspect. */
 export function vfovForHalfAngle(halfDeg: number, aspect: number): number {
   const h = (halfDeg * Math.PI) / 180;
@@ -23,8 +45,12 @@ export class CameraRig {
   private viewModel = new THREE.Group();
   private swingT = 0;
   private eyeY = 1.8;
+  private losRay = new THREE.Raycaster();
+  private losDir = new THREE.Vector3();
+  private blockers: THREE.Object3D[] = [];
 
   constructor() {
+    activeRig = this;
     this.camera.rotation.order = 'YXZ';
     // Grandma's cane, visible at the lower right of her view.
     const caneM = mat('#3b2414', { rough: 0.4 });
@@ -55,8 +81,33 @@ export class CameraRig {
 
   swing(): void { this.swingT = 0.35; }
 
+  /** True when nothing of the map stands between the camera and `p`. */
+  sees(p: Vec3): boolean {
+    if (!this.blockers.length) return true;
+    const from = this.camera.position;
+    this.losDir.set(p.x - from.x, p.y - from.y, p.z - from.z);
+    const len = this.losDir.length();
+    if (len < 0.6) return true;
+    this.losRay.set(from, this.losDir.divideScalar(len));
+    this.losRay.far = len - 0.25;
+    return this.losRay.intersectObjects(this.blockers, false).length === 0;
+  }
+
+  /** Jitter the camera while a cued shake lasts (applied after the view is placed). */
+  private applyShake(dt: number): void {
+    if (shakeAmp <= 0.002) { shakeAmp = 0; return; }
+    const t = performance.now() / 1000;
+    const a = shakeAmp;
+    this.camera.position.x += (Math.sin(t * 61) + Math.sin(t * 37.3)) * 0.3 * a;
+    this.camera.position.y += Math.sin(t * 53 + 1.3) * 0.35 * a;
+    this.camera.position.z += Math.sin(t * 43 + 2.1) * 0.3 * a;
+    this.camera.rotation.z += Math.sin(t * 47) * 0.12 * a;
+    shakeAmp *= Math.exp(-7 * dt);
+  }
+
   /** Third-person orbit around a cousin. */
   updateCousin(pos: Vec3, yaw: number, pitch: number, dt: number, blockers: THREE.Object3D[]): void {
+    this.blockers = blockers;
     this.viewModel.visible = false;
     const p = clamp(pitch, -1.05, 0.75);
     const pivot = new THREE.Vector3(pos.x, pos.y + 1.55, pos.z);
@@ -77,6 +128,7 @@ export class CameraRig {
     this.camera.position.copy(cam);
     this.camera.rotation.set(p, yaw, 0, 'YXZ');
     this.setFov(70, dt);
+    this.applyShake(dt);
   }
 
   /** First person for Grandma. */
@@ -93,6 +145,7 @@ export class CameraRig {
     const s = this.swingT > 0 ? Math.sin((1 - this.swingT / 0.35) * Math.PI) : 0;
     this.viewModel.rotation.set(0.25 - s * 1.4, 0, -0.15 - s * 0.3);
     this.viewModel.position.set(0.42 - s * 0.18, -0.36 + s * 0.12, -0.75 - s * 0.15);
+    this.applyShake(dt);
   }
 
   private setFov(fov: number, dt: number): void {

@@ -16,6 +16,14 @@ export const ICONS = {
   down: svg('<path d="M12 20l8-12H4z" fill="currentColor" stroke="none"/>'),
   crash: svg('<path d="M12 2l2 6 6-2-3 6 5 3-6 1 1 6-5-4-5 4 1-6-6-1 5-3-3-6 6 2z" fill="currentColor" stroke="none"/>'),
   quill: svg('<path d="M20 2C10 4 6 10 4 20l2 2c2-6 5-9 9-11-3 0-5 1-7 3 2-6 6-9 12-12z" fill="currentColor" stroke="none"/>'),
+  gear: svg('<circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1"/><circle cx="12" cy="12" r="6.5"/>'),
+  /** A small robot head: this seat is played by a bot. */
+  bot: svg('<rect x="5" y="8" width="14" height="11" rx="3"/><path d="M12 4v4"/><circle cx="12" cy="3.5" r="1.2" fill="currentColor"/><circle cx="9.5" cy="13" r="1.3" fill="currentColor"/><circle cx="14.5" cy="13" r="1.3" fill="currentColor"/>'),
+  lock: svg('<rect x="5" y="11" width="14" height="10" rx="2" fill="currentColor" stroke="none"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>'),
+  aim: svg('<circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/>'),
+  bulb: svg('<path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2V16h5v-.1c0-.8.4-1.5 1-2A6 6 0 0 0 12 3z"/>'),
+  hand: svg('<path d="M6 13V8a1.5 1.5 0 0 1 3 0v4M9 11V5.5a1.5 1.5 0 0 1 3 0V11M12 11V6.5a1.5 1.5 0 0 1 3 0V12M15 12V9a1.5 1.5 0 0 1 3 0v5c0 4-3 7-6.5 7S6 19 5 16l-1.6-3.2a1.5 1.5 0 0 1 2.6-1.4L6 13"/>'),
+  close: svg('<path d="M6 6l12 12M18 6L6 18"/>'),
 } as const;
 
 export function icon(name: keyof typeof ICONS, cls = 'ico'): HTMLSpanElement {

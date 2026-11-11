@@ -7,14 +7,14 @@ export class TopBar {
   readonly root = el('div', 'topbar');
   private visit = el('div', 'visit-name');
   private clock = el('div', 'visit-clock');
-  private wish = el('div', 'wish');
+  private wish = el('div', 'wish hud-panel');
   private wishLabel = el('div', 'wish-label');
   private wishText = el('div', 'wish-text');
   private wishTime = el('div', 'wish-time');
   private wishBar = el('div', 'wish-fill');
 
   constructor() {
-    const head = el('div', 'visit');
+    const head = el('div', 'visit hud-panel');
     head.append(this.visit, this.clock);
     const bar = el('div', 'wish-bar');
     bar.appendChild(this.wishBar);

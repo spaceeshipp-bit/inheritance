@@ -1,11 +1,15 @@
 // A list of cousins and their shares: the cousins' mini-will, Grandma's
 // always-visible parchment, and the standings on the intermission screen.
+// Names show without the server's "(bot)" suffix (a robot glyph instead), and
+// Grandma's locked / aimed rows are marked with icons, not words, so the name
+// she needs is never cut short (review P14).
 import { WILL } from '../../../shared/constants.js';
 import type { CousinInfo } from '../../../shared/types.js';
 import { el, setStyle, setText, show } from '../util.js';
 import { ICONS } from './icons.js';
+import { botGlyph, cleanName, isBotName, swatch } from './ident.js';
 
-interface Row { root: HTMLElement; name: HTMLElement; share: HTMLElement; bar: HTMLElement; arrow: HTMLElement; delta: HTMLElement; tag: HTMLElement }
+interface Row { root: HTMLElement; name: HTMLElement; share: HTMLElement; bar: HTMLElement; arrow: HTMLElement; delta: HTMLElement; tag: HTMLElement; tagKey: string }
 
 export interface WillFrame {
   shares: Record<string, number>;
@@ -17,21 +21,30 @@ export interface WillFrame {
   aim?: string | null;
 }
 
+/**
+ * Budget meters under the will. Grandma's: her own budget. Cousins see the
+ * same numbers labelled as what they are to them: how much Nana can still
+ * change the will (review P19).
+ */
+export type WillMeters = 'grandma' | 'cousin' | false;
+
 export class WillList {
   readonly root: HTMLElement;
   private rows = new Map<string, Row>();
   private body = el('div', 'will-rows');
   private meters: { budget: HTMLElement; rolling: HTMLElement; bText: HTMLElement; rText: HTMLElement } | null = null;
 
-  constructor(cls: string, title: string, cousins: CousinInfo[], withMeters: boolean) {
+  constructor(cls: string, title: string, cousins: CousinInfo[], meters: WillMeters) {
     this.root = el('div', `will ${cls}`);
     this.root.appendChild(el('div', 'will-title', title));
     this.root.appendChild(this.body);
     for (const c of cousins) {
       const root = el('div', 'will-row');
-      const sw = el('span', 'swatch');
-      sw.style.background = c.color;
-      const name = el('span', 'will-name', c.name);
+      const sw = swatch(c.color, c.item);
+      const name = el('span', 'will-name');
+      name.appendChild(el('span', 'will-name-text', cleanName(c.name)));
+      if (isBotName(c.name)) name.appendChild(botGlyph());
+      name.title = cleanName(c.name);
       const tag = el('span', 'will-tag');
       const share = el('span', 'will-share', '0%');
       const arrow = el('span', 'will-arrow');
@@ -42,10 +55,11 @@ export class WillList {
       barWrap.appendChild(bar);
       root.append(sw, name, tag, arrow, delta, share, barWrap);
       this.body.appendChild(root);
-      this.rows.set(c.id, { root, name, share, bar, arrow, delta, tag });
+      this.rows.set(c.id, { root, name, share, bar, arrow, delta, tag, tagKey: '' });
     }
-    if (withMeters) {
+    if (meters) {
       const m = el('div', 'will-meters');
+      if (meters === 'cousin') m.appendChild(el('div', 'meter-head', "Nana's edits left"));
       const mk = (label: string) => {
         const row = el('div', 'meter');
         const lab = el('span', 'meter-label', label);
@@ -57,8 +71,8 @@ export class WillList {
         m.appendChild(row);
         return { fill, txt };
       };
-      const b = mk('Visit budget');
-      const r = mk('Right now');
+      const b = mk(meters === 'cousin' ? 'This visit' : 'Edits left this visit');
+      const r = mk(meters === 'cousin' ? 'Right now' : 'Edits right now');
       this.meters = { budget: b.fill, rolling: r.fill, bText: b.txt, rText: r.txt };
       this.root.appendChild(m);
     }
@@ -73,7 +87,17 @@ export class WillList {
       r.root.classList.toggle('locked', id === f.locked);
       r.root.classList.toggle('aim', id === f.aim);
       r.root.classList.toggle('zero', v === 0);
-      setText(r.tag, id === f.self ? 'you' : id === f.aim ? 'aim' : id === f.locked ? 'locked' : '');
+      const tagKey = id === f.self ? 'you' : `${id === f.aim ? 'aim' : ''}${id === f.locked ? 'lock' : ''}`;
+      if (tagKey !== r.tagKey) {
+        r.tagKey = tagKey;
+        r.tag.textContent = '';
+        r.tag.title = '';
+        if (tagKey === 'you') r.tag.textContent = 'you';
+        else {
+          if (id === f.aim) { const i = el('span', 'tag-ico aim'); i.innerHTML = ICONS.aim; r.tag.appendChild(i); r.tag.title = 'In your sights'; }
+          if (id === f.locked) { const i = el('span', 'tag-ico lock'); i.innerHTML = ICONS.lock; r.tag.appendChild(i); r.tag.title = r.tag.title ? `${r.tag.title}, locked` : 'Locked'; }
+        }
+      }
       const ch = f.changes[id];
       const fresh = ch && f.t - ch.at < 4;
       show(r.arrow, !!fresh);

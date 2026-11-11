@@ -57,6 +57,14 @@ export interface SimConfig {
   flash?: boolean;
   /** Stand the bot cousins in a still row in front of the player (for close-up checks). */
   lineup?: boolean;
+  /** With lineup: one cousin stands this many metres in front of the player (0 = none). */
+  near?: number;
+  /** A cousin stands in the kitchen behind the wall, the player (a cousin) in the hall facing it. */
+  wallBot?: boolean;
+  /** The player (a cousin) starts holding another cousin's signature item. */
+  holding?: boolean;
+  /** An heirloom breaks a few metres in front of the player at 2.5 s. */
+  smash?: boolean;
 }
 
 export class MockSim {
@@ -138,6 +146,42 @@ export class MockSim {
       if (me) { me.pos = { x: -1.6, y: 0, z: 3.6 }; me.yaw = 0; }
       const gm = this.chars.get(c.grandmaId);
       if (gm && c.role === 'cousin') { gm.pos = { x: 2.2, y: 0, z: 0.2 }; gm.yaw = Math.PI - 0.6; gm.wait = 1e9; }
+      if (c.near && me) {
+        const front = [...this.chars.values()].find((x) => x.bot && x.role === 'cousin');
+        if (front) { front.pos = { x: me.pos.x + 0.1, y: 0, z: me.pos.z - c.near }; front.yaw = Math.PI; }
+      }
+    }
+    if (c.wallBot && me) {
+      // Kitchen at x > 8; the hall's east wall stands between z 1.5 and 6.
+      const hidden = [...this.chars.values()].find((x) => x.bot && x.role === 'cousin');
+      // Within name-tag range of the camera (about 9 m), but the wall is in the way.
+      if (hidden) { hidden.pos = { x: 11, y: 0, z: 4 }; hidden.wait = 1e9; hidden.nextAct = 1e9; }
+      me.pos = { x: 6.2, y: 0, z: 4 };
+      me.yaw = -Math.PI / 2;
+    }
+    if (c.holding && me && c.role === 'cousin') {
+      const victim = c.cousins.find((x) => x.id !== c.me);
+      const it = victim ? this.props.get(`item-${victim.id}`) : undefined;
+      if (it) { it.heldBy = me.id; me.holding = it.id; }
+    }
+    if (c.smash) {
+      this.at(2.5, () => {
+        const m = this.chars.get(c.me);
+        if (!m) return;
+        // The nearest whole heirloom to the player, broken right where it stands.
+        let best: (PropSnap & { vel?: Vec3 }) | undefined, bd = Infinity;
+        for (const p of this.props.values()) {
+          if (p.kind !== 'heirloom' || p.broken) continue;
+          const d = flatDist(p.pos, m.pos) + Math.abs(p.pos.y - m.pos.y) * 3;
+          if (d < bd) { bd = d; best = p; }
+        }
+        if (!best) return;
+        // It topples off its pedestal and smashes on the floor beside it.
+        const x = best.pos.x + 0.5, z = best.pos.z + 0.5;
+        best.broken = true;
+        best.pos = { x, y: groundHeight(x, z, best.pos.y - 0.5), z };
+        this.c.emit({ e: 'crash', pos: { ...best.pos }, heirloom: best.id, ...(best.favourite ? { favourite: true } : {}) });
+      });
     }
   }
 
@@ -153,14 +197,18 @@ export class MockSim {
   bubble(from: string, text: string, quick: boolean, whisper = false): void {
     const g = this.chars.get(this.c.grandmaId);
     const sp = this.chars.get(from);
-    for (const role of ['cousin', 'grandma'] as const) {
-      let t = text;
-      if (role === 'grandma' && g && sp && from !== this.c.grandmaId) {
-        const band = hearingBand(dist(g.pos, sp.pos), !!g.aidActive, whisper ? VOICE.whisperRange : Infinity);
-        t = scrambleText(text, band, from.length * 31 + text.length);
-      }
-      if ((role === 'grandma') === (this.c.role === 'grandma')) this.c.emit({ e: 'bubble', from, text: t, quick, whisper });
+    if (this.c.role === 'grandma' && g && sp && from !== this.c.grandmaId) {
+      // Like the server: nothing out of earshot, muffled text, and who spoke only if she can see them.
+      const band = hearingBand(dist(g.pos, sp.pos), !!g.aidActive, whisper ? VOICE.whisperRange : Infinity);
+      if (band === 'silent') return;
+      const t = scrambleText(text, band, from.length * 31 + text.length);
+      const sense = { pos: g.pos, yaw: g.yaw, aidActive: !!g.aidActive, specsActive: !!g.specsActive, specsOff: !!g.specsOff };
+      const seen = canSee(sense, sp.pos);
+      const rough = { x: Math.round(sp.pos.x), y: Math.round(sp.pos.y), z: Math.round(sp.pos.z) };
+      this.c.emit({ e: 'bubble', from: seen ? from : '', text: t, quick, whisper: false, ...(seen ? {} : { pos: rough }) });
+      return;
     }
+    this.c.emit({ e: 'bubble', from, text, quick, whisper });
   }
 
   willChange(target: string, delta: number, via: 'bless' | 'tut', now = 0): void {

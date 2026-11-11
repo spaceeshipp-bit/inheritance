@@ -9,7 +9,7 @@
 //          Tab parchment, LMB cane, RMB hearing aid, F spectacles, R summon,
 //          C pin, V quick-chat wheel, Left Alt whisper, Enter typed chat.
 // Gamepad: the design doc's controller table (see padAction).
-// Both:    B push-to-talk (when enabled in the lobby), H controls help.
+// Both:    push-to-talk key (settings, default B), H controls help.
 import type { InputMsg } from '../../shared/protocol.js';
 import type { Role } from '../../shared/types.js';
 import type { SettingsData } from './settings.js';
@@ -29,6 +29,12 @@ const GAME_KEYS = new Set([
 ]);
 
 export class Input {
+  /**
+   * A modal panel (settings) is open over the game: new presses, mouse look and
+   * the scroll wheel are ignored, and InputMsg carries no movement or buttons.
+   * Releases still register, so nothing stays held behind the panel.
+   */
+  static blocked = false;
   role: Role = 'cousin';
   /** True while in a match phase where game input matters. */
   active = false;
@@ -60,13 +66,15 @@ export class Input {
   private padAxes: number[] = [0, 0, 0, 0];
   /** L3 toggles running until the stick is released. */
   private padRun = false;
+  /** Push-to-talk key (KeyboardEvent.code), from the settings. */
+  private talkKey = 'KeyB';
 
   constructor(private canvas: HTMLElement) {
     window.addEventListener('keydown', (e) => this.onKey(e, true));
     window.addEventListener('keyup', (e) => this.onKey(e, false));
     window.addEventListener('blur', () => this.clear());
     canvas.addEventListener('mousedown', (e) => {
-      if (!this.active) return;
+      if (!this.active || Input.blocked) return;
       if (!this.locked) {
         if (!this.lookFrozen && !this.parchmentOpen) this.requestLock();
         return;
@@ -78,7 +86,7 @@ export class Input {
     window.addEventListener('mouseup', (e) => { this.mouse &= ~(1 << e.button); });
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
     window.addEventListener('mousemove', (e) => {
-      if (!this.active || !this.locked) return;
+      if (!this.active || !this.locked || Input.blocked) return;
       if (this.lookFrozen) {
         this.cursor.x = clamp(this.cursor.x + e.movementX, -160, 160);
         this.cursor.y = clamp(this.cursor.y + e.movementY, -160, 160);
@@ -89,18 +97,19 @@ export class Input {
       this.pitch = clamp(this.pitch - (this.invertY ? -1 : 1) * e.movementY * this.sensitivity, -1.25, 1.25);
     });
     window.addEventListener('wheel', (e) => {
-      if (!this.active || this.typing || this.parchmentOpen) return;
+      if (!this.active || this.typing || this.parchmentOpen || Input.blocked) return;
       if (e.deltaY > 0) this.onAction('lockNext', true);
       else if (e.deltaY < 0) this.onAction('lockPrev', true);
     }, { passive: true });
     document.addEventListener('pointerlockchange', () => { if (!this.locked) this.mouse = 0; });
   }
 
-  /** Apply player settings (look sensitivity, invert Y). */
+  /** Apply player settings (look sensitivity, invert Y, push-to-talk key). */
   applySettings(s: SettingsData): void {
     this.sensitivity = 0.0024 * s.mouseSensitivity;
     this.padSensitivity = 2.8 * s.padSensitivity;
     this.invertY = s.invertY;
+    this.talkKey = s.pushToTalkKey;
   }
 
   get locked(): boolean { return document.pointerLockElement === this.canvas; }
@@ -128,10 +137,14 @@ export class Input {
 
   private onKey(e: KeyboardEvent, down: boolean): void {
     if (this.typing || !this.active) return;
+    if (down && Input.blocked) return;
     const code = e.code;
-    if (GAME_KEYS.has(code) || (e.ctrlKey && /^Key[A-Z]$/.test(code) && code !== 'KeyW')) e.preventDefault();
+    if (GAME_KEYS.has(code) || code === this.talkKey || (e.ctrlKey && /^Key[A-Z]$/.test(code) && code !== 'KeyW')) e.preventDefault();
     if (down && e.repeat) return;
     this.lastDevice = 'kbm';
+    // The push-to-talk key is chosen in the settings; it is only ever push-to-talk
+    // (never also a held movement or action key).
+    if (code === this.talkKey) { this.onAction('talk', down); return; }
     if (down) { this.keys.add(code); this.latchKeys.add(code); }
     else this.keys.delete(code);
     this.keyAction(code, down);
@@ -150,7 +163,6 @@ export class Input {
       case 'KeyC': if (g) act('pin'); break;
       case 'Enter': case 'NumpadEnter': act('chat'); break;
       case 'AltLeft': act('whisper'); break;
-      case 'KeyB': act('talk'); break;
       case 'KeyH': act('help'); break;
       case 'Escape': act('back'); break;
       default:
@@ -178,7 +190,7 @@ export class Input {
     this.padButtons = buttons;
     this.padAxes = axes;
     if (Math.hypot(axes[0], axes[1]) < 0.2) this.padRun = false;
-    if (!this.active || this.typing) return;
+    if (!this.active || this.typing || Input.blocked) return;
     for (let i = 0; i < buttons.length; i++) {
       if (buttons[i] && !(prev[i] ?? false)) this.latchPad[i] = true;
       if (buttons[i] !== (prev[i] ?? false)) this.padAction(i, buttons[i]);
@@ -236,7 +248,7 @@ export class Input {
 
   /** Current analog move (camera space). */
   move(): { x: number; z: number } {
-    if (this.typing || !this.active) return { x: 0, z: 0 };
+    if (this.typing || !this.active || Input.blocked) return { x: 0, z: 0 };
     const k = (c: string) => (this.keys.has(c) ? 1 : 0);
     let x = k('KeyD') + k('ArrowRight') - k('KeyA') - k('ArrowLeft') + this.padAxes[0];
     let z = k('KeyW') + k('ArrowUp') - k('KeyS') - k('ArrowDown') - this.padAxes[1];
@@ -280,7 +292,7 @@ export class Input {
     this.latchKeys.clear();
     this.latchMouse = 0;
     this.latchPad = [];
-    if (!this.active) {
+    if (!this.active || Input.blocked) {
       msg.move = { x: 0, z: 0 };
       msg.run = msg.sneak = msg.jump = msg.primary = msg.secondary = msg.shove = msg.interact = msg.plant = false;
     }
