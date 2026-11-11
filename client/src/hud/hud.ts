@@ -28,6 +28,7 @@ import { FullParchment } from './parchment.js';
 import { COUSIN_KEYS, GRANDMA_KEYS, Intermission, RoleReveal, VoteScreen } from './phases.js';
 import { ReadingScreen, ResultsScreen } from './reading.js';
 import type { ReplayView } from '../render/scene.js';
+import type { SurveyAnswer, SurveyQuestion } from '../../../shared/protocol.js';
 import { SettingsPanel } from './settings.js';
 import { Toasts } from './toasts.js';
 import { TopBar } from './topbar.js';
@@ -83,6 +84,7 @@ export class Hud {
   private prefs: SettingsData | null = null;
   private store: Settings | null = null;
   onVote: (id: string) => void = () => {};
+  onSurvey: (q: SurveyQuestion, a: SurveyAnswer) => void = () => {};
   onParchmentSet: (target: string, value: number) => void = () => {};
 
   constructor(private hudRoot: HTMLElement, labels: HTMLElement, private overlayRoot: HTMLElement, private s: GameState) {
@@ -358,7 +360,7 @@ export class Hud {
       case 'intermission': this.setOverlay(new Intermission(s), `int-${s.visit}`); break;
       case 'reading': if (s.reading) this.setOverlay(new ReadingScreen(s, s.reading), 'reading'); break;
       case 'vote': this.setOverlay(new VoteScreen(s, (id) => this.onVote(id)), 'vote'); break;
-      case 'results': if (s.results) this.setOverlay(new ResultsScreen(s, s.results), 'results'); break;
+      case 'results': if (s.results) this.setOverlay(new ResultsScreen(s, s.results, (q, a) => this.onSurvey(q, a)), 'results'); break;
       default: this.setOverlay(null, ''); break;
     }
   }

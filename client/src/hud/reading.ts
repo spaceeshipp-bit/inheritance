@@ -4,7 +4,8 @@
 // three moments of the match, one at a time, saving the best for last (review
 // P6). Then the final results with Grandma's score and who actually sabotaged.
 import { cousinOutcome, type CousinOutcome } from '../../../shared/scoring.js';
-import type { FinalResult, Moment, MomentKind, ReadingResult } from '../../../shared/types.js';
+import type { FinalResult, Moment, MomentKind, NanaReason, ReadingResult, Role } from '../../../shared/types.js';
+import type { SurveyAnswer, SurveyQuestion } from '../../../shared/protocol.js';
 import type { GameState } from '../state.js';
 import { el, setText, show } from '../util.js';
 import { MOMENT_TITLES, botGlyph, cleanText, isBot, nameOf, swatch } from './ident.js';
@@ -77,11 +78,28 @@ export function planReading(n: number, topCount: number, momentCount: number, to
   return { lines, badges, moments };
 }
 
+/** "She tutted them: found his phone where it shouldn't be. Really: Agatha planted it there." */
+export function reasonText(r: NanaReason): { did: string; really: string } {
+  const verb = r.via === 'tut' ? 'She tutted' : r.via === 'bless' ? 'She blessed' : r.moved < 0 ? 'She cut them' : 'She raised them';
+  const really = r.truth ? `Really: ${r.truth}` : r.via === 'tut' || r.moved < 0 ? 'And she was right.' : '';
+  return { did: `${verb}: ${r.why}.`, really };
+}
+
+function reasonNote(r: NanaReason): HTMLElement {
+  const t = reasonText(r);
+  const note = el('div', `reading-reason hidden${r.truth ? ' wrong' : ''}`);
+  note.append(el('span', 'rr-did', t.did));
+  if (t.really) note.append(el('span', 'rr-really', t.really));
+  return note;
+}
+
 export class ReadingScreen {
   /** The card, and What Nana Saw over the whole screen once the will has been read. */
   readonly root = el('div', 'reading-wrap');
   private card = el('div', 'phase-card reading');
   private theatre: ReplayTheatre;
+  /** Nana's reason under each line (null where she had none worth telling). */
+  private notes: (HTMLElement | null)[] = [];
   private lines: HTMLElement[] = [];
   private badges: HTMLElement[] = [];
   private momentEls: HTMLElement[] = [];
@@ -119,6 +137,11 @@ export class ReadingScreen {
       if (id === s.selfId) line.classList.add('self');
       if (out === 'winner' || out === 'tied') line.classList.add('top');
       list.appendChild(line);
+      // Nana's reason in the margin, under the line it explains; it shows with the line.
+      const why = r.reasons?.find((x) => x.target === id);
+      const note = why ? reasonNote(why) : null;
+      if (note) list.appendChild(note);
+      this.notes.push(note);
       this.lines.push(line);
       this.badges.push(badge);
     });
@@ -166,7 +189,11 @@ export class ReadingScreen {
       this.plan = planReading(this.lines.length, this.topCount, this.momentEls.length, total);
     }
     const p = this.plan;
-    this.lines.forEach((l, i) => l.classList.toggle('hidden', t < (p.lines[i] ?? 0)));
+    this.lines.forEach((l, i) => {
+      const hidden = t < (p.lines[i] ?? 0);
+      l.classList.toggle('hidden', hidden);
+      this.notes[i]?.classList.toggle('hidden', hidden);
+    });
     const badgesOn = t >= p.badges;
     for (const b of this.badges) b.classList.toggle('hidden', !badgesOn);
     let any = false;
@@ -186,11 +213,42 @@ export function listNames(names: string[]): string {
   return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
 }
 
+/** The playtest survey (GDD "Playtest metrics"): one click per question, the latest answer counts. */
+export function surveyQuestions(role: Role): { q: SurveyQuestion; text: string; answers: SurveyAnswer[] }[] {
+  return [
+    { q: 'again', text: role === 'grandma' ? 'Would you play Grandma again?' : 'Would you play again?', answers: ['yes', 'maybe', 'no'] },
+    { q: 'laughed', text: 'Did anything make you laugh out loud?', answers: ['yes', 'no'] },
+    { q: 'clip', text: 'Did you see a moment worth clipping?', answers: ['yes', 'no'] },
+  ];
+}
+
+const ANSWER_TEXT: Record<SurveyAnswer, string> = { yes: 'Yes', maybe: 'Maybe', no: 'No' };
+
+function surveyPanel(role: Role, onSurvey: (q: SurveyQuestion, a: SurveyAnswer) => void): HTMLElement {
+  const box = el('div', 'survey');
+  box.appendChild(el('div', 'survey-title', 'Quick questions (anonymous, they help us tune the game)'));
+  for (const item of surveyQuestions(role)) {
+    const row = el('div', 'survey-row');
+    row.appendChild(el('span', 'survey-q', item.text));
+    const buttons = item.answers.map((a) => {
+      const b = el('button', 'btn small survey-a', ANSWER_TEXT[a]);
+      b.addEventListener('click', () => {
+        for (const x of buttons) x.classList.toggle('chosen', x === b);
+        onSurvey(item.q, a);
+      });
+      return b;
+    });
+    row.append(...buttons);
+    box.appendChild(row);
+  }
+  return box;
+}
+
 export class ResultsScreen {
   readonly root = el('div', 'phase-card results');
   private timer = el('div', 'phase-timer');
 
-  constructor(s: GameState, r: FinalResult) {
+  constructor(s: GameState, r: FinalResult, onSurvey?: (q: SurveyQuestion, a: SurveyAnswer) => void) {
     this.root.appendChild(el('div', 'reveal-kicker', 'Results'));
     const top = el('div', 'results-top');
     const score = el('div', 'gm-score');
@@ -240,6 +298,7 @@ export class ResultsScreen {
       `Shoves ${mt.shoves} - Breaks ${mt.breaks} - Plants ${mt.plants} (owner accused ${mt.plantsAccusedOwner})` +
       (mt.framingAccuracy !== null ? ` - Framing success ${Math.round(mt.framingAccuracy * 100)}%` : '')));
     this.root.appendChild(this.timer);
+    if (onSurvey && s.role) this.root.appendChild(surveyPanel(s.role, onSurvey));
   }
 
   frame(s: GameState, now: number): void {

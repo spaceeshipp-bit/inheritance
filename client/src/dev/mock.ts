@@ -164,7 +164,13 @@ class MockServer {
       { kind: 'favourite-broken' as const, t: 95, actor: ids[0], text: `${n(ids[0])} broke Nana's favourite heirloom.` },
       { kind: 'big-cut' as const, t: 120, actor: this.grandmaId, victim: ids[4], text: `Nana took 28 points off ${n(ids[4])} in one sitting.` },
     ];
-    this.send({ t: 'reading', result: { shares, order, moments } });
+    // Nana's reasons in the margin: a framing she fell for, a tattle that lied, one she got right.
+    const reasons = [
+      { target: ids[2], via: 'tut' as const, moved: -10, why: `found ${n(ids[2])}'s item where it shouldn't be`, truth: `${n(ids[3])} planted it there.` },
+      { target: ids[4], via: 'parchment' as const, moved: -28, why: `${n(ids[1])} told her it was ${n(ids[4])}`, truth: `${n(ids[4])} had done nothing.` },
+      { target: ids[1], via: 'bless' as const, moved: 5, why: `${n(ids[1])} said such lovely things`, truth: `${n(ids[1])} was behind a shove.` },
+    ];
+    this.send({ t: 'reading', result: { shares, order, moments, reasons } });
     this.setPhase('reading', READING_TIME);
   }
 

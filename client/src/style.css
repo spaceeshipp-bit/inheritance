@@ -515,3 +515,17 @@ body.band-patterns .swatch[data-pat="7"] { background-image: radial-gradient(cir
 .replay-kicker { font-size: 13px; letter-spacing: 0.25em; text-transform: uppercase; opacity: 0.75; }
 .replay-card-title { font-family: var(--serif); font-size: 34px; margin: 6px 0 8px; }
 .replay-card-text { font-size: 17px; line-height: 1.4; }
+
+/* ── playtest survey on the results screen ── */
+.survey { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--panel-border); }
+.survey-title { color: var(--muted); font-size: 13px; margin-bottom: 6px; }
+.survey-row { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 4px 0; flex-wrap: wrap; }
+.survey-q { flex: 1 1 260px; text-align: right; font-size: 15px; }
+.survey-a { min-width: 64px; }
+.survey-a.chosen { background: var(--gold); color: var(--ink); border-color: var(--gold); }
+
+/* ── Nana's reasons in the margin, under the reading's lines ── */
+.reading-reason { margin: -2px 0 6px 44px; text-align: left; font-family: var(--serif); font-size: 14px; font-style: italic; color: #6b5432; }
+.reading-reason .rr-really { display: block; font-style: normal; font-family: var(--sans); font-size: 13px; color: #2e6b3a; }
+.reading-reason.wrong .rr-really { color: #a3291e; font-weight: 600; }
+.reading-reason.hidden { display: none; }

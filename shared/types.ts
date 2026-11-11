@@ -144,6 +144,23 @@ export interface ReadingResult {
   moments: Moment[];
   /** What Nana Saw: the best moments replayed, the truth beside her perception of it. */
   replays?: Replay[];
+  /** Nana's reasons: her biggest decisions, why she made them, and what really happened. */
+  reasons?: NanaReason[];
+}
+
+/**
+ * One of Grandma's will decisions at the reading: what she did, what she had
+ * just perceived that explains it, and the truth beside it.
+ */
+export interface NanaReason {
+  target: string;
+  via: 'bless' | 'tut' | 'parchment';
+  /** Points moved (negative: taken away). */
+  moved: number;
+  /** Her reason, as she saw it ("found Barnaby's phone where it shouldn't be"). */
+  why: string;
+  /** What really happened ("Clementine planted it."), or null if her reason was true. */
+  truth: string | null;
 }
 
 /**

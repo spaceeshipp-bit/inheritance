@@ -1967,6 +1967,7 @@ export class Match {
     this.reading = {
       shares: { ...this.will.shares }, order: readingOrder(this.will), moments: [...this.log.moments],
       replays: this.replay.replays(this.log.moments, (m) => this.log.momentEvent(m)),
+      reasons: this.log.reasons(),
     };
     // The will is read first; What Nana Saw plays after, in the extra time.
     this.setPhase('reading', this.durations.reading + replaysSeconds(this.reading.replays));

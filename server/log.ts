@@ -2,7 +2,7 @@
 // the moments list, the framing metric and the bots' reactions. Nothing here
 // is sent to clients except moments (as they happen) and the final tally.
 import { MOMENT, SABOTAGE_POINTS, WILL } from '../shared/constants.js';
-import type { FinalResult, LogEvent, Moment } from '../shared/types.js';
+import type { FinalResult, LogEvent, Moment, NanaReason } from '../shared/types.js';
 
 export type SabotageKind = 'shove' | 'break' | 'steal' | 'plant' | 'knock-specs';
 export type SabotageEvent = Extract<LogEvent, { kind: SabotageKind }>;
@@ -121,6 +121,77 @@ export class EventLog {
       shoves: this.count('shove'),
       breaks: this.count('break'),
     };
+  }
+
+  /**
+   * Nana's reasons in the margin: her biggest will decisions, each with what
+   * she had just perceived about that cousin, and what really happened. A Tut
+   * is explained by (best first) the crime she linked it to, a planted item of
+   * theirs she found, sabotage she saw them do, or a tattle; a Bless by an
+   * errand they ran or sweet talk she heard. Wrong calls come first: they are
+   * the jokes. At most `n`.
+   */
+  reasons(n = 3): NanaReason[] {
+    const ev = this.events;
+    const nm = this.name;
+    // Her decisions: one per cousin per few seconds (a parchment drag is many small edits).
+    const decisions: { i: number; t: number; target: string; via: NanaReason['via']; moved: number }[] = [];
+    for (let i = 0; i < ev.length; i++) {
+      const e = ev[i];
+      if (e.kind !== 'will' || e.via === 'takeover') continue;
+      const last = decisions[decisions.length - 1];
+      if (last && last.target === e.target && last.via === e.via && e.t - last.t <= 5) { last.moved += e.moved; last.t = e.t; continue; }
+      decisions.push({ i, t: e.t, target: e.target, via: e.via, moved: e.moved });
+    }
+    const sabotageBy = (who: string, from: number, to: number): SabotageEvent | undefined =>
+      ev.find((x): x is SabotageEvent => isSabotage(x) && x.by === who && x.t >= from && x.t <= to);
+    const out: (NanaReason & { wrong: boolean; size: number })[] = [];
+    for (const d of decisions) {
+      if (Math.abs(d.moved) < 3) continue;
+      const before = (k: (e: LogEvent) => boolean): number => {
+        for (let j = d.i; j >= 0 && d.t - ev[j].t <= 20; j--) if (k(ev[j])) return j;
+        return -1;
+      };
+      const who = nm(d.target);
+      let why = '', truth: string | null = null;
+      if (d.moved < 0) {
+        const acc = before((e) => e.kind === 'accuse' && e.target === d.target);
+        const found = before((e) => e.kind === 'found' && e.owner === d.target);
+        const saw = before((e) => isSabotage(e) && e.by === d.target && !!e.seen);
+        const tat = before((e) => e.kind === 'tattle' && e.accused === d.target);
+        const accE = acc >= 0 ? ev[acc] : null;
+        const crime = accE && accE.kind === 'accuse' && accE.crime !== null ? ev[accE.crime] : null;
+        if (found >= 0) {
+          const f = ev[found] as Extract<LogEvent, { kind: 'found' }>;
+          const p = f.plant !== null ? ev[f.plant] : null;
+          why = `found ${who}'s ${nm(f.item).toLowerCase()} where it shouldn't be`;
+          truth = p && p.kind === 'plant' && p.by !== d.target ? `${nm(p.by)} planted it there.` : null;
+        } else if (crime && isSabotage(crime)) {
+          why = `${who} was near ${describe(crime)}`;
+          truth = crime.by && crime.by !== d.target ? `${nm(crime.by)} did it.` : null;
+        } else if (saw >= 0) {
+          why = `saw ${who} at ${describe(ev[saw] as SabotageEvent)}`;
+        } else if (tat >= 0) {
+          const tt = ev[tat] as Extract<LogEvent, { kind: 'tattle' }>;
+          why = `${nm(tt.by)} told her it was ${who}`;
+          truth = sabotageBy(d.target, tt.t - 30, tt.t) ? null : `${who} had done nothing.`;
+        } else {
+          why = 'a feeling in her bones';
+          truth = sabotageBy(d.target, d.t - 60, d.t) ? null : `${who} had done nothing.`;
+        }
+      } else {
+        const wish = before((e) => e.kind === 'wish' && e.by === d.target);
+        const sweet = before((e) => e.kind === 'compliment' && e.by === d.target);
+        if (wish >= 0) why = `${who} ran her errand`;
+        else if (sweet >= 0) why = `${who} said such lovely things`;
+        else why = 'a soft spot for them';
+        const bad = sabotageBy(d.target, d.t - 30, d.t + 30);
+        truth = bad ? `${who} was behind ${describe(bad)}.` : null;
+      }
+      out.push({ target: d.target, via: d.via, moved: d.moved, why, truth, wrong: truth !== null, size: Math.abs(d.moved) });
+    }
+    out.sort((a, b) => Number(b.wrong) - Number(a.wrong) || b.size - a.size);
+    return out.slice(0, n).map(({ target, via, moved, why, truth }) => ({ target, via, moved, why, truth }));
   }
 
   /** Points moved per cousin within [t0, t1] (negative = lost), from 'will' events. */

@@ -51,6 +51,7 @@ export class Game {
   constructor(private d: GameDeps) {
     d.input.onAction = (a, down) => this.onAction(a, down);
     d.hud.onVote = (id) => { d.state.myVote = id; d.send({ t: 'vote', target: id }); d.sfx.play('pop'); };
+    d.hud.onSurvey = (q, a) => { d.send({ t: 'survey', q, a }); d.sfx.play('pop'); };
     d.hud.onParchmentSet = (target, value) => d.send({ t: 'grandma', a: 'set', target, value });
     d.hud.chat.onSend = (text) => d.send({ t: 'chat', text });
     d.hud.chat.onClose = () => { d.input.typing = false; };

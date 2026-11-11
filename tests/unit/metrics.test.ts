@@ -7,7 +7,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { PROTOCOL_VERSION } from '../../shared/constants.js';
-import type { ServerMsg } from '../../shared/protocol.js';
+import { SURVEY_QUESTIONS, type ServerMsg } from '../../shared/protocol.js';
+import { surveyQuestions } from '../../client/src/hud/reading.js';
 import { jsonLines } from '../../server/index.js';
 import { RoomManager, type Conn, type Session } from '../../server/room.js';
 import { parseClientMsg } from '../../server/validate.js';
@@ -99,6 +100,16 @@ describe('playtest records', () => {
     w.run(400, () => w.room.match === null);
     for (let i = 0; i < 30; i++) w.send(w.bob, { t: 'survey', q: 'clip', a: i % 2 ? 'yes' : 'no' });
     expect(w.records.filter((r) => r.type === 'survey')).toHaveLength(12);
+  });
+
+  it('the results screen asks exactly what the server accepts, Grandma about playing Grandma', () => {
+    for (const role of ['grandma', 'cousin'] as const) {
+      const qs = surveyQuestions(role);
+      expect(qs.map((x) => x.q)).toEqual([...SURVEY_QUESTIONS]);
+      for (const x of qs) for (const a of x.answers) expect(parseClientMsg(JSON.stringify({ t: 'survey', q: x.q, a }))).not.toBeNull();
+    }
+    expect(surveyQuestions('grandma')[0].text).toContain('Grandma');
+    expect(surveyQuestions('cousin')[0].text).not.toContain('Grandma');
   });
 
   it('only the three questions and three answers are accepted', () => {
