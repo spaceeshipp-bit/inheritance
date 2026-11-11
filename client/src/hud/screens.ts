@@ -73,6 +73,7 @@ export class Screens {
   private micFill = el('div', 'mic-fill');
   private micText = el('div', 'mic-text', 'Microphone: not started');
   private ptt = el('input');
+  private pttLabel = el('span', '', 'Push-to-talk (hold B)');
   private lobbyErr = el('div', 'err');
   private ipBox = el('div', 'in-progress');
   private ipText = el('div', 'ip-text');
@@ -181,7 +182,11 @@ export class Screens {
     meter.appendChild(this.micFill);
     const micRow = el('div', 'mic-row');
     micRow.append(micIco, meter);
-    mic.append(el('div', 'section-title', 'Mic check'), micRow, this.micText, this.check(this.ptt, 'Push-to-talk (hold B)', (v) => this.h.pushToTalk(v)));
+    this.ptt.type = 'checkbox';
+    this.ptt.addEventListener('change', () => this.h.pushToTalk(this.ptt.checked));
+    const pttRow = el('label', 'check');
+    pttRow.append(this.ptt, this.pttLabel);
+    mic.append(el('div', 'section-title', 'Mic check'), micRow, this.micText, pttRow);
     right.appendChild(mic);
     cols.append(left, right);
     card.append(head, this.ipBox, cols, this.lobbyErr);
@@ -201,6 +206,12 @@ export class Screens {
   showTitle(): void { show(this.root, true); show(this.title, true); show(this.lobby, false); show(this.elsewhere, false); }
   showLobby(): void { show(this.root, true); show(this.title, false); show(this.lobby, true); setText(this.lobbyErr, ''); }
   hide(): void { show(this.root, false); }
+
+  /** Show the push-to-talk setting (also changed from the settings panel) and its key. */
+  setPushToTalk(on: boolean, keyName: string): void {
+    this.ptt.checked = on;
+    setText(this.pttLabel, `Push-to-talk (hold ${keyName})`);
+  }
 
   /** This game is open in another tab, which took the seat. */
   showReplaced(): void {

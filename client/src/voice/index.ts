@@ -49,6 +49,8 @@ export interface VoiceManager {
   setTalkKey(down: boolean): void;
   level(id: string | 'self'): number;
   setMuted(id: string, muted: boolean): void;
+  /** Volume of everyone else's voices, 0..1 (settings: master x voice). */
+  setVolume(v: number): void;
   stop(): void;
 }
 
@@ -107,6 +109,7 @@ class Voice implements VoiceManager {
   private pushToTalk = false;
   private talkKey = false;
   private selfMuted = false;
+  private volume = 1;
   private lastUpdate: VoiceUpdate | null = null;
 
   constructor() {
@@ -122,6 +125,7 @@ class Voice implements VoiceManager {
     const ctx = new AudioContext({ latencyHint: 'interactive' });
     this.ctx = ctx;
     this.master = ctx.createGain();
+    this.master.gain.value = this.volume;
     this.master.connect(ctx.destination);
     const out = new Outbound(ctx);
     out.pushToTalk = this.pushToTalk;
@@ -267,6 +271,11 @@ class Voice implements VoiceManager {
   level(id: string): number {
     if (id === 'self' || id === this.selfId) return this.out && this.started ? this.out.level() : 0;
     return this.peers.get(id)?.level() ?? 0;
+  }
+
+  setVolume(v: number): void {
+    this.volume = Math.max(0, Math.min(1, Number.isFinite(v) ? v : 1));
+    if (this.master && this.ctx) this.master.gain.setTargetAtTime(this.volume, this.ctx.currentTime, 0.05);
   }
 
   /** Mute a peer locally ('self' or our own id mutes our mic instead). */

@@ -7,6 +7,7 @@ import { Sfx } from './audio/sfx.js';
 import { Game } from './game.js';
 import { Hud } from './hud/hud.js';
 import { Screens } from './hud/screens.js';
+import { keyLabel } from './hud/settings.js';
 import { Input } from './input.js';
 import { BoundedQueue, Net, lobbyEndsOurMatch, simulatedLink, webSocketLink, type LinkFactory } from './net.js';
 import { parseNetSim } from '../../shared/netsim.js';
@@ -47,9 +48,10 @@ async function boot(): Promise<void> {
     renderer.setQuality(s.quality);
     input.applySettings(s);
     sfx.applySettings(s);
+    voice.setPushToTalk(s.pushToTalk);
+    voice.setVolume(s.masterVolume * s.voiceVolume);
+    screens.setPushToTalk(s.pushToTalk, keyLabel(s.pushToTalkKey));
   };
-  applySettings();
-  settings.onChange(applySettings);
 
   // Voice: started once we know our id (after the Join click); signals that
   // arrive before it is ready are queued (a bounded queue, emptied on leave).
@@ -117,7 +119,7 @@ async function boot(): Promise<void> {
     willing: (on) => net.send({ t: 'lobby', willingGrandma: on }),
     options: (o) => net.send({ t: 'lobby', options: o }),
     start: () => { sfx.unlock(); net.send({ t: 'start' }); },
-    pushToTalk: (on) => voice.setPushToTalk(on),
+    pushToTalk: (on) => settings.set({ pushToTalk: on }),
     leave: () => {
       net.leave();
       toTitle();
@@ -126,6 +128,9 @@ async function boot(): Promise<void> {
     // Take the seat back from the other tab (that tab is told it is open elsewhere).
     reclaim: () => { if (myName && net.room) join(myName, net.room); },
   });
+  // Settings apply now and whenever they change (renderer, input, sound, voice, the lobby's push-to-talk box).
+  applySettings();
+  settings.onChange(applySettings);
 
   net.onStatus = (s) => {
     hud.setNet(s);
