@@ -4,37 +4,73 @@ Read this first, then `docs/ARCHITECTURE.md` (the build spec) and `docs/GDD.md` 
 This file says where the build stands, what is left, in what order, and the bar each
 piece has to clear. Update the "Status" section as you go; it is the project's memory.
 
-## Status (2026-11-11)
+## Status (2026-11-11, evening)
 
-The parallel build was cut off by a usage limit after the build phase. Server, client and
-voice were all finished by their agents; integration, review and fix never ran.
-
-Verified on this date, from a clean shell:
+Everything below was run in this container on this date. The browser suites were run on an
+otherwise idle machine: software WebGL makes them sensitive to load, and an earlier run alongside
+other browser work failed for that reason alone.
 
 | Check | Command | Result |
 | --- | --- | --- |
-| Typecheck | `npx tsc -p tsconfig.json --noEmit` | passes |
-| Unit tests | `npm test` | 81 pass (will, senses, scoring, validation, physics, 3 whole bot matches, 20 rule scenarios, real WebSocket server) |
-| Production build | `npx vite build` | passes (only three.js chunk-size warning) |
-| Voice e2e | `node tests/e2e/voice/run.mjs` | 59/59 (3–4 Chromium pages, fake mics, real WebRTC mesh, Grandma filter bands, whisper, glare, reload) |
-| Lobby voice smoke | `npx tsx tests/e2e/lobby-voice.ts` | 3 pages in one real lobby, mesh connected through the game server, no page errors |
-| Looks | `tests/e2e/screenshots/real-*.png`, `mock-*.png` | cousin view, Grandma view (blurred), parchment, reading, results all render well |
+| Typecheck | `npm run typecheck` | passes |
+| Unit and rule tests | `npm test` | 264 pass in 30 files (rules, perception and secrecy, will, inputs and prediction, netcode limits, bots, HUD logic, metrics, replays, reasons, Dinner, a real server) |
+| Build | `npm run build` | passes; game code 202 kB (72 kB gzipped), three.js its own 497 kB chunk |
+| E2E | `npm run e2e` | see "Last e2e run" below |
+| CI | GitHub Actions | typecheck, build and unit tests green on every push; e2e on pull requests and on demand |
 
-Fixed during the handoff review (both were secrecy leaks, both now have tests):
+Done since the handoff (each with tests; see `git log` and `docs/reviews/2026-11-11.md`):
 
-- **Moments were broadcast to everyone mid-match**, so Grandma's screen said "Agatha told Nana
-  they loved her, then shoved Barnaby". Now a moment goes only to the cousin who earned it;
-  Grandma gets only Caught Red-Handed and Big Cut; everything is revealed at the reading.
-- **`shove` events carried the shover's id to Grandma's client even when she could not see it.**
-  Now `by` is `''` for Grandma unless `canSeeNow()` was true.
+- **Reviews:** every high and medium finding is fixed with a test, and all but two lows (S21 needs a
+  TURN relay and is documented; P15, the Dinner table rule, is below).
+- **Secrecy:** Grandma's snapshot is built from her senses; speech, shoves and crashes reach her only
+  as she perceived them; voice is shaped by each speaker for each listener (measured on real audio:
+  silence reaches her client at 12 m). Audit in `docs/SECRECY.md`.
+- **Netcode:** inputs queue by seq and count once, late ones are guessed and replayed; GDD Gate 3
+  measured: at 150 and 300 ms round trip with 2% loss the largest correction in 90 s of play is
+  1 mm (`prediction.test.ts`). `?netsim=` and `INHERITANCE_NETSIM` simulate a bad link.
+- **Hardening:** flood and size limits, per-address caps, hello timeout, abandoned matches stop,
+  one tab per seat, a "match in progress" lobby with the live will for latecomers.
+- **Bots:** ~4 incidents per bot per visit (was ~15), mostly unseen, a bot Grandma with only her own
+  senses; framing accuracy over 50 seeded matches 43% (GDD target 30-50%). Bots go easy on players
+  new to the room.
+- **Playability:** onboarding (role goals, coach tips, controls chip), ranked prompts, shove and smash
+  feedback, the paced reading, settings (quality, sensitivity, volumes, push-to-talk key, reduced
+  motion, captions, colour-band patterns), a boot splash with a no-WebGL message.
+- **Playtest metrics:** one anonymous JSON line per match (framing accuracy, leader-flip, moments...)
+  and per survey answer, in `data/playtests.jsonl`.
+- **What Nana Saw:** the server records around every act of sabotage; the reading ends with the best
+  moments replayed split-screen, her blurred view above the truth, with what was said beside what she
+  heard.
+- **Nana's reasons in the margin:** at the reading her biggest decisions carry her reason and the
+  truth ("She tutted: found Barnaby's phone where it shouldn't be. Really: Agatha planted it there.").
+- **Family Dinner** round the kitchen table: Nana is told who leaves it; one "excuse me" a visit.
+- **Survey:** three one-click questions on the results screen, recorded anonymously.
+- **Docs:** README (run, play with friends, controls, deviations), SECRECY, STEAM (the path to Steam,
+  researched with sources).
 
-Not done yet: everything under "Work remaining".
+### Last e2e run
 
-**Not pushed.** The GitHub repo `spaceeshipp-bit/inheritance` did not exist / was not accessible
-when last tried. Call `add_repo` (owner `spaceeshipp-bit`, repo `inheritance`, access `push`)
-again; if it still fails, ask the user to create the empty repo and grant the Claude GitHub app
-access. Then `git remote add origin … && git push -u origin main`. Push after every milestone
-from then on: the container is ephemeral and local commits are the only copy.
+`npm run e2e` on an idle machine (each suite in real Chromium, software WebGL):
+
+| Suite | What it plays | Result |
+| --- | --- | --- |
+| match | a whole match in two browsers: walk, compliment, chat, tattle, Bless/Tut, hearing aid, spectacles, summon, parchment, cane, throw, shove, steal, plant, find, frame, reading, vote, results | 76/76 |
+| fullmatch | Tea, Dinner and the Storm with lively bots: budgets reset, the Storm dark with lightning, reading, results, lobby | 17/17 |
+| reconnect | a cousin reloads mid-visit and walks on; Grandma's tab closes, a cousin takes over with J | 16/16 |
+| voice | the voice mesh and hearing rules on real audio (4 pages, fake mics) | 65/65 |
+| lobby-voice | three players in one real lobby | pass |
+
+### Still to do, in order
+
+1. Settings left: mic and output device pickers, remapping beyond push-to-talk; a gamepad test
+   (Playwright can inject one) and controller glyphs.
+2. The reading as theatre (the third starred creative item): the cousins' characters react
+   (collapse at 0%, a smug dance at the top).
+3. The GDD's practice rounds (4-minute cousin practice, 3-minute Grandma tutorial) against bots;
+   today there are role goals and one-at-a-time coach tips.
+4. S21: a TURN relay for voice so players' IP addresses stay hidden (docs/STEAM.md has the plan).
+5. The art track (below): animation code foundation and CC0 stand-ins; final style only with the
+   owner's approval.
 
 ## Decisions from the owner
 
@@ -73,6 +109,8 @@ from then on: the container is ephemeral and local commits are the only copy.
 - Do not touch `/home/user/alien-empire`; that is a different project.
 
 ## Work remaining, in order
+
+The original handoff plan, kept as written. What is done and what is left is tracked in Status above.
 
 ### 1. Integration (finish what the workflow never ran)
 

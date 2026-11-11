@@ -17,6 +17,8 @@ const SUITES = {
   match: { what: 'a whole match in two real browsers', cmd: ['npx', 'tsx', 'tests/e2e/match.e2e.ts'] },
   voice: { what: 'voice mesh and hearing rules (4 pages, fake mics)', cmd: ['node', 'tests/e2e/voice/run.mjs'] },
   'lobby-voice': { what: 'three players in one real lobby', cmd: ['npx', 'tsx', 'tests/e2e/lobby-voice.ts'] },
+  fullmatch: { what: 'Tea, Dinner and the Storm with lively bots', cmd: ['npx', 'tsx', 'tests/e2e/fullmatch.e2e.ts'] },
+  reconnect: { what: 'a cousin reloads mid-visit; Grandma leaves and a cousin takes over', cmd: ['npx', 'tsx', 'tests/e2e/reconnect.e2e.ts'] },
 };
 
 const asked = process.argv.slice(2);

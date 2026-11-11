@@ -67,6 +67,13 @@ export async function run(): Promise<Report> {
 
     r.check('Afternoon Tea begins on both clients', await ann.reached('visit', 15000) && await bob.reached('visit', 15000));
     const bots = match.cousinIds.filter((id) => id !== bobId);
+    // The idle bots wait along the east side of the hall, out of the way between Bob and Nana
+    // (they spawn in rows right in front of her).
+    bots.forEach((id, i) => {
+      const c = match.chars.get(id)!;
+      c.body.pos = { x: 5.8, y: 0, z: -2.5 + i * 1.6 };
+      c.body.vel = { x: 0, y: 0, z: 0 };
+    });
     await sleep(600);
     await ann.shot('grandma-view-start');
     await bob.shot('cousin-view-start');
@@ -260,8 +267,12 @@ export async function run(): Promise<Report> {
       }
       r.check('holding G plants the stolen item', planted);
       await bob.shot('cousin-planted');
-      // Nana looks where it landed (bodies jostle, so it is not always dead ahead).
-      if (planted) await ann.faceTo(match.props.get(stolen)!.pos);
+      // Nana goes to look where it landed (bodies jostle, and it can end up behind the side table).
+      if (planted) {
+        const at = { ...match.props.get(stolen)!.pos };
+        await ann.walkTo(at, { within: 1.3, timeoutMs: 15000 });
+        await ann.faceTo(at);
+      }
       const found = await ann.waitFor('found', async () => (await ann!.rx()).log.some((x) => x.msg.e === 'found' && x.msg.item === stolen), 4000);
       const g = match.chars.get(annId)!, it = match.props.get(stolen)!;
       const sense = match.grandmaSense();
