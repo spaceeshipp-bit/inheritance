@@ -89,7 +89,9 @@ export const COUSIN = {
   tattleRange: 3,
   /** Grab / steal / interact reach. */
   reach: 1.4,
-  shoveRange: 1.3,
+  /** Shove reach (+0.15 m slack on the server); a press up to SHOVE_BUFFER s early still lands. */
+  shoveRange: 1.45,
+  shoveBuffer: 0.25,
   shoveImpulse: 7,
   shoveCooldown: 1.2,
   /** Hold to plant a stolen item. */

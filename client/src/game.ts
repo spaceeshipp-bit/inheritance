@@ -28,7 +28,8 @@ export interface GameDeps {
 interface StepTrack { acc: number; last: number }
 
 export class Game {
-  private lockIdx = 0;
+  /** Scroll-locked Bless/Tut name: -1 = none (aim decides). */
+  private lockIdx = -1;
   private needYaw = true;
   private shoveCd = 0;
   private prevShove = false;
@@ -70,7 +71,7 @@ export class Game {
     input.role = m.role;
     input.clear();
     this.needYaw = true;
-    this.lockIdx = 0;
+    this.lockIdx = -1;
     this.found.clear();
     this.parchmentOpen = false;
     input.parchmentOpen = false;
@@ -115,9 +116,18 @@ export class Game {
 
   private cousinTargets(): string[] { return this.s.cousinIds(); }
 
+  /** The scroll-locked name, if any. Scrolling cycles: nobody, then each cousin. */
   private lockedId(): string | null {
     const ids = this.cousinTargets();
-    return ids.length ? ids[((this.lockIdx % ids.length) + ids.length) % ids.length] : null;
+    if (!ids.length || this.lockIdx < 0) return null;
+    return ids[this.lockIdx % ids.length] ?? null;
+  }
+
+  private cycleLock(step: number): void {
+    const n = this.cousinTargets().length + 1; // slot n-1 is "nobody"
+    const cur = this.lockIdx < 0 ? n - 1 : this.lockIdx;
+    const next = (((cur + step) % n) + n) % n;
+    this.lockIdx = next === n - 1 ? -1 : next;
   }
 
   private toggleParchment(): void {
@@ -187,8 +197,8 @@ export class Game {
         sfx.play('pop');
         return;
       }
-      case 'lockNext': this.lockIdx++; sfx.play('pop', undefined, 0.4); return;
-      case 'lockPrev': this.lockIdx--; sfx.play('pop', undefined, 0.4); return;
+      case 'lockNext': this.cycleLock(1); sfx.play('pop', undefined, 0.4); return;
+      case 'lockPrev': this.cycleLock(-1); sfx.play('pop', undefined, 0.4); return;
       case 'navUp': hud.parchment?.nav('up'); return;
       case 'navDown': hud.parchment?.nav('down'); return;
       case 'navLeft': hud.parchment?.nav('left'); return;
@@ -269,6 +279,7 @@ export class Game {
       const aim = renderer.pickCousin(s.selfId, s.grandmaId, 10);
       const locked = this.lockedId();
       this.target = aim ? { id: aim, via: 'aim' } : locked ? { id: locked, via: 'locked' } : null;
+      renderer.setTargetMarker(this.target?.id ?? null, this.target?.via === 'aim');
     } else this.target = null;
 
     if (hud.wheel.isOpen) hud.wheel.point(input.cursor.x, input.cursor.y, input.digit());

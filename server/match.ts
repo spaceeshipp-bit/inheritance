@@ -13,7 +13,7 @@ import {
   SPECTACLES, STORM, TICK_HZ, VISITS, VOICE, VOTE_TIME, WILL, WISH,
 } from '../shared/constants.js';
 import { HEIRLOOM_SPOTS, HEIRLOOM_VARIANTS, SPAWNS, groundHeight } from '../shared/map.js';
-import { createBody, forwardOf, integrateBody, type BodyShape, type MoveBody } from '../shared/movement.js';
+import { createBody, forwardOf, integrateBody, yawToward, type BodyShape, type MoveBody } from '../shared/movement.js';
 import type { GameEvent, GrandmaAction, InputMsg, ServerMsg, ClientMsg } from '../shared/protocol.js';
 import { grandmaScore } from '../shared/scoring.js';
 import { dist, flatDist, hearingBand, scrambleText, visionBand, type GrandmaSenseState, type HearingBand, type VisionBand } from '../shared/senses.js';
@@ -77,6 +77,8 @@ export interface Char extends PhysChar {
   released: Btns;
   ack: number;
   shoveCd: number;
+  /** A shove pressed just before the cooldown ended fires when it does (until this match time). */
+  shoveBufferUntil: number;
   cousinIndex: number;
   itemId: string | null;
   // Grandma only
@@ -306,7 +308,7 @@ export class Match {
       id: p.id, name: p.name, isBot: p.isBot, connected: true, role,
       body: createBody({ x: 0, y: 0, z: 0 }), yaw: 0, pitch: 0, state: 'normal', ragdollT: 0, knockedBy: null, knockedAt: -Infinity,
       holding: null, sticky: false, running: false, sneaking: false, whispering: false, charge: 0, plantT: 0,
-      input: this.blankInput(), last: noBtns(), pressed: noBtns(), released: noBtns(), ack: 0, shoveCd: 0,
+      input: this.blankInput(), last: noBtns(), pressed: noBtns(), released: noBtns(), ack: 0, shoveCd: 0, shoveBufferUntil: -Infinity,
       cousinIndex, itemId: role === 'cousin' ? `item-${COUSINS[cousinIndex % COUSINS.length].key}` : null,
       parchmentOpen: false, aidT: 0, aidCd: 0, specsT: 0, specsCd: 0, specsOff: false, caneCd: 0, summonCd: 0, quillT: 0, whistleT: 0,
     };
@@ -368,8 +370,10 @@ export class Match {
         c.yaw = SPAWNS.grandmaYaw;
       } else {
         const i = this.cousinIds.indexOf(c.id);
-        c.body = createBody(SPAWNS.cousins[i % SPAWNS.cousins.length]);
-        c.yaw = 0;
+        const at = SPAWNS.cousins[i % SPAWNS.cousins.length];
+        c.body = createBody(at);
+        // Everyone starts facing Nana.
+        c.yaw = yawToward(SPAWNS.grandma.x - at.x, SPAWNS.grandma.z - at.z);
       }
       if (c.state === 'ragdoll') c.state = 'normal';
       c.ragdollT = 0;
@@ -826,7 +830,8 @@ export class Match {
 
   private cousinActions(c: Char, h: number): void {
     const inp = c.input, pr = c.pressed, rel = c.released;
-    if (pr.shove && c.shoveCd <= 0) this.doShove(c);
+    if (pr.shove && c.shoveCd > 0 && c.shoveCd <= COUSIN.shoveBuffer) c.shoveBufferUntil = this.time + COUSIN.shoveBuffer;
+    if (c.shoveCd <= 0 && (pr.shove || this.time <= c.shoveBufferUntil)) { c.shoveBufferUntil = -Infinity; this.doShove(c); }
     if (pr.primary) {
       if (c.holding && c.sticky) this.setDown(c);
       else if (!c.holding) this.tryGrab(c);

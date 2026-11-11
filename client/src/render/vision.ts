@@ -5,7 +5,7 @@
 // radius, so sharp foreground never haloes onto a blurred background), then a
 // grading pass (vignette, fade of colour with distance, Storm darkness).
 import * as THREE from 'three';
-import { SENSES, SPECTACLES } from '../../../shared/constants.js';
+import { SENSES, SPECTACLES, STORM } from '../../../shared/constants.js';
 import { damp } from '../util.js';
 
 export interface VisionParams {
@@ -33,9 +33,13 @@ export function visionParams(o: { specsActive: boolean; specsOff: boolean; dark:
     sharp: SENSES.clear, soft: SENSES.muffled, heavy: SENSES.mumble,
     rSoft: 3, rHeavy: 7.5, rFar: 11, rMin: 0, vignette: 0.55, desat: 0.65, dark: 0, flash: 0,
   };
-  if (o.flash) return { ...base, sharp: SPECTACLES.sharpRange, soft: SPECTACLES.sharpRange + 3, heavy: 16, rSoft: 2.5, rHeavy: 5, rFar: 7, flash: 1, desat: 0.4 };
-  if (o.dark) return { ...base, sharp: 0.8, soft: 1.2, heavy: 3, rMin: 3, rSoft: 4, rHeavy: 8, rFar: 11, dark: 1, vignette: 0.8 };
-  if (o.specsOff) return { ...base, sharp: 0.5, soft: SENSES.clear, heavy: SENSES.mumble, rMin: 4, rSoft: 5, rHeavy: 8.5, rFar: 12, desat: 0.8 };
+  const specsOff: VisionParams = { ...base, sharp: 0.5, soft: SENSES.clear, heavy: SENSES.mumble, rMin: 4, rSoft: 5, rHeavy: 8.5, rFar: 12, desat: 0.8 };
+  // A lightning flash lights the house like daylight (no better): her usual
+  // eyesight for an instant, spectacles knocked off or not.
+  if (o.flash) return { ...(o.specsOff ? specsOff : base), flash: 1 };
+  // Power out: her candle shows faces within STORM.candleClear m and shapes to STORM.candleDim m.
+  if (o.dark) return { ...base, sharp: 0.6, soft: STORM.candleClear, heavy: STORM.candleDim, rMin: 2, rSoft: 3, rHeavy: 7, rFar: 11, dark: 1, vignette: 0.75 };
+  if (o.specsOff) return specsOff;
   if (o.specsActive) return { ...base, sharp: SPECTACLES.sharpRange, soft: SPECTACLES.sharpRange + 2, heavy: SPECTACLES.sharpRange + 5, rSoft: 2.5, rHeavy: 6, rFar: 9, vignette: 0.85, desat: 0.35 };
   return base;
 }
@@ -124,8 +128,8 @@ void main() {
   vec2 q = vUv - 0.5;
   float v = smoothstep(0.25, 0.75, length(q * vec2(1.25, 1.0)));
   col *= 1.0 - v * vignette;
-  // Storm darkness: only a candle's worth of light near her; lightning floods it.
-  col *= mix(1.0, 0.35 * (1.0 - smoothstep(0.8, 3.5, z0)) + 0.05, darkness);
+  // Storm darkness: her candle lights a few metres; beyond, faint silhouettes; lightning floods it.
+  col *= mix(1.0, 0.78 * (1.0 - smoothstep(1.5, 4.0, z0)) + 0.12, darkness);
   col += vec3(0.55, 0.62, 0.8) * flash * 0.25;
   gl_FragColor = vec4(col, 1.0);
   #include <tonemapping_fragment>

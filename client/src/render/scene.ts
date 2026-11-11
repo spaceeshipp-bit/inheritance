@@ -229,11 +229,12 @@ export class GameRenderer {
     this.lastSense = sense;
 
     // Lights: Storm darkness and lightning.
-    const level = f.dark && !f.flash ? 0.07 : 1;
+    const level = f.dark && !f.flash ? 0.12 : 1;
     for (const l of this.lights) l.light.intensity = l.base * level;
     this.lightning.intensity = f.flash ? 4.5 : 0;
-    this.map.windows.emissiveIntensity = f.dark ? (f.flash ? 3 : 0.05) : 0.9;
-    this.candle.intensity = f.dark && !f.flash ? (isGrandma ? 3 : 6) : 0;
+    // In the dark the tall windows still read as pale silhouettes.
+    this.map.windows.emissiveIntensity = f.dark ? (f.flash ? 3 : 0.3) : 0.9;
+    this.candle.intensity = f.dark && !f.flash ? (isGrandma ? 7 : 6) : 0;
 
     // Characters.
     for (const [id, m] of this.models) if (!view.chars.has(id)) { m.dispose(); this.models.delete(id); }
@@ -247,7 +248,7 @@ export class GameRenderer {
       const ip = itemProps.get(c.id);
       const itemOnBody = !ip || (ip.heldBy === c.id && c.holding !== ip.id);
       const degrade: Degrade = isGrandma && sense && !mine ? degradeFor(visionBand(sense, c.pos)) : 'none';
-      m.update(c, dt, { degrade, itemOnBody, mouth: f.level(mine ? 'self' : c.id), holding: !!c.holding });
+      m.update(c, dt, { degrade, itemOnBody, mouth: f.level(mine ? 'self' : c.id), holding: !!c.holding, cam: mine ? undefined : this.rig.camera.position });
     }
 
     // Props.
@@ -353,27 +354,68 @@ export class GameRenderer {
   /** Camera yaw (radians) for screen-edge arrows. */
   cameraYaw(): number { return this.rig.camera.rotation.y; }
 
+  private aimTarget: string | null = null;
+  private aimKeepUntil = 0;
+  private targetRing: THREE.Mesh | null = null;
+
   /**
-   * Grandma's crosshair target: the cousin under the screen centre, within
-   * `maxDist` m and identifiable (her vision band lets her read the colour band).
+   * Grandma's Bless/Tut target, with aim assist: the cousin whose body (feet
+   * to head) is closest in angle to the view direction, within 6 degrees or
+   * their own width up close, within `maxDist` m, in line of sight and
+   * identifiable (she can read their colour band). The current target is kept
+   * for a moment while it stays near the crosshair, so it does not flicker.
    */
   pickCousin(selfId: string, grandmaId: string, maxDist = 10): string | null {
-    this.ray.setFromCamera(new THREE.Vector2(0, 0), this.rig.camera);
-    this.ray.far = maxDist + 1;
-    const roots: THREE.Object3D[] = [];
-    for (const [id, m] of this.models) if (id !== selfId && id !== grandmaId && m.root.visible) roots.push(m.root);
-    const blockers = this.ray.intersectObjects(this.map.blockers, false)[0]?.distance ?? Infinity;
-    const hits = this.ray.intersectObjects(roots, true);
-    for (const h of hits) {
-      if (h.distance > blockers) break;
-      const id = h.object.userData.charId as string | undefined;
-      if (!id) continue;
-      const m = this.models.get(id);
-      if (!m || !this.lastSense) return null;
-      const pos = m.root.position;
-      if (Math.hypot(pos.x - this.lastSense.pos.x, pos.z - this.lastSense.pos.z) > maxDist) return null;
-      return canIdentify(this.lastSense, { x: pos.x, y: pos.y, z: pos.z }) ? id : null;
+    const cam = this.rig.camera;
+    const origin = cam.position;
+    const dir = cam.getWorldDirection(new THREE.Vector3());
+    const now = performance.now();
+    let best: string | null = null;
+    let bestScore = Infinity;
+    const to = new THREE.Vector3();
+    for (const [id, m] of this.models) {
+      if (id === selfId || id === grandmaId || !m.root.visible || !this.lastSense) continue;
+      const feet = m.root.position;
+      if (!canIdentify(this.lastSense, { x: feet.x, y: feet.y, z: feet.z })) continue;
+      let angle = Infinity, dist = Infinity;
+      for (const h of [0.35, 0.95, 1.5]) {
+        to.set(feet.x - origin.x, feet.y + h - origin.y, feet.z - origin.z);
+        const d = to.length();
+        if (d < 0.2 || d > maxDist) continue;
+        const a = to.angleTo(dir);
+        if (a < angle) { angle = a; dist = d; }
+      }
+      if (!Number.isFinite(angle)) continue;
+      const keep = id === this.aimTarget && now < this.aimKeepUntil;
+      const limit = Math.max((6 * Math.PI) / 180, Math.atan(0.45 / dist)) + (keep ? (4 * Math.PI) / 180 : 0);
+      if (angle > limit) continue;
+      // Line of sight to their chest.
+      to.set(feet.x - origin.x, feet.y + 1.1 - origin.y, feet.z - origin.z);
+      const len = to.length();
+      this.ray.set(origin, to.normalize());
+      this.ray.far = len;
+      if (this.ray.intersectObjects(this.map.blockers, false).length > 0) continue;
+      const score = angle - (keep ? 0.05 : 0);
+      if (score < bestScore) { bestScore = score; best = id; }
     }
-    return null;
+    if (best) { this.aimTarget = best; this.aimKeepUntil = now + 300; }
+    else if (now >= this.aimKeepUntil) this.aimTarget = null;
+    return best;
+  }
+
+  /** A ring on the floor under Grandma's Bless/Tut target (bright when aimed, dim when only locked). */
+  setTargetMarker(id: string | null, aimed: boolean): void {
+    if (!this.targetRing) {
+      const mat = new THREE.MeshBasicMaterial({ color: '#ffd75a', transparent: true, opacity: 0.85, depthWrite: false });
+      this.targetRing = new THREE.Mesh(new THREE.RingGeometry(0.42, 0.52, 40), mat);
+      this.targetRing.rotation.x = -Math.PI / 2;
+      this.targetRing.renderOrder = 2;
+      this.scene.add(this.targetRing);
+    }
+    const m = id ? this.models.get(id) : undefined;
+    this.targetRing.visible = !!m && m.root.visible;
+    if (!m) return;
+    this.targetRing.position.set(m.root.position.x, m.root.position.y + 0.03, m.root.position.z);
+    (this.targetRing.material as THREE.MeshBasicMaterial).opacity = aimed ? 0.9 : 0.4;
   }
 }
