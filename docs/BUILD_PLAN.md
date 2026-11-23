@@ -96,11 +96,11 @@ Done since the handoff (each with tests; see `git log` and `docs/reviews/2026-11
 
 ### Still to do, in order
 
-1. Settings left: mic and output device pickers, remapping beyond push-to-talk; a gamepad test
-   (Playwright can inject one) and controller glyphs.
+1. Settings left: remapping beyond push-to-talk; a gamepad test (Playwright can inject one) and
+   controller glyphs. (~~Mic and output device pickers~~: done 2026-11-23.)
 2. ~~The reading as theatre~~: done as the curtain call (2026-11-23).
-3. The GDD's practice rounds (4-minute cousin practice, 3-minute Grandma tutorial) against bots;
-   today there are role goals and one-at-a-time coach tips.
+3. ~~The GDD's practice rounds~~: done 2026-11-23 (4-minute cousin, 3-minute Grandma, against bots,
+   with a checklist the server ticks off).
 4. S21: a TURN relay for voice so players' IP addresses stay hidden (docs/STEAM.md has the plan).
 5. The art track: the owner chooses a direction from the look book (path-traced renders and the
    four looks on the real scene); then bake every map's lightmap (`tools/render/bake_lightmap.py`)
