@@ -259,8 +259,8 @@ const BOXES: Box[] = [
   // The new rooms: some out in the open, some tucked away.
   box('pedestal', -15.9, 0, 4.7, -15.1, 1.0, 5.5, 'Pedestal drawing room window'),
   box('pedestal', -9.6, 0, 4.8, -8.9, 1.0, 5.5, 'Pedestal behind the screen'),
-  box('pedestal', -26.6, 0, -11.4, -25.8, 1.0, -10.6, 'Pedestal conservatory'),
-  box('pedestal', -20.85, 0, -20.4, -20.05, 1.0, -19.6, 'Pedestal library bay'),
+  box('pedestal', -28.9, 0, -11.4, -28.1, 1.0, -10.6, 'Pedestal conservatory'),
+  box('pedestal', -20.85, 0, -20.55, -20.05, 1.0, -19.75, 'Pedestal library bay'),
   box('pedestal', -9.6, 0, -20.4, -8.9, 1.0, -19.7, 'Pedestal library corner'),
   box('pedestal', -7.7, 0, -20.7, -7.0, 1.0, -20.0, 'Pedestal dining room'),
   box('pedestal', 8.7, 0, -20.7, 9.4, 1.0, -20.0, 'Pedestal study'),
@@ -300,7 +300,7 @@ const GROUND: Vec3[] = [
   G(-17.4, -7.5), G(-21, -8.4), G(-9.5, AXIS_N), G(-20.4, AXIS_N), G(-17.4, AXIS_N), G(-14.3, AXIS_N), G(-11, AXIS_N),
   G(-20.45, -13), G(-17.4, -13), G(-14.3, -13), G(-11.75, -15.6), G(-9.3, -13),
   G(-20.45, -18.9), G(-17.4, -19.3), G(-14.3, -19.3), G(-11, -19.3),
-  G(-19.2, -8.5), G(-14.2, -9.8), G(-11, -10.3), G(-11.2, -7.6),
+  G(-19.2, -8.5), G(-14.2, -9.8), G(-11, -10.3),
   // Dining room: both hall doors (both sides), the library and study doors, round the table
   G(-4.4, -11.2), G(-4.4, -13.4), G(4.4, -11.2), G(4.4, -13.4), G(-7.1, AXIS_N), G(7.1, AXIS_N),
   G(-6.4, -19.2), G(0, -19.4), G(5.8, -19.2), G(0, -14.2), G(-6.4, -14.2), G(6.4, -14.2),
