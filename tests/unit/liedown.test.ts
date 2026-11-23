@@ -55,7 +55,8 @@ describe("Grandma's lie-down", () => {
     m.setConnected('g', false);
     tick(m, 30 * 5);
     expect(m.phaseEndsAt).toBeCloseTo(ends + 5, 1);
-    expect(m.wish!.info.endsAt).toBeCloseTo(wishEnds + 5, 1);
+    // Exactly: rounding the deadline every paused tick used to lose a third of a millisecond a tick.
+    expect(m.wish!.info.endsAt).toBeCloseTo(wishEnds + 5, 2);
   });
 
   it('buttons pressed during the pause do not all fire when she comes back', () => {

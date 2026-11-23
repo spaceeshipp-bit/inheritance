@@ -318,7 +318,8 @@ export class Match {
   visitIndex = 0;
   started = false;
   over = false;
-  wish: { info: WishInfo; propId: string } | null = null;
+  /** The wish under way: what clients are told (`info`, its deadline rounded for the wire) and its exact deadline (`until`). */
+  wish: { info: WishInfo; propId: string; until: number } | null = null;
   summon: { pos: Vec3; endsAt: number } | null = null;
   dark = false;
   flash = false;
@@ -1156,7 +1157,8 @@ export class Match {
   /** Push every running deadline back by `h` seconds (the match is paused). */
   private shiftDeadlines(h: number): void {
     this.phaseEndsAt += h;
-    if (this.wish) this.wish.info = { ...this.wish.info, endsAt: r3(this.wish.info.endsAt + h) };
+    // The exact deadline moves; only what is sent is rounded (rounding every paused tick would lose 1/3 ms a tick).
+    if (this.wish) { this.wish.until += h; this.wish.info = { ...this.wish.info, endsAt: r3(this.wish.until) }; }
     this.nextWishAt += h;
     if (this.summon) this.summon.endsAt += h;
     this.nextLightning += h;
@@ -1965,7 +1967,7 @@ export class Match {
 
   private updateWish(): void {
     if (this.wish) {
-      if (this.time >= this.wish.info.endsAt) this.endWish(true);
+      if (this.time >= this.wish.until) this.endWish(true);
     } else if (this.time >= this.nextWishAt) {
       this.startWish();
     }
@@ -1989,7 +1991,7 @@ export class Match {
       p.resting = true;
     }
     const info: WishInfo = { id: `wish-${++this.wishCount}`, kind, text: WISH_TEXT[kind], endsAt: r3(this.time + WISH.duration) };
-    this.wish = { info, propId };
+    this.wish = { info, propId, until: this.time + WISH.duration };
     this.emitAll({ e: 'wish', wish: info });
   }
 
