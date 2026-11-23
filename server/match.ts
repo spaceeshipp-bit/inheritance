@@ -185,6 +185,12 @@ const WISH_TEXT: Record<WishInfo['kind'], string> = {
   pills: 'Where are my pills? Find them!',
 };
 const WISH_PROP: Record<WishInfo['kind'], string> = { 'fetch-cat': 'cat', tea: 'teacup', pills: 'pills' };
+/** What everyone is told as a visit opens (Family Dinner has its own, with the table's rules). */
+const VISIT_OPENING: Record<VisitId, string> = {
+  tea: 'Afternoon Tea begins. Nana has had her first sherry.',
+  dinner: 'Family Dinner begins.',
+  storm: 'The Storm begins. The lights flicker. So does Nana.',
+};
 const CAT_SHAPE: BodyShape = { radius: 0.2, height: 0.35, stepUp: 0.2 };
 const COMPLIMENT_LINES = [0, 4];
 const COMPLIMENT_RE = /\b(love|lovely|beautiful|wonderful|best|gorgeous|adore)\b/i;
@@ -987,7 +993,7 @@ export class Match {
       if (c.state === 'sleeping') { c.state = 'normal'; c.ragdollT = 0; }
       if (c.role === 'grandma' && this.pause) {
         this.pause = null;
-        this.emitAll({ e: 'toast', text: 'Nana is back on her feet!' });
+        this.emitAll({ e: 'toast', text: 'Nana is back on her feet. Everyone looks delighted; some of them mean it.' });
         this.broadcastPhase();
       }
     }
@@ -1004,7 +1010,7 @@ export class Match {
     const c = this.chars.get(id);
     if (!c || c.role !== 'cousin' || c.isBot || !c.connected) return false;
     if (this.time - this.pause.since < GRANDMA_TAKEOVER_GRACE) {
-      this.emit(id, { e: 'toast', text: 'Give Nana a moment to come back...' });
+      this.emit(id, { e: 'toast', text: 'Give her a moment, dear. She may yet wake up.' });
       return false;
     }
     const old = this.grandma;
@@ -1617,7 +1623,7 @@ export class Match {
   private grandmaFell(): void {
     if (!this.options.pushGrandma || this.willFrozen) return;
     this.willFrozen = true;
-    this.emitAll({ e: 'toast', text: 'Nana fell over! The will is frozen as it stands.' });
+    this.emitAll({ e: 'toast', text: 'Nana has had a fall! The will is frozen as it stands, and so is everyone.' });
   }
 
   private quickEdit(target: string, delta: number): void {
@@ -2094,7 +2100,7 @@ export class Match {
     this.setPhase('visit', this.durations.visit(v));
     this.emitAll((to) => ({
       e: 'toast',
-      text: v !== 'dinner' ? `${VISITS[v].name} begins.`
+      text: v !== 'dinner' ? VISIT_OPENING[v]
         : to === this.grandmaId ? 'Family Dinner begins. You will notice anyone who leaves the table.'
           : `Family Dinner begins. Stay near the table: Nana notices an empty chair. (E by ${this.mapDef.dinner.doorName} excuses you, once.)`,
     }));

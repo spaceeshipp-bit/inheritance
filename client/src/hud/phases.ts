@@ -42,6 +42,7 @@ export class RoleReveal {
         'Bless (E) the dears who flatter you, Tut (Q) the wicked ones. Tab opens the full parchment.',
         'You only see sharply up close. Spectacles (F) help for a moment; the hearing aid (RMB) too.',
         'Catch them at it! Planted evidence is not always what it seems...',
+        'Shake your cane at them (Z), or dance (X) to remind them you are still alive.',
       ]) ul.appendChild(el('li', '', t));
       this.root.appendChild(ul);
       if (m.prefCards?.length) {
@@ -67,6 +68,7 @@ export class RoleReveal {
         'Flatter Nana to her face: compliments, fetch her wishes, bring her tea.',
         'Behind her back: shove, smash heirlooms, steal items and plant them to frame your cousins.',
         'Watch the Nana Senses (top right). If she sees you, she knows.',
+        'Pull faces (Z) and dance (X) behind her back. To her face, it had better be heart hands.',
       ]) ul.appendChild(el('li', '', t));
       this.root.appendChild(ul);
       this.root.appendChild(el('div', 'reveal-keys', COUSIN_KEYS));

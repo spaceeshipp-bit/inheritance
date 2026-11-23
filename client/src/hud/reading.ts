@@ -3,6 +3,7 @@
 // only then do the outcome badges appear (ties split the lot), and then up to
 // three moments of the match, one at a time, saving the best for last (review
 // P6). Then the final results with Grandma's score and who actually sabotaged.
+import { mapWords } from './mapwords.js';
 import { cousinOutcome, type CousinOutcome } from '../../../shared/scoring.js';
 import type { FinalResult, Moment, MomentKind, NanaReason, ReadingResult, Role } from '../../../shared/types.js';
 import type { SurveyAnswer, SurveyQuestion } from '../../../shared/protocol.js';
@@ -118,7 +119,7 @@ export class ReadingScreen {
 
   constructor(s: GameState, r: ReadingResult) {
     this.card.appendChild(el('div', 'reveal-kicker', 'The Reading of the Will'));
-    this.card.appendChild(el('div', 'lawyer', 'Mr Pettigrew, the family solicitor, clears his throat and unfolds the parchment...'));
+    this.card.appendChild(el('div', 'lawyer', mapWords(s.match?.options.map).reading));
     const cols = el('div', 'reading-cols');
     const list = el('div', 'reading-list');
     const n = r.order.length;

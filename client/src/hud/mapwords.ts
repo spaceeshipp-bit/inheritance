@@ -8,17 +8,30 @@ export interface MapWords {
   arriving: string;
   /** After Grandma's name on the will: "of Agatha, <address>". */
   address: string;
+  /** The solicitor's entrance at the Reading of the Will. */
+  reading: string;
 }
 
+const READING = 'Mr Pettigrew, the family solicitor, clears his throat and unfolds the parchment...';
+
 const WORDS: Partial<Record<MapId, MapWords>> = {
-  manor: { arriving: 'Arriving at Harrowgate', address: 'of Harrowgate Manor' },
-  carehome: { arriving: 'Visiting hours at Sunny Pines', address: 'of Room 12, Sunny Pines Care Home' },
-  parlour: { arriving: 'Gathering at Pettigrew & Sons', address: 'presently of Pettigrew & Sons Funeral Parlour (just looking)' },
-  cruise: { arriving: 'All aboard The Golden Years', address: 'at sea, aboard The Golden Years' },
+  manor: { arriving: 'Arriving at Harrowgate', address: 'of Harrowgate Manor', reading: READING },
+  carehome: {
+    arriving: 'Visiting hours at Sunny Pines', address: 'of Room 12, Sunny Pines Care Home',
+    reading: 'Mr Pettigrew, the family solicitor, waits for the bingo to finish, clears his throat and unfolds the parchment...',
+  },
+  parlour: {
+    arriving: 'Gathering at Pettigrew & Sons', address: 'presently of Pettigrew & Sons Funeral Parlour (just looking)',
+    reading: 'Mr Pettigrew (the family solicitor, and, as it happens, the undertaker) clears his throat and unfolds the parchment...',
+  },
+  cruise: {
+    arriving: 'All aboard The Golden Years', address: 'at sea, aboard The Golden Years',
+    reading: 'Mr Pettigrew, the family solicitor, steadies himself against the swell and unfolds the parchment...',
+  },
 };
 
 /** The lines for map `id` (the match's `options.map`); an unknown id reads as the manor, as everywhere else. */
 export function mapWords(id: string | null | undefined): MapWords {
   const def = mapById(id);
-  return WORDS[def.id] ?? { arriving: `Arriving at ${def.name}`, address: `of ${def.name}` };
+  return WORDS[def.id] ?? { arriving: `Arriving at ${def.name}`, address: `of ${def.name}`, reading: READING };
 }
