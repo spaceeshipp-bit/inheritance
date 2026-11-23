@@ -23,7 +23,8 @@ import { PROP_MID, eyeOf, lineOfSight } from '../shared/sight.js';
 import { available } from '../shared/will.js';
 import { forwardOf, yawToward, wrapAngle } from '../shared/movement.js';
 import type { Char, Match, Prop } from './match.js';
-import { findPath, freePoint, hallPoints, levelOf, waypoints } from './nav.js';
+import { beatPoints, findPath, freePoint, levelOf, waypoints } from './nav.js';
+import { roomAt } from '../shared/map.js';
 
 export interface Bot {
   readonly id: string;
@@ -134,6 +135,12 @@ function houseOf(m: Match): House {
   let h = HOUSES.get(m);
   if (!h) { h = { humanHitAt: new Map() }; HOUSES.set(m, h); }
   return h;
+}
+
+/** In one of the rooms of Grandma's beat (she walks over to look only there; the manor: the front hall, not the kitchen). */
+function onBeat(m: Match, p: Vec3): boolean {
+  const rooms = new Set(m.mapDef.nav.beat.map((b) => roomAt(b)));
+  return rooms.has(roomAt(p));
 }
 
 /**
@@ -359,7 +366,7 @@ export class CousinBot implements Bot {
 
   private wanderTask(c: Char, secs = 12): Task {
     const lv = levelOf(c.body.pos);
-    const pool = waypoints().filter((p) => flatDist(p, c.body.pos) > 2 && (lv === 'gallery' || p.y < 1 || this.m.rng() < 0.5));
+    const pool = waypoints(this.m.mapDef.id).filter((p) => flatDist(p, c.body.pos) > 2 && (lv === 'gallery' || p.y < 1 || this.m.rng() < 0.5));
     return { k: 'wander', goal: pick(this.m.rng, pool) ?? { x: 0, y: 0, z: 0 }, until: this.m.time + secs };
   }
 
@@ -513,8 +520,8 @@ export class CousinBot implements Bot {
       // Just outside her sharp sight (she would know who it was): the item lands a step nearer her.
       return { at: besideNana(g, BOTS.plantBesideDist + m.rng() * 0.3, side), nana: true };
     }
-    const pool = hallPoints().filter((p) => (!g || (flatDist(p, g.body.pos) > 4 && flatDist(p, g.body.pos) < 12)) && !m.canSeeNow(p));
-    return { at: pick(m.rng, pool) ?? pick(m.rng, waypoints()) ?? { ...c.body.pos }, nana: false };
+    const pool = beatPoints(m.mapDef.id).filter((p) => (!g || (flatDist(p, g.body.pos) > 4 && flatDist(p, g.body.pos) < 12)) && !m.canSeeNow(p));
+    return { at: pick(m.rng, pool) ?? pick(m.rng, waypoints(m.mapDef.id)) ?? { ...c.body.pos }, nana: false };
   }
 
   /** Somewhere to bide time with stolen goods: out of Nana's sight, away from her. */
@@ -523,7 +530,7 @@ export class CousinBot implements Bot {
     const lv = levelOf(c.body.pos) === 'gallery' ? 'gallery' : 'ground';
     const me = c.body.pos;
     // Out of her sight, well away from her, and not past her to get there.
-    const pool = waypoints(lv).filter((p) => {
+    const pool = waypoints(m.mapDef.id, lv).filter((p) => {
       if (!g) return true;
       if (flatDist(p, g.body.pos) <= BOTS.holdBack + 1 || m.canSeeNow(p) || this.facedBy(g, p)) return false;
       const away = (p.x - me.x) * (me.x - g.body.pos.x) + (p.z - me.z) * (me.z - g.body.pos.z);
@@ -802,7 +809,7 @@ export class CousinBot implements Bot {
         const where = holder ? holder.id : 'floor';
         if (t.spotted !== where && this.spots(c, at, holder ? BOTS.spotCarried : BOTS.spotLying)) t.spotted = where;
         if (t.spotted !== where) {
-          if (!t.search || flatDist(c.body.pos, t.search) < 0.8) t.search = pick(m.rng, waypoints(levelOf(c.body.pos) === 'gallery' ? 'gallery' : 'ground')) ?? null;
+          if (!t.search || flatDist(c.body.pos, t.search) < 0.8) t.search = pick(m.rng, waypoints(m.mapDef.id, levelOf(c.body.pos) === 'gallery' ? 'gallery' : 'ground')) ?? null;
           if (t.search) this.go(c, inp, t.search, false);
           break;
         }
@@ -1314,10 +1321,10 @@ export class GrandmaBot implements Bot {
       this.investigate = null;
       const a = this.attention.pos;
       this.turnTo(g, inp, yawToward(a.x - g.body.pos.x, a.z - g.body.pos.z), dt, 4);
-      if (flatDist(a, g.body.pos) > 6 && levelOf(a) === 'ground' && a.x < 8 && m.rng() < 0.3) this.goal = freePoint(a, 'ground');
+      if (flatDist(a, g.body.pos) > 6 && levelOf(a) === 'ground' && onBeat(m, a) && m.rng() < 0.3) this.goal = freePoint(a, 'ground');
     } else {
       this.attention = null;
-      if (!this.goal && m.time >= this.waitUntil) this.goal = pick(m.rng, hallPoints()) ?? null;
+      if (!this.goal && m.time >= this.waitUntil) this.goal = pick(m.rng, beatPoints(m.mapDef.id)) ?? null;
       if (this.goal) {
         const s = this.walker.steer(g, this.goal, m.time);
         this.turnTo(g, inp, s.yaw, dt, 5);

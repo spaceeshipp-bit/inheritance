@@ -33,7 +33,7 @@ class MockServer {
   private me = 'p1';
   private name = 'You';
   private players: PlayerInfo[] = [];
-  private options: MatchOptions = { fullMatch: false, fillBots: true, pushGrandma: false };
+  private options: MatchOptions = { fullMatch: false, fillBots: true, pushGrandma: false, map: 'manor' };
   private phase: Phase = 'lobby';
   private visit: VisitId | null = null;
   private endsAt = 0;

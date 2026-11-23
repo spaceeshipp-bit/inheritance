@@ -42,7 +42,7 @@ export function makeMatch(opts: {
   const m = new Match({
     players: players(opts.humans ?? [], opts.bots ?? []),
     grandmaId: opts.grandmaId,
-    options: { fullMatch: false, fillBots: true, pushGrandma: false, ...opts.options },
+    options: { fullMatch: false, fillBots: true, pushGrandma: false, map: 'manor', ...opts.options },
     fast: opts.fast ?? true,
     seed: opts.seed ?? 1,
     send: box.send,

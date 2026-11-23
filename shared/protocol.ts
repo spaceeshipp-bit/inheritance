@@ -1,6 +1,7 @@
 // WebSocket protocol between the browser client and the game server.
 // JSON messages, one object per frame, discriminated by `t`.
 // The server is the authority on everything; clients send intents.
+import type { MapId } from './maps/types.js';
 import type {
   CharSnap, CousinInfo, FinalResult, MatchOptions, Phase, PlayerInfo, PropSnap,
   ReadingResult, Role, Vec3, VisitId, WishInfo, Moment,
@@ -181,6 +182,8 @@ export interface MatchInProgress {
   /** Names of the cousins in `shares`, and of Grandma. */
   names: Record<string, string>;
   grandmaId: string;
+  /** Where it is being played. */
+  map?: MapId;
 }
 
 /** WebSocket close codes the server uses (4000-4999 are for applications). */

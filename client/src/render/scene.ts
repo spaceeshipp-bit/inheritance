@@ -10,10 +10,13 @@ import { hashStr } from '../util.js';
 import { CameraRig } from './camera.js';
 import { CharacterModel, type Degrade } from './characters.js';
 import { buildMap, type MapView } from './map.js';
+import type { MapId } from '../../../shared/map.js';
 import { PropViews } from './props.js';
 import { GrandmaVision, visionParams } from './vision.js';
 
 export interface MatchLook {
+  /** The map the match is played on. */
+  map: MapId;
   grandmaId: string;
   cousins: { id: string; color: string; item: ItemKey }[];
 }
@@ -68,7 +71,10 @@ export class GameRenderer {
   private vision: GrandmaVision;
   private models = new Map<string, CharacterModel>();
   private look: MatchLook | null = null;
-  private lights: { light: THREE.Light; base: number; minor: boolean }[] = [];
+  private lights: { light: THREE.Light; base: number; minor: boolean; map?: boolean }[] = [];
+  private maps = new Map<MapId, MapView>();
+  /** Photo mode: when set, matches render from this camera (screenshots and map building; never in play). */
+  photoCam: { pos: Vec3; look: Vec3; fov?: number } | null = null;
   private lightning: THREE.DirectionalLight;
   private candle: THREE.PointLight;
   private ray = new THREE.Raycaster();
@@ -93,8 +99,6 @@ export class GameRenderer {
     this.renderer.domElement.id = 'game-canvas';
     container.appendChild(this.renderer.domElement);
     this.scene.background = new THREE.Color('#120d0a');
-    this.map = buildMap();
-    this.scene.add(this.map.group);
     this.scene.add(this.rig.camera);
     this.props = new PropViews(this.scene);
     this.vision = new GrandmaVision(this.renderer);
@@ -104,29 +108,52 @@ export class GameRenderer {
     const add = (l: THREE.Light, minor = false) => { this.scene.add(l); this.lights.push({ light: l, base: l.intensity, minor }); };
     add(new THREE.HemisphereLight('#ffe9cc', '#4a3020', 1.1));
     add(new THREE.AmbientLight('#ffdcb0', 0.25));
-    const point = (x: number, y: number, z: number, c: string, i: number, d: number, minor = false) => {
-      const l = new THREE.PointLight(c, i, d, 1.4);
-      l.position.set(x, y, z);
-      add(l, minor);
-    };
-    point(0, 4.6, 0.5, '#ffc98a', 60, 22); // chandelier
-    point(0, 4.2, 4.5, '#ffd29a', 25, 14, true); // by the front door
-    point(-5, 2.6, 2.5, '#ffbf7a', 14, 8, true); // Grandma's lamp
-    point(-4, 5, -10.5, '#ffcf96', 22, 11); // gallery sconces
-    point(4, 5, -10.5, '#ffcf96', 22, 11, true);
-    point(0, 2.4, -9.5, '#ffbf7a', 10, 8, true); // under the gallery
-    point(12, 2.45, 0, '#fff0c8', 26, 12); // kitchen lamp
-    point(14.5, 2.6, 4.5, '#fff0d8', 8, 5, true); // pantry bulb
     this.lightning = new THREE.DirectionalLight('#cfe0ff', 0);
-    this.lightning.position.set(-20, 10, 0);
     this.scene.add(this.lightning);
+    this.scene.add(this.lightning.target);
     this.candle = new THREE.PointLight('#ffb070', 0, 6, 1.6);
     this.scene.add(this.candle);
 
+    this.map = this.mapView('manor');
+    this.showMap(this.map);
     this.applyLightPreset();
     this.resize();
     window.addEventListener('resize', () => this.resize());
   }
+
+  /** The map shown (built on first use, then kept). */
+  private mapView(id: MapId): MapView {
+    let v = this.maps.get(id);
+    if (!v) { v = buildMap(id); this.maps.set(id, v); }
+    return v;
+  }
+
+  private showMap(v: MapView): void {
+    this.scene.add(v.group);
+    for (const { light, minor } of v.lights) {
+      this.scene.add(light);
+      this.lights.push({ light, base: light.intensity, minor, map: true });
+    }
+    this.scene.background = new THREE.Color(v.background);
+    this.lightning.position.set(v.lightningFrom.x, v.lightningFrom.y, v.lightningFrom.z);
+    this.lightning.target.position.set(v.idle.center.x, 0, v.idle.center.z);
+  }
+
+  /** Switch the world to another map (match start; the lobby backdrop follows the host's pick). */
+  setMap(id: MapId): void {
+    if (this.map.id === id) return;
+    const old = this.map;
+    this.scene.remove(old.group);
+    for (const { light } of old.lights) this.scene.remove(light);
+    // Put the old map's lights back to full before they go (they are reused if it comes back).
+    for (const l of this.lights) if (l.map) l.light.intensity = l.base;
+    this.lights = this.lights.filter((l) => !l.map);
+    this.map = this.mapView(id);
+    this.showMap(this.map);
+    this.applyLightPreset();
+  }
+
+  get mapId(): MapId { return this.map.id; }
 
   /** Low preset: minor point lights off, ambient fill up. */
   private applyLightPreset(): void {
@@ -199,6 +226,7 @@ export class GameRenderer {
 
   setMatch(look: MatchLook | null): void {
     this.look = look;
+    if (look) this.setMap(look.map);
     for (const m of this.models.values()) m.dispose();
     this.models.clear();
     this.props.clear();
@@ -250,6 +278,7 @@ export class GameRenderer {
     // In the dark the tall windows still read as pale silhouettes.
     this.map.windows.emissiveIntensity = f.dark ? (f.flash ? 3 : 0.3) : 0.9;
     this.candle.intensity = f.dark && !f.flash ? (isGrandma ? 7 : 6) : 0;
+    this.map.tick?.(f.time, dt);
 
     // Characters.
     for (const [id, m] of this.models) if (!view.chars.has(id)) { m.dispose(); this.models.delete(id); }
@@ -283,7 +312,18 @@ export class GameRenderer {
 
     // Camera + render.
     const self = view.self;
-    if (f.cinematic) {
+    if (this.photoCam) {
+      // Photo mode (tests, screenshots): a fixed camera, the plain truth, no HUD view-model.
+      this.rig.hideViewModel();
+      const cam = this.rig.camera, p = this.photoCam;
+      const fov = p.fov ?? 60;
+      if (Math.abs(cam.fov - fov) > 0.01) { cam.fov = fov; cam.updateProjectionMatrix(); }
+      cam.position.set(p.pos.x, p.pos.y, p.pos.z);
+      cam.lookAt(p.look.x, p.look.y, p.look.z);
+      this.scene.fog = null;
+      this.renderer.setRenderTarget(null);
+      this.renderer.render(this.scene, cam);
+    } else if (f.cinematic) {
       this.frameIdle(f.time, true);
     } else if (isGrandma) {
       const pos = self?.pos ?? g?.pos ?? { x: 0, y: 0, z: 0 };
@@ -296,7 +336,7 @@ export class GameRenderer {
         specsActive: !!self?.specsActive, specsOff: !!self?.specsOff, dark: f.dark && !f.flash, flash: f.flash,
       }), dt);
     } else {
-      const pos = self?.pos ?? { x: 0, y: 0, z: 3 };
+      const pos = self?.pos ?? this.map.idle.center;
       this.rig.updateCousin(pos, f.yaw, f.pitch, dt, this.map.blockers);
       this.candle.position.copy(this.rig.camera.position);
       this.scene.fog = f.dark && !f.flash ? this.cousinDarkFog : null;
@@ -321,6 +361,7 @@ export class GameRenderer {
     for (const l of this.lights) l.light.intensity = l.base * level;
     this.lightning.intensity = n?.flash ? 4.5 : 0;
     this.map.windows.emissiveIntensity = n?.dark ? (n.flash ? 3 : 0.3) : 0.9;
+    this.map.tick?.(time, dt);
 
     this.rig.hideViewModel();
     // Everyone as they really were (animated once a frame).
@@ -403,8 +444,10 @@ export class GameRenderer {
     const a = t * 0.05;
     const cam = this.rig.camera;
     if (Math.abs(cam.fov - 60) > 0.01) { cam.fov = 60; cam.updateProjectionMatrix(); }
-    cam.position.set(Math.sin(a) * 5.5, 2.6 + Math.sin(t * 0.13) * 0.4, 2.5 + Math.cos(a) * 2.5);
-    cam.lookAt(0, 2.2, -5);
+    const { center: c, rx, rz, look } = this.map.idle;
+    cam.position.set(c.x + Math.sin(a) * rx, c.y + Math.sin(t * 0.13) * 0.4, c.z + Math.cos(a) * rz);
+    cam.lookAt(look.x, look.y, look.z);
+    this.map.tick?.(t, 1 / 60);
     this.renderer.setRenderTarget(null);
     this.renderer.render(this.scene, cam);
   }

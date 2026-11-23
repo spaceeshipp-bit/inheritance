@@ -175,7 +175,12 @@ async function boot(): Promise<void> {
     // ended or went on without us (e.g. we rejoined after it finished).
     if (state.match && lobbyEndsOurMatch(m)) endStaleMatch();
     screens.updateLobby(m);
-    if (!state.inMatch) screens.showLobby();
+    if (!state.inMatch) {
+      screens.showLobby();
+      // The backdrop behind the lobby is where the host says the family gathers.
+      const where = m.inProgress?.map ?? m.options.map;
+      if (where !== 'random') renderer.setMap(where);
+    }
   });
   state.on('match', () => {
     screens.hide();

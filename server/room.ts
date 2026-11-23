@@ -319,7 +319,7 @@ export class RoomManager {
 export class Room {
   readonly players = new Map<string, RoomPlayer>();
   hostId = '';
-  options: MatchOptions = { fullMatch: false, fillBots: true, pushGrandma: false };
+  options: MatchOptions = { fullMatch: false, fillBots: true, pushGrandma: false, map: 'manor' };
   match: Match | null = null;
   lastGrandmaId: string | null = null;
   emptySince: number | null = null;
@@ -676,7 +676,7 @@ export class Room {
     const shares = { ...m.will.shares };
     const names: Record<string, string> = {};
     for (const id of [m.grandmaId, ...Object.keys(shares)]) names[id] = m.nameOf(id);
-    return { phase: pm.phase, visit: pm.visit, endsAt: pm.endsAt, time: pm.time, shares, names, grandmaId: m.grandmaId };
+    return { phase: pm.phase, visit: pm.visit, endsAt: pm.endsAt, time: pm.time, shares, names, grandmaId: m.grandmaId, map: m.mapDef.id };
   }
 
   broadcastLobby(): void {

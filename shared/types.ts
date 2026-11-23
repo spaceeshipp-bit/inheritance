@@ -1,4 +1,5 @@
 // Core data types shared by server and client.
+import type { MapId } from './maps/types.js';
 import type { ItemKey, VisitId } from './constants.js';
 
 export interface Vec3 { x: number; y: number; z: number }
@@ -136,6 +137,8 @@ export interface MatchOptions {
   fillBots: boolean;
   /** Custom-lobby rule: cousins may shove Grandma (off by default). */
   pushGrandma: boolean;
+  /** Where the family gathers: a map, or 'random' (the room picks one when the match starts). */
+  map: MapId | 'random';
 }
 
 export interface ReadingResult {

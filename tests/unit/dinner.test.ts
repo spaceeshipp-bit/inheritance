@@ -3,7 +3,7 @@
 // empty chairs, and excusing yourself at the kitchen door.
 import { describe, expect, it } from 'vitest';
 import { DINNER } from '../../shared/constants.js';
-import { SPAWNS } from '../../shared/map.js';
+import { MAPS } from '../../shared/map.js';
 import { forwardOf } from '../../shared/movement.js';
 import { EventLog } from '../../server/log.js';
 import { makeMatch, stepUntil } from './helpers.js';
@@ -18,6 +18,7 @@ function atDinner() {
   stepUntil(r.m, () => r.m.phase === 'visit' && r.m.visitIndex === 1, 60);
   return r;
 }
+const { spawns: SPAWNS, dinner: TABLE } = MAPS.manor;
 const toasts = (box: ReturnType<typeof atDinner>['box'], id: string) => box.events(id, 'toast').map((e) => (e as unknown as { text: string }).text);
 
 describe('Family Dinner', () => {
@@ -28,7 +29,7 @@ describe('Family Dinner', () => {
     expect(g.body.pos).toMatchObject({ x: SPAWNS.dinnerGrandma.x, z: SPAWNS.dinnerGrandma.z });
     for (const id of m.cousinIds) {
       const c = m.chars.get(id)!;
-      const T = DINNER.table;
+      const T = TABLE.table;
       const dx = Math.max(T.minX - c.body.pos.x, 0, c.body.pos.x - T.maxX), dz = Math.max(T.minZ - c.body.pos.z, 0, c.body.pos.z - T.maxZ);
       expect(Math.hypot(dx, dz)).toBeLessThan(DINNER.away);
       const f = forwardOf(c.yaw);
@@ -72,7 +73,7 @@ describe('Family Dinner', () => {
   it('excusing yourself at the kitchen door buys one unnoticed trip a visit', () => {
     const { m, box } = atDinner();
     box.clear();
-    place(m, 'b', DINNER.door.x + 0.8, 0.3, Math.PI / 2);
+    place(m, 'b', TABLE.door.x + 0.8, 0.3, Math.PI / 2);
     press(m, 'b', { interact: true });
     tick(m);
     press(m, 'b', { interact: false });
@@ -83,7 +84,7 @@ describe('Family Dinner', () => {
     tick(m, Math.round((DINNER.notice + 2) * 30));
     expect(m.log.events.some((e) => e.kind === 'left-table' && e.by === 'b')).toBe(true);
     // Only once a visit.
-    place(m, 'b', DINNER.door.x + 0.8, 0.3, Math.PI / 2);
+    place(m, 'b', TABLE.door.x + 0.8, 0.3, Math.PI / 2);
     box.clear();
     press(m, 'b', { interact: true });
     tick(m);

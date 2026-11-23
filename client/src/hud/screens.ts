@@ -3,6 +3,7 @@
 // The lobby also shows a match that is already running to players who are not
 // in it (joined mid-match, replaced, back too late): its phase, time left and
 // the live will. The title shows connection progress and "open in another tab".
+import { MAPS, MAP_IDS, type MapId } from '../../../shared/map.js';
 import { MIN_PLAYERS, VISITS } from '../../../shared/constants.js';
 import type { MatchInProgress } from '../../../shared/protocol.js';
 import type { MatchOptions } from '../../../shared/types.js';
@@ -67,6 +68,9 @@ export class Screens {
   private optFull = el('input');
   private optBots = el('input');
   private optPush = el('input');
+  /** The map picker: one card per map, then "Surprise me". */
+  private mapCards = el('div', 'map-cards');
+  private mapButtons = new Map<string, HTMLButtonElement>();
   private startBtn = el('button', 'btn primary', 'Start the visit');
   private startNote = el('div', 'start-note');
   private hostBox = el('div', 'host-box');
@@ -189,7 +193,21 @@ export class Screens {
     mic.append(el('div', 'section-title', 'Mic check'), micRow, this.micText, pttRow);
     right.appendChild(mic);
     cols.append(left, right);
-    card.append(head, this.ipBox, cols, this.lobbyErr);
+    const where = el('div', 'map-pick');
+    where.append(el('div', 'section-title', 'Where the family gathers'), this.mapCards);
+    const choices: { id: MapId | 'random'; name: string; blurb: string }[] = [
+      ...MAP_IDS.map((id) => ({ id, name: MAPS[id].name, blurb: MAPS[id].blurb })),
+      { id: 'random', name: 'Surprise me', blurb: 'Nana could be anywhere. She often is.' },
+    ];
+    for (const c of choices) {
+      const b = el('button', `map-card${c.id === 'random' ? ' random' : ''}`) as HTMLButtonElement;
+      b.dataset.map = c.id;
+      b.append(el('span', 'map-name', c.name), el('span', 'map-blurb', c.blurb));
+      b.addEventListener('click', () => this.h.options({ map: c.id }));
+      this.mapButtons.set(c.id, b);
+      this.mapCards.appendChild(b);
+    }
+    card.append(head, this.ipBox, cols, where, this.lobbyErr);
     this.lobby.appendChild(card);
   }
 
@@ -252,6 +270,11 @@ export class Screens {
     this.optFull.checked = m.options.fullMatch;
     this.optBots.checked = m.options.fillBots;
     this.optPush.checked = m.options.pushGrandma;
+    for (const [id, b] of this.mapButtons) {
+      b.disabled = !host || running;
+      b.classList.toggle('chosen', m.options.map === id);
+      b.title = host ? '' : 'The host picks where the family gathers.';
+    }
     show(this.startBtn, host);
     this.startBtn.disabled = running;
     const count = m.players.length;
@@ -278,7 +301,7 @@ export class Screens {
       row.append(el('span', 'ip-name', r.name), el('span', 'ip-share', `${r.share}%`));
       this.ipWill.appendChild(row);
     }
-    setText(this.ipGrandma, `Grandma: ${ip.names[ip.grandmaId] ?? '???'}`);
+    setText(this.ipGrandma, `Grandma: ${ip.names[ip.grandmaId] ?? '???'}${ip.map ? ` · ${MAPS[ip.map].name}` : ''}`);
     this.frame();
   }
 

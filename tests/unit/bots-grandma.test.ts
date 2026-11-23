@@ -194,7 +194,7 @@ describe('framing reads, and she rewards what she witnesses (GDD Gate 1)', () =>
     for (const seed of SEEDS_50) {
       const m = new Match({
         players: [{ id: 'nana', name: 'Nana', isBot: true }, ...['c0', 'c1', 'c2', 'c3'].map((id) => ({ id, name: id, isBot: true }))],
-        grandmaId: 'nana', options: { fullMatch: false, fillBots: true, pushGrandma: false },
+        grandmaId: 'nana', options: { fullMatch: false, fillBots: true, pushGrandma: false, map: 'manor' },
         fast: true, visitSeconds: 180, seed, send: () => {},
       });
       // For each compliment: could she see who paid it, and did she have room to spare in her will budget?

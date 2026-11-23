@@ -1,7 +1,8 @@
-// Bot navigation on the grey-box manor: a small hand-placed waypoint graph per
-// floor (ground, gallery) joined by the grand staircase, line-of-sight checks
-// against the map boxes inflated by the body radius, and Dijkstra.
-import { BOXES, RAMPS } from '../shared/map.js';
+// Bot navigation: each map's hand-placed waypoint graph (shared/maps/*: its
+// ground floor, and the manor's gallery joined by the grand staircase),
+// line-of-sight checks against the map boxes inflated by the body radius, and
+// Dijkstra. Paths never leave the map they start in.
+import { BOXES, MAPS, MAP_IDS, RAMPS, mapAt, type MapDef, type MapId } from '../shared/map.js';
 import { CHAR_SHAPE } from '../shared/movement.js';
 import type { Vec3 } from '../shared/types.js';
 
@@ -10,7 +11,8 @@ export type Level = 'ground' | 'ramp' | 'gallery';
 interface Rect { minX: number; maxX: number; minZ: number; maxZ: number }
 
 const MARGIN = CHAR_SHAPE.radius + 0.05;
-const RAMP = RAMPS[0];
+/** The manor's grand staircase (the only stairs, and the only upper floor, so far). */
+const RAMP = MAPS.manor.ramps[0];
 
 function inflate(r: Rect, m: number): Rect {
   return { minX: r.minX - m, maxX: r.maxX + m, minZ: r.minZ - m, maxZ: r.maxZ + m };
@@ -39,9 +41,17 @@ function obstaclesFor(y: number): Rect[] {
 const OBSTACLES: Record<'ground' | 'gallery', Rect[]> = { ground: obstaclesFor(0), gallery: obstaclesFor(3) };
 
 export function levelOf(p: Vec3): Level {
-  const onRampXZ = p.x >= RAMP.minX - 0.05 && p.x <= RAMP.maxX + 0.05 && p.z <= RAMP.zStart - 0.3 && p.z >= RAMP.zEnd - 0.05;
-  if (onRampXZ && p.y > 0.25 && p.y < 2.85) return 'ramp';
+  for (const r of RAMPS) {
+    const lo = Math.min(r.zStart, r.zEnd), hi = Math.max(r.zStart, r.zEnd);
+    const onRampXZ = p.x >= r.minX - 0.05 && p.x <= r.maxX + 0.05 && p.z <= hi - 0.3 && p.z >= lo - 0.05;
+    if (onRampXZ && p.y > r.yStart + 0.25 && p.y < r.yEnd - 0.15) return 'ramp';
+  }
   return p.y > 2 ? 'gallery' : 'ground';
+}
+
+/** The map a point is in (the manor if it is somewhere between maps). */
+function mapOf(p: Vec3): MapDef {
+  return mapAt(p) ?? MAPS.manor;
 }
 
 function segHitsRect(ax: number, az: number, bx: number, bz: number, r: Rect): boolean {
@@ -73,6 +83,11 @@ export function hasLOS(a: Vec3, b: Vec3, level: 'ground' | 'gallery'): boolean {
   return true;
 }
 
+/** Comfortably inside one of the map's volumes (0.4 m in from its walls). */
+function inOpen(x: number, z: number, m: MapDef): boolean {
+  return m.inside.some((v) => x > v.min.x + 0.4 && x < v.max.x - 0.4 && z > v.min.z + 0.4 && z < v.max.z - 0.4);
+}
+
 /** Move a point out of any inflated obstacle on its floor (e.g. an heirloom on a pedestal → in front of it). */
 export function freePoint(p: Vec3, level?: Level): Vec3 {
   const lv = level ?? levelOf(p);
@@ -87,7 +102,7 @@ export function freePoint(p: Vec3, level?: Level): Vec3 {
         { d: r.maxX - q.x, x: r.maxX + 0.02, z: q.z },
         { d: q.z - r.minZ, x: q.x, z: r.minZ - 0.02 },
         { d: r.maxZ - q.z, x: q.x, z: r.maxZ + 0.02 },
-      ].filter((o) => o.x > -7.6 && o.x < 15.6 && o.z > -11.6 && o.z < 5.6);
+      ].filter((o) => inOpen(o.x, o.z, mapOf(p)));
       opts.sort((a, b) => a.d - b.d);
       if (opts.length) { q.x = opts[0].x; q.z = opts[0].z; moved = true; }
     }
@@ -96,41 +111,28 @@ export function freePoint(p: Vec3, level?: Level): Vec3 {
   return q;
 }
 
-interface Node { id: number; p: Vec3; level: 'ground' | 'gallery' }
+interface Node { id: number; p: Vec3; level: 'ground' | 'gallery'; map: MapId }
 
-const G = (x: number, z: number): Vec3 => ({ x, y: 0, z });
-const U = (x: number, z: number): Vec3 => ({ x, y: 3, z });
-
-const GROUND_POINTS: Vec3[] = [
-  // Front hall
-  G(-6.5, -6.5), G(-6.5, -1), G(-6.5, 1.2), G(-4, -0.6), G(-3.6, 4.6), G(-0.5, 0.8), G(0, 3.4), G(3, -0.6),
-  G(3.6, 4.6), G(6.2, -6.5), G(6.2, -1), G(6.2, 2), G(-3, -6), G(3, -6), G(-2.5, -5), G(2.5, -5),
-  G(-4.5, -10), G(4.5, -10), G(0, -10.2), G(-6.5, 4.0), G(-1.4, 2.6),
-  // Kitchen doorway (both sides)
-  G(7.3, 0), G(9.0, 0),
-  // Kitchen
-  G(9.6, -3.8), G(12, -4.2), G(14.6, -3.8), G(9.6, 2.6), G(12, 2.4), G(14.3, 2.1), G(14.8, -1.2),
-  // Pantry
-  G(14.3, 3.9), G(14.8, 5.0),
-];
-const GALLERY_POINTS: Vec3[] = [U(-3, -9.7), U(3, -9.7), U(-6.5, -9.6), U(6.5, -9.6), U(-1.2, -10.8), U(1.2, -10.8), U(-5, -11.3), U(5, -11.3)];
-
-/** Foot and top of the staircase (they link the two floors). */
-export const STAIR_FOOT: Vec3 = G(0, -1.3);
-export const STAIR_TOP: Vec3 = U(0, -8.7);
+/** The manor's stair ends (they link its two floors). */
+export const STAIR_FOOT: Vec3 = MAPS.manor.nav.stairFoot as Vec3;
+export const STAIR_TOP: Vec3 = MAPS.manor.nav.stairTop as Vec3;
 
 const NODES: Node[] = [];
-for (const p of GROUND_POINTS) NODES.push({ id: NODES.length, p, level: 'ground' });
-const FOOT_ID = NODES.length; NODES.push({ id: FOOT_ID, p: STAIR_FOOT, level: 'ground' });
-for (const p of GALLERY_POINTS) NODES.push({ id: NODES.length, p, level: 'gallery' });
-const TOP_ID = NODES.length; NODES.push({ id: TOP_ID, p: STAIR_TOP, level: 'gallery' });
+let FOOT_ID = -1, TOP_ID = -1;
+for (const id of MAP_IDS) {
+  const nav = MAPS[id].nav;
+  for (const p of nav.ground) NODES.push({ id: NODES.length, p, level: 'ground', map: id });
+  if (nav.stairFoot) { if (id === 'manor') FOOT_ID = NODES.length; NODES.push({ id: NODES.length, p: nav.stairFoot, level: 'ground', map: id }); }
+  for (const p of nav.upper ?? []) NODES.push({ id: NODES.length, p, level: 'gallery', map: id });
+  if (nav.stairTop) { if (id === 'manor') TOP_ID = NODES.length; NODES.push({ id: NODES.length, p: nav.stairTop, level: 'gallery', map: id }); }
+}
 
 const flat = (a: Vec3, b: Vec3): number => Math.hypot(a.x - b.x, a.z - b.z);
 
 const EDGES: { to: number; w: number }[][] = NODES.map(() => []);
 for (const a of NODES) {
   for (const b of NODES) {
-    if (b.id <= a.id || a.level !== b.level) continue;
+    if (b.id <= a.id || a.level !== b.level || a.map !== b.map) continue;
     if (hasLOS(a.p, b.p, a.level)) {
       const w = flat(a.p, b.p);
       EDGES[a.id].push({ to: b.id, w });
@@ -141,24 +143,25 @@ for (const a of NODES) {
 EDGES[FOOT_ID].push({ to: TOP_ID, w: 7 });
 EDGES[TOP_ID].push({ to: FOOT_ID, w: 7 });
 
-/** Waypoints the graph knows (for wandering). */
-export function waypoints(level?: 'ground' | 'gallery'): Vec3[] {
-  return NODES.filter((n) => !level || n.level === level).map((n) => ({ ...n.p }));
+/** Waypoints the graph knows on one map (for wandering), optionally on one floor. */
+export function waypoints(map: MapId, level?: 'ground' | 'gallery'): Vec3[] {
+  return NODES.filter((n) => n.map === map && (!level || n.level === level)).map((n) => ({ ...n.p }));
 }
 
-/** Hall-only ground waypoints (Grandma's beat). */
-export function hallPoints(): Vec3[] {
-  return GROUND_POINTS.filter((p) => p.x < 7.5 && p.z > -7).map((p) => ({ ...p }));
+/** Grandma's beat on a map (where the bot Grandma wanders). */
+export function beatPoints(map: MapId): Vec3[] {
+  return MAPS[map].nav.beat.map((p) => ({ ...p }));
 }
 
 function connect(p: Vec3, level: Level): { to: number; w: number }[] {
   if (level === 'ramp') return [{ to: FOOT_ID, w: flat(p, STAIR_FOOT) }, { to: TOP_ID, w: flat(p, STAIR_TOP) }];
+  const map = mapOf(p).id;
   const out: { to: number; w: number }[] = [];
-  for (const n of NODES) if (n.level === level && hasLOS(p, n.p, level)) out.push({ to: n.id, w: flat(p, n.p) });
+  for (const n of NODES) if (n.map === map && n.level === level && hasLOS(p, n.p, level)) out.push({ to: n.id, w: flat(p, n.p) });
   if (out.length === 0) {
     // Stuck in a corner: link to the nearest node on this floor anyway.
     let best: Node | null = null;
-    for (const n of NODES) if (n.level === level && (!best || flat(p, n.p) < flat(p, best.p))) best = n;
+    for (const n of NODES) if (n.map === map && n.level === level && (!best || flat(p, n.p) < flat(p, best.p))) best = n;
     if (best) out.push({ to: best.id, w: flat(p, best.p) });
   }
   return out;

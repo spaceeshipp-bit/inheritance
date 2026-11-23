@@ -72,6 +72,17 @@ button, input { font: inherit; }
 .host-box .btn { width: 100%; margin-top: 10px; }
 .start-note { color: var(--muted); font-size: 13px; margin-top: 6px; min-height: 18px; }
 .mic-box { border-top: 1px solid rgba(255,255,255,0.08); margin-top: 12px; padding-top: 6px; }
+.map-pick { border-top: 1px solid rgba(255,255,255,0.08); margin-top: 14px; padding-top: 6px; }
+.map-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.map-card { display: flex; flex-direction: column; gap: 4px; text-align: left; padding: 10px 12px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.1);
+  background: rgba(255,255,255,0.04); color: var(--text); cursor: pointer; font: inherit; transition: background 0.15s, border-color 0.15s; }
+.map-card:hover:not(:disabled) { background: rgba(255,255,255,0.09); }
+.map-card:disabled { cursor: default; }
+.map-card.chosen { border-color: var(--gold); background: rgba(201,162,74,0.14); }
+.map-card:disabled:not(.chosen) { opacity: 0.55; }
+.map-card.random .map-name { font-style: italic; }
+.map-name { font-family: var(--serif); color: var(--gold); font-size: 15px; }
+.map-blurb { color: var(--muted); font-size: 12px; line-height: 1.35; }
 .mic-row { display: flex; align-items: center; gap: 8px; }
 .mic-meter { flex: 1; height: 10px; background: rgba(255,255,255,0.1); border-radius: 5px; overflow: hidden; }
 .mic-fill { height: 100%; width: 0; background: linear-gradient(90deg, var(--good), var(--warn)); transition: width 60ms linear; }

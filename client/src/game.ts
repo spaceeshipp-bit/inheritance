@@ -72,7 +72,7 @@ export class Game {
     const { state: s, renderer, hud, input } = this.d;
     const m = s.match;
     if (!m) return;
-    renderer.setMatch({ grandmaId: m.grandmaId, cousins: m.cousins.map((c) => ({ id: c.id, color: c.color, item: c.item })) });
+    renderer.setMatch({ map: m.options.map === 'random' ? 'manor' : m.options.map, grandmaId: m.grandmaId, cousins: m.cousins.map((c) => ({ id: c.id, color: c.color, item: c.item })) });
     hud.startMatch();
     input.role = m.role;
     input.clear();

@@ -287,7 +287,7 @@ describe('players outside the running match see it from the lobby', () => {
     const ip = late.conn.last('lobby')?.inProgress;
     expect(ip).toBeDefined();
     if (!ip) return;
-    expect(Object.keys(ip).sort()).toEqual(['endsAt', 'grandmaId', 'names', 'phase', 'shares', 'time', 'visit']);
+    expect(Object.keys(ip).sort()).toEqual(['endsAt', 'grandmaId', 'map', 'names', 'phase', 'shares', 'time', 'visit']);
     expect(ip.phase).toBe('visit');
     expect(ip.visit).toBe('tea');
     expect(ip.endsAt).toBeGreaterThan(ip.time);

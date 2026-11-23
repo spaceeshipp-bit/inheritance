@@ -21,7 +21,7 @@ function play(opts: { seed: number; humans: string[]; bots: string[]; grandmaId:
   const m = new Match({
     players: [...opts.humans.map((id) => ({ id, name: id, isBot: false })), ...opts.bots.map((id) => ({ id, name: id, isBot: true }))],
     grandmaId: opts.grandmaId,
-    options: { fullMatch: !!opts.full, fillBots: true, pushGrandma: false },
+    options: { fullMatch: !!opts.full, fillBots: true, pushGrandma: false, map: 'manor' },
     fast: opts.fast, visitSeconds: opts.visitSeconds, seed: opts.seed, send: () => {},
   });
   const visits: Visit[] = [];

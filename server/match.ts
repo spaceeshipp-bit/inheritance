@@ -12,7 +12,7 @@ import {
   PREFERENCE_CARDS, QUICKCHAT, READING_TIME, RESULTS_TIME, ROLE_REVEAL_TIME, SENSES, SLICE_VISITS, SNAPSHOT_HZ,
   SPECTACLES, STORM, TICK_HZ, VISITS, VOICE, VOTE_TIME, WILL, WISH, INPUT, PROTOCOL_VERSION, DINNER,
 } from '../shared/constants.js';
-import { HEIRLOOM_SPOTS, HEIRLOOM_VARIANTS, SPAWNS, groundHeight } from '../shared/map.js';
+import { HEIRLOOM_VARIANTS, MAP_IDS, groundHeight, mapById, type MapDef, type MapId } from '../shared/map.js';
 import { createBody, forwardOf, integrateBody, wrapAngle, yawToward, type BodyShape, type MoveBody } from '../shared/movement.js';
 import type { GameEvent, GrandmaAction, InputMsg, ServerMsg, ClientMsg } from '../shared/protocol.js';
 import { grandmaScore } from '../shared/scoring.js';
@@ -228,7 +228,7 @@ export interface MatchSummary {
   seconds: number;
   visits: VisitId[];
   visitsPlayed: number;
-  options: { fullMatch: boolean; fillBots: boolean; pushGrandma: boolean };
+  options: { fullMatch: boolean; fillBots: boolean; pushGrandma: boolean; map: MapId };
   humans: number;
   grandma: 'human' | 'bot';
   /** By seat; no names. */
@@ -276,6 +276,8 @@ function hashStr(s: string): number {
 
 export class Match {
   readonly options: MatchOptions;
+  /** The map this match is played on (options.map, with 'random' already chosen). */
+  readonly mapDef: MapDef;
   readonly visits: VisitId[];
   readonly fast: boolean;
   readonly durations: PhaseDurations;
@@ -349,6 +351,8 @@ export class Match {
       : vs !== undefined && Number.isFinite(vs) && vs > 0 ? { ...FAST_DURATIONS, visit: () => vs } : FAST_DURATIONS;
     const seed = cfg.seed ?? Math.floor(Math.random() * 2 ** 31);
     this.rng = makeRng(seed);
+    if (this.options.map === 'random') this.options.map = MAP_IDS[Math.floor(makeRng(seed ^ 0x2545f491)() * MAP_IDS.length)];
+    this.mapDef = mapById(this.options.map);
     this.secret = Math.floor(makeRng(seed ^ 0x5bd1e995)() * 2 ** 31);
     this.grandmaId = cfg.grandmaId;
     this.humans = cfg.players.filter((p) => !p.isBot).map((p) => p.id);
@@ -425,7 +429,7 @@ export class Match {
   }
 
   private makeProps(): void {
-    const spots = this.shuffle(HEIRLOOM_SPOTS.map((s) => ({ ...s }))).slice(0, HEIRLOOM.perMatch);
+    const spots = this.shuffle(this.mapDef.heirloomSpots.map((s) => ({ ...s }))).slice(0, HEIRLOOM.perMatch);
     const fav = Math.floor(this.rng() * spots.length);
     spots.forEach((spot, i) => {
       const variant = HEIRLOOM_VARIANTS[i % HEIRLOOM_VARIANTS.length];
@@ -443,6 +447,7 @@ export class Match {
       p.onBody = true;
       this.props.set(p.id, p);
     }
+    const SPAWNS = this.mapDef.spawns;
     const cat = this.newProp('cat', 'cat', SPAWNS.cat);
     cat.cat = { body: createBody(SPAWNS.cat), goal: null, waitUntil: 0, giveUpAt: 0 };
     this.props.set(cat.id, cat);
@@ -456,6 +461,7 @@ export class Match {
   private spawnAll(): void {
     // Family Dinner is round the kitchen table; the other visits start in the hall.
     const dinner = this.visits[this.visitIndex] === 'dinner';
+    const SPAWNS = this.mapDef.spawns;
     const nana = dinner ? SPAWNS.dinnerGrandma : SPAWNS.grandma;
     const seats = dinner ? SPAWNS.dinnerCousins : SPAWNS.cousins;
     for (const c of this.chars.values()) {
@@ -1021,9 +1027,13 @@ export class Match {
     const all = [...this.chars.values()];
     const g = this.grandma;
     separateCharacters(all, g && !this.options.pushGrandma ? new Set<PhysChar>([g]) : new Set<PhysChar>());
+    const SPAWNS = this.mapDef.spawns;
     for (const c of all) {
       const spawn = c.role === 'grandma' ? SPAWNS.grandma : SPAWNS.cousins[Math.max(0, this.cousinIds.indexOf(c.id)) % SPAWNS.cousins.length];
-      if (rescueIfLost(c, spawn)) this.dropHeld(c, false);
+      if (rescueIfLost(c, spawn)) {
+        this.dropHeld(c, false);
+        if (this.mapDef.lostToast && this.phase === 'visit') this.emit(c.id, { e: 'toast', text: this.mapDef.lostToast });
+      }
     }
     this.updateProps(h);
     if (this.phase === 'visit') {
@@ -1225,7 +1235,7 @@ export class Match {
     p.vel = { x: 0, y: 0, z: 0 };
     p.resting = true;
     if (p.kind === 'heirloom') {
-      const spot = HEIRLOOM_SPOTS.find((s) => flatDist(s, at) < 0.45 && Math.abs(s.y - at.y) < 0.05);
+      const spot = this.mapDef.heirloomSpots.find((s) => flatDist(s, at) < 0.45 && Math.abs(s.y - at.y) < 0.05);
       p.spot = spot ? { ...spot } : null;
     }
     if (p.kind === 'cat' && p.cat) p.cat.body = createBody(at);
@@ -1647,7 +1657,7 @@ export class Match {
       this.followHolder(p);
       return;
     }
-    const home = p.kind === 'cat' ? SPAWNS.cat : p.kind === 'teacup' ? SPAWNS.teacup : { x: 0, y: 0, z: 2 };
+    const home = p.kind === 'cat' ? this.mapDef.spawns.cat : p.kind === 'teacup' ? this.mapDef.spawns.teacup : p.spot ?? this.mapDef.spawns.cat;
     p.pos = { ...home };
     if (p.kind === 'cat' && p.cat) p.cat.body = createBody(p.pos);
   }
@@ -1729,7 +1739,7 @@ export class Match {
     if (!cat.goal) {
       if (this.time < cat.waitUntil || lv === 'ramp') return;
       const level = lv === 'gallery' ? 'gallery' : 'ground';
-      const options = waypoints(level).filter((w) => flatDist(w, p.pos) < 9 && flatDist(w, p.pos) > 1.5 && hasLOS(p.pos, w, level));
+      const options = waypoints(this.mapDef.id, level).filter((w) => flatDist(w, p.pos) < 9 && flatDist(w, p.pos) > 1.5 && hasLOS(p.pos, w, level));
       if (options.length === 0) { cat.waitUntil = this.time + 3; return; }
       cat.goal = options[Math.floor(this.rng() * options.length)];
       cat.giveUpAt = this.time + 12;
@@ -1833,7 +1843,8 @@ export class Match {
     const p = this.props.get(propId);
     if (!p) return;
     if (kind === 'pills') {
-      const at = SPAWNS.pills[Math.floor(this.rng() * SPAWNS.pills.length)];
+      const pills = this.mapDef.spawns.pills;
+      const at = pills[Math.floor(this.rng() * pills.length)];
       p.hidden = false;
       p.heldBy = null;
       p.pos = { ...at };
@@ -1871,7 +1882,7 @@ export class Match {
     if (!w || !g) return;
     this.release(c, p);
     if (w.info.kind === 'tea') {
-      p.pos = { ...SPAWNS.teacup };
+      p.pos = { ...this.mapDef.spawns.teacup };
       p.vel = { x: 0, y: 0, z: 0 };
       p.resting = true;
     } else if (w.info.kind === 'pills') {
@@ -1969,7 +1980,7 @@ export class Match {
         const holder = p.heldBy ? this.chars.get(p.heldBy) : undefined;
         if (holder && holder.holding === p.id) { holder.holding = null; holder.sticky = false; }
         p.heldBy = null;
-        p.pos = { ...(p.kind === 'cat' ? SPAWNS.cat : SPAWNS.teacup) };
+        p.pos = { ...(p.kind === 'cat' ? this.mapDef.spawns.cat : this.mapDef.spawns.teacup) };
         p.vel = { x: 0, y: 0, z: 0 };
         p.resting = true;
         if (p.cat) p.cat = { body: createBody(p.pos), goal: null, waitUntil: this.time + 2, giveUpAt: 0 };
@@ -2064,7 +2075,7 @@ export class Match {
   private updateDinner(h: number): void {
     const g = this.grandma;
     if (!g || g.state === 'sleeping') return;
-    const T = DINNER.table;
+    const T = this.mapDef.dinner.table;
     for (const id of this.cousinIds) {
       const c = this.chars.get(id);
       if (!c || c.state === 'sleeping') continue;
@@ -2091,7 +2102,8 @@ export class Match {
   /** "Excuse me, Nana": once a Dinner, by the kitchen door, a bathroom trip she does not count. */
   private tryExcuse(c: Char): boolean {
     if (this.visits[this.visitIndex] !== 'dinner' || this.excuseUsed.has(c.id)) return false;
-    if (flatDist(c.body.pos, { x: DINNER.door.x, y: 0, z: DINNER.door.z }) > DINNER.doorRange) return false;
+    const door = this.mapDef.dinner.door;
+    if (flatDist(c.body.pos, { x: door.x, y: 0, z: door.z }) > DINNER.doorRange) return false;
     this.excuseUsed.add(c.id);
     this.excusedUntil.set(c.id, this.time + DINNER.excuse);
     this.dinnerAway.set(c.id, 0);
@@ -2172,7 +2184,7 @@ export class Match {
       seconds: Math.round(this.time),
       visits: [...this.visits],
       visitsPlayed: this.visitIndex + 1,
-      options: { fullMatch: this.options.fullMatch, fillBots: this.options.fillBots, pushGrandma: this.options.pushGrandma },
+      options: { fullMatch: this.options.fullMatch, fillBots: this.options.fillBots, pushGrandma: this.options.pushGrandma, map: this.mapDef.id },
       humans: this.humans.length,
       grandma: this.isHuman(this.grandmaId) ? 'human' : 'bot',
       cousins: order.map((id) => ({ human: this.isHuman(id), share: this.will.shares[id] ?? 0, sabotage: sabotage[id] ?? 0 })),

@@ -24,7 +24,7 @@ interface Run {
 function run(seed: number): Run {
   const m = new Match({
     players: [{ id: 'nana', name: 'Nana', isBot: true }, ...COUSINS.map((id) => ({ id, name: id, isBot: true }))],
-    grandmaId: 'nana', options: { fullMatch: false, fillBots: true, pushGrandma: false }, fast: false, seed, send: () => {},
+    grandmaId: 'nana', options: { fullMatch: false, fillBots: true, pushGrandma: false, map: 'manor' }, fast: false, seed, send: () => {},
   });
   const out: Run = { ticks: 0, inside1: 0, longestInside: 0, compliments: [], deliveries: [], afterDelivery: [] };
   const insideSince = new Map<string, number>();

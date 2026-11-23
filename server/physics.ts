@@ -3,7 +3,7 @@
 // bounce, rest on boxes and the stair ramp, get carried and thrown.
 // Pure functions over plain data so tests can drive them directly.
 import { FALL_RAGDOLL_HEIGHT, GRAVITY, HEIRLOOM, RAGDOLL_TIME } from '../shared/constants.js';
-import { BOXES, RAMPS, groundHeight } from '../shared/map.js';
+import { BOXES, RAMPS, groundHeight, insideMap, mapAt } from '../shared/map.js';
 import {
   CHAR_SHAPE, createBody, forwardOf, rampHeightAt, resolveHorizontal, stepMovement,
   type MoveBody, type MoveCmd, type MoveResult,
@@ -233,7 +233,8 @@ export function stepProp(p: PhysProp, dt: number): number {
         p.vel.y = Math.abs(p.vel.y) * 0.25;
         p.vel.x *= 0.6; p.vel.z *= 0.6;
       } else {
-        const ramp = RAMPS[0];
+        // The staircase it ran into (the one under it now).
+        const ramp = RAMPS.find((r) => p.pos.x >= r.minX && p.pos.x <= r.maxX && p.pos.z >= Math.min(r.zStart, r.zEnd) && p.pos.z <= Math.max(r.zStart, r.zEnd)) ?? RAMPS[0];
         if (prev.x < ramp.minX || prev.x > ramp.maxX) {
           p.pos.x = prev.x;
           impact = Math.max(impact, Math.abs(p.vel.x));
@@ -299,16 +300,17 @@ export function bumpsPedestal(c: PhysChar, spot: Vec3): boolean {
   return c.body.pos.y > spot.y - 1.6 && c.body.pos.y < spot.y + 0.3;
 }
 
-/** Is a prop outside the house (escaped through a gap, or lost)? */
+/** Is a prop outside its map (escaped through a gap, overboard, or lost)? */
 export function propOutside(p: Vec3): boolean {
-  return !Number.isFinite(p.x + p.y + p.z) || p.y < -1 || p.y > 6.5 || p.x < -8.4 || p.x > 16.4 || p.z < -12.4 || p.z > 6.4
-    || (p.x > 8.3 && (p.z < -6.3 || p.z > 6.3 || p.y > 3.3));
+  const m = mapAt(p);
+  return !m || !insideMap(p, m);
 }
 
-/** Keep a character inside the house; returns true if it had to be rescued. */
+/** Keep a character inside its map; returns true if it had to be rescued (fallen out, overboard). */
 export function rescueIfLost(c: PhysChar, fallback: Vec3): boolean {
   const p = c.body.pos;
-  const bad = !Number.isFinite(p.x + p.y + p.z) || p.y < -3 || p.x < -9 || p.x > 17 || p.z < -13 || p.z > 7;
+  const m = mapAt(p);
+  const bad = !m || !insideMap(p, m, 0.6, 2);
   if (!bad) return false;
   c.body = createBody(fallback);
   return true;
