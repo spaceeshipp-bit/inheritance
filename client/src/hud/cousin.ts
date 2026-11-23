@@ -41,6 +41,35 @@ export interface PromptCtx {
   propLabel: (p: PropSnap) => string;
   /** This house's tannoy, if it has one. */
   tannoy?: { at: Vec3 } | null;
+  /** Where a good shove does extra damage (open coffins, a ship's rail): footprints and what the prompt says. */
+  hazards?: { min: Vec3; max: Vec3; word: string }[];
+}
+
+/** A map's shove hazards: its open coffins ("into the coffin") and its drops over the side ("overboard"). */
+const hazardCache = new Map<string, { min: Vec3; max: Vec3; word: string }[]>();
+function hazardsOf(id: string | undefined): { min: Vec3; max: Vec3; word: string }[] {
+  const def = mapById(id);
+  let out = hazardCache.get(def.id);
+  if (!out) {
+    out = [
+      ...(def.coffins ?? []).flatMap((cf) => def.boxes.filter((b) => b.label === cf.label).map((b) => ({ min: b.min, max: b.max, word: 'into the coffin' }))),
+      ...(def.drops ?? []).map((d) => ({ min: d.min, max: d.max, word: 'overboard' })),
+    ];
+    hazardCache.set(def.id, out);
+  }
+  return out;
+}
+
+/** How close (m) a shove target must be to a hazard for the prompt to name it. */
+const HAZARD_NEAR = 1.5;
+
+/** The hazard `p` stands by, if any (flat distance to its footprint). */
+export function hazardBy(p: Vec3, hazards: { min: Vec3; max: Vec3; word: string }[] | undefined): string | null {
+  for (const h of hazards ?? []) {
+    const dx = Math.max(h.min.x - p.x, 0, p.x - h.max.x), dz = Math.max(h.min.z - p.z, 0, p.z - h.max.z);
+    if (Math.hypot(dx, dz) <= HAZARD_NEAR) return h.word;
+  }
+  return null;
 }
 
 const KEYS = {
@@ -152,7 +181,10 @@ export function rankPrompts(c: PromptCtx): Prompt[] {
     }
   }
   const tgt = shoveTarget(me, others, c.pushGrandma);
-  if (tgt) out.push({ key: k.shove, text: `Shove ${tgt.role === 'grandma' ? 'Nana' : c.name(tgt.id)}`, sabotage: true, score: 70 });
+  if (tgt) {
+    const by = tgt.role === 'cousin' ? hazardBy(tgt.pos, c.hazards) : null;
+    out.push({ key: k.shove, text: `Shove ${tgt.role === 'grandma' ? 'Nana' : c.name(tgt.id)}${by ? ` ${by}` : ''}`, sabotage: true, score: by ? 80 : 70 });
+  }
   return out.sort((a, b) => b.score - a.score).slice(0, 3);
 }
 
@@ -302,6 +334,7 @@ export class CousinHud {
       pushGrandma: !!s.match?.options.pushGrandma, pad: f.device === 'pad',
       name: (id) => cleanName(s.name(id)), itemName: (owner) => s.cousin(owner)?.itemName ?? 'item', propLabel: (p) => propName(p, s),
       tannoy: mapById(s.match?.options.map).tannoy ?? null,
+      hazards: hazardsOf(s.match?.options.map),
     }) : [];
     if (me && !prompts.length && !f.pointerLocked && f.device === 'kbm') prompts.push({ key: '', text: 'Click to look around', sabotage: false, score: 0 });
     this.renderPrompts(prompts, eye === 'seen');

@@ -36,6 +36,20 @@ function ctx(me: CharSnap, others: CharSnap[], props: PropSnap[], o: Partial<Pro
   };
 }
 
+describe('shove prompts name the hazard', () => {
+  const me = char('me', 0, 0);
+  const bea = char('bea', 0, -1);
+  const coffin = { min: { x: -0.5, y: 0, z: -2.6 }, max: { x: 0.5, y: 1, z: -1.8 }, word: 'into the coffin' };
+  it('a cousin by an open coffin: "into the coffin", and it ranks higher', () => {
+    const p = rankPrompts(ctx(me, [bea], [], { hazards: [coffin] }));
+    expect(p[0]).toMatchObject({ text: 'Shove BEA into the coffin', score: 80 });
+  });
+  it('nowhere near one: a plain shove', () => {
+    const far = { ...coffin, min: { x: 5, y: 0, z: 5 }, max: { x: 6, y: 1, z: 6 } };
+    expect(rankPrompts(ctx(me, [bea], [], { hazards: [far] })).find((x) => x.text.startsWith('Shove'))?.text).toBe('Shove BEA');
+  });
+});
+
 describe('context prompts (review P11, P8, P12)', () => {
   // Yaw 0 faces -Z: "in front" is smaller z.
   const me = char('me', 0, 0);
