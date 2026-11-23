@@ -36,6 +36,9 @@ async function main(): Promise<void> {
       const base = path.join(out, `${map}-${shot}`);
       fs.writeFileSync(`${base}.glb`, Buffer.from(b64, 'base64'));
       fs.writeFileSync(`${base}.camera.json`, JSON.stringify(cam, null, 2));
+      // The lightmap layout the game computed (the bake must carry its signature).
+      const layout = await page.evaluate(() => (window as unknown as { __lookdev: { lightmap: unknown } }).__lookdev.lightmap);
+      if (layout) fs.writeFileSync(`${base}.layout.json`, JSON.stringify(layout, null, 2));
       console.log(`  ${base}.glb (${(fs.statSync(`${base}.glb`).size / 1e6).toFixed(1)} MB)`);
       await page.close();
     }

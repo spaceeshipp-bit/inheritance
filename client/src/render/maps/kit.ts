@@ -8,6 +8,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import type { Box, MapDef, MapId, Ramp } from '../../../../shared/map.js';
 import type { Vec3 } from '../../../../shared/types.js';
 import { boxGeo, mat, wallpaper } from '../materials.js';
+import { layoutLightmap, type LightmapLayout } from '../lightmap.js';
 
 export interface MapView {
   id: MapId;
@@ -24,6 +25,10 @@ export interface MapView {
   background: string;
   /** Where the Storm's lightning comes from (outside the windows). */
   lightningFrom: Vec3;
+  /** The lightmap atlas of the static geometry (render/lightmap.ts); a baked lightmap must match it. */
+  lightmap?: LightmapLayout;
+  /** Set once a baked lightmap is applied: scale its light (the Storm's power cut, lightning). */
+  lightLevel?: (k: number) => void;
   /**
    * Optional animation (waves, flickering bulbs, a swinging lamp), every frame,
    * with the Storm's state: `dark` while the power is out, `flash` during lightning.
@@ -57,9 +62,13 @@ export class ViewBuilder {
   }
 
   /** Bake the static geometry and hand over the view. */
-  finish(rest: Omit<MapView, 'id' | 'group' | 'blockers' | 'lights'>): MapView {
+  finish(rest: Omit<MapView, 'id' | 'group' | 'blockers' | 'lights' | 'lightmap'>): MapView {
     mergeStatic(this.group, this.blockers);
-    return { id: this.def.id, group: this.group, blockers: this.blockers, lights: this.lights, ...rest };
+    // Lay out the walls, floors and furniture for baked light (cheap; used only if a bake exists).
+    const meshes = this.blockers.filter((o): o is THREE.Mesh => o instanceof THREE.Mesh);
+    let lightmap: LightmapLayout | undefined;
+    try { lightmap = layoutLightmap(meshes); } catch { lightmap = undefined; }
+    return { id: this.def.id, group: this.group, blockers: this.blockers, lights: this.lights, lightmap, ...rest };
   }
 }
 

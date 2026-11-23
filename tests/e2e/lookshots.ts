@@ -20,6 +20,8 @@ async function main(): Promise<void> {
   const shots = opt('--shots', 'family').split(',');
   const looks = opt('--looks', 'current,storybook,cel,gorey').split(',');
   const [w, h] = opt('--size', '1600x900').split('x').map(Number);
+  // --baked: apply the map's baked lightmap (client/public/lightmaps/), as the game does.
+  const baked = args.includes('--baked');
   fs.mkdirSync(OUT, { recursive: true });
   const vite = await createServer({ configFile: path.join(ROOT, 'vite.config.ts'), server: { port: 0, host: '127.0.0.1' }, logLevel: 'error' });
   await vite.listen();
@@ -32,10 +34,10 @@ async function main(): Promise<void> {
         const page = await browser.newPage({ viewport: { width: w, height: h } });
         page.on('pageerror', (e) => console.log(`  page error (${look}): ${e.message}`));
         page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') console.log(`  console (${look}): ${m.text().slice(0, 300)}`); });
-        await page.goto(`http://127.0.0.1:${port}/lookdev.html?map=${map}&shot=${shot}&look=${look}`);
+        await page.goto(`http://127.0.0.1:${port}/lookdev.html?map=${map}&shot=${shot}&look=${look}${baked ? '&baked=1' : ''}`);
         await page.waitForFunction(() => (window as unknown as { __lookdev?: { ready: boolean } }).__lookdev?.ready === true, undefined, { timeout: 120000 });
         await sleep(1500);
-        const file = path.join(OUT, `${map}-${shot}-${look}.png`);
+        const file = path.join(OUT, `${map}-${shot}-${look}${baked ? '-baked' : ''}.png`);
         await page.screenshot({ path: file });
         console.log(`  ${path.relative(ROOT, file)}`);
         await page.close();

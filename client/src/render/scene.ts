@@ -9,6 +9,7 @@ import type { View } from '../state.js';
 import { damp, hashStr } from '../util.js';
 import { CameraRig } from './camera.js';
 import { CharacterModel, type Degrade } from './characters.js';
+import { applyBakedLight } from './baked.js';
 import { buildMap, type MapView } from './map.js';
 import type { MapId } from '../../../shared/map.js';
 import { PropViews } from './props.js';
@@ -162,6 +163,8 @@ export class GameRenderer {
 
   private showMap(v: MapView): void {
     this.scene.add(v.group);
+    // Baked light, if this map has a bake that matches it (loads in the background).
+    void applyBakedLight(v);
     for (const { light, minor } of v.lights) {
       this.scene.add(light);
       this.lights.push({ light, base: light.intensity, minor, map: true });
@@ -314,6 +317,7 @@ export class GameRenderer {
     const lit = litBy(f.flash, fl, this.calm);
     const level = stormy ? 0.12 + 0.88 * fl : 1;
     for (const l of this.lights) l.light.intensity = l.base * level;
+    this.map.lightLevel?.(level);
     this.lightning.intensity = 4.5 * fl;
     // In the dark the tall windows still read as pale silhouettes.
     this.map.windows.emissiveIntensity = stormy ? 0.3 + 2.7 * fl : 0.9;
@@ -403,6 +407,7 @@ export class GameRenderer {
     const dark = stormy && !lit;
     const level = stormy ? 0.12 + 0.88 * fl : 1;
     for (const l of this.lights) l.light.intensity = l.base * level;
+    this.map.lightLevel?.(level);
     this.lightning.intensity = 4.5 * fl;
     this.map.windows.emissiveIntensity = stormy ? 0.3 + 2.7 * fl : 0.9;
     this.map.tick?.(time, dt, { dark: stormy && !lit, flash: !!n?.flash });
@@ -483,6 +488,7 @@ export class GameRenderer {
     this.rig.hideViewModel();
     if (!keepLights) {
       for (const l of this.lights) l.light.intensity = l.base;
+      this.map.lightLevel?.(1);
       this.lightning.intensity = 0;
       this.flashK = 0;
       this.candle.intensity = 0;

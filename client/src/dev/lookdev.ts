@@ -20,6 +20,7 @@ import { lineOfSight } from '../../../shared/sight.js';
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
 import type { CharSnap, Vec3 } from '../../../shared/types.js';
 import { buildMap } from '../render/map.js';
+import { applyBakedLight } from '../render/baked.js';
 import { CharacterModel } from '../render/characters.js';
 import { HEIRLOOM_VARIANTS } from '../../../shared/map.js';
 import { makeCat, makeHeirloom, makeTeacup } from '../render/items.js';
@@ -75,7 +76,8 @@ const GENERIC_POSES: Pose[] = [
     face: EMOS[i] === 'moon' ? { x: 2 * p.x - g0.x, y: 0, z: 2 * p.z - g0.z } : g0, emote: EMOS[i], t: EMOS[i] === 'grave-stomp' ? 0.35 : 1.0,
   })),
 ];
-const POSES: Pose[] = shot === 'dinner' ? [] : mapId === 'manor' ? MANOR_POSES : GENERIC_POSES;
+// 'bake': the map alone (for baking its lightmap); no family, no props.
+const POSES: Pose[] = shot === 'dinner' || shot === 'bake' ? [] : mapId === 'manor' ? MANOR_POSES : GENERIC_POSES;
 const models: CharacterModel[] = [];
 POSES.forEach((p, i) => {
   const cz = COUSINS[i % COUSINS.length];
@@ -94,17 +96,19 @@ POSES.forEach((p, i) => {
 });
 
 // Heirlooms on the pedestals, the cat, the teacup.
-def.heirloomSpots.slice(0, 8).forEach((s, i) => {
-  const h = makeHeirloom(HEIRLOOM_VARIANTS[i % HEIRLOOM_VARIANTS.length]);
-  h.position.set(s.x, s.y, s.z);
-  scene.add(h);
-});
-const cat = makeCat();
-cat.group.position.set(S.cat.x, S.cat.y, S.cat.z);
-scene.add(cat.group);
-const cup = makeTeacup();
-cup.position.set(S.teacup.x, S.teacup.y, S.teacup.z);
-scene.add(cup);
+if (shot !== 'bake') {
+  def.heirloomSpots.slice(0, 8).forEach((s, i) => {
+    const h = makeHeirloom(HEIRLOOM_VARIANTS[i % HEIRLOOM_VARIANTS.length]);
+    h.position.set(s.x, s.y, s.z);
+    scene.add(h);
+  });
+  const cat = makeCat();
+  cat.group.position.set(S.cat.x, S.cat.y, S.cat.z);
+  scene.add(cat.group);
+  const cup = makeTeacup();
+  cup.position.set(S.teacup.x, S.teacup.y, S.teacup.z);
+  scene.add(cup);
+}
 
 // ── Shots ──
 const g = off(1.2, -1.0);
@@ -283,9 +287,15 @@ if (look === 'storybook') {
   draw = () => comp.render();
 }
 
+// ?baked=1: the map's baked lightmap, as the game would apply it.
+if (q.get('baked') === '1') {
+  await applyBakedLight(view);
+  view.lightLevel?.(1);
+}
+
 let frames = 0;
-const w = window as unknown as { __lookdev: { ready: boolean; look: string; exportGlb: () => Promise<string>; camera: () => unknown } };
-w.__lookdev = { ready: false, look, exportGlb, camera: cameraInfo };
+const w = window as unknown as { __lookdev: { ready: boolean; look: string; exportGlb: () => Promise<string>; camera: () => unknown; lightmap: unknown } };
+w.__lookdev = { ready: false, look, exportGlb, camera: cameraInfo, lightmap: view.lightmap ?? null };
 
 /** The camera as the offline renderer wants it: where, looking at what, vertical field of view. */
 function cameraInfo(): { pos: number[]; look: number[]; fov: number; aspect: number } {
