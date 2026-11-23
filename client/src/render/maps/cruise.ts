@@ -449,7 +449,6 @@ export function buildCruise(def: MapDef): MapView {
   // Materials (white and navy, teak and brass).
   const paint = mat('#f3f0e8', { rough: 0.55 });
   const navy = mat('#1d2d50', { rough: 0.55 });
-  const navyGloss = mat('#22345e', { rough: 0.3 });
   const brass = mat('#c9a24a', { rough: 0.3, metal: 0.85 });
   const chrome = mat('#dfe4e8', { rough: 0.2, metal: 0.9 });
   const steel = mat('#9aa3aa', { rough: 0.45, metal: 0.6 });
@@ -534,7 +533,7 @@ export function buildCruise(def: MapDef): MapView {
   const sideM = [paint, paint];
   bx(283.7, -0.2, -8.3, 300, 0, 8.3, [paint, paint, teak, paint, paint, paint], true, 2.4);
   bx(300, -0.2, -8.3, 309.65, 0, 0, [...sideM, mat('#ffffff', { map: casinoCarpetTex(), rough: 0.95 }), paint, paint, paint], true, 1.6);
-  bx(300, -0.2, 0, 309.65, 0, 8.3, [...sideM, mat('#ffffff', { map: saloonCarpetTex(), rough: 0.95 }), paint, paint, paint], true, 1.2);
+  bx(300, -0.2, 0, 309.65, 0, 8.3, [...sideM, mat('#ffffff', { map: saloonCarpetTex(), rough: 0.95 }), paint, paint, paint], true, 0.9);
   bx(309.65, -0.2, -8.3, 312.8, 0, 8.3, [...sideM, teak, paint, paint, paint], true, 2.4);
   const runner = new THREE.Mesh(new THREE.PlaneGeometry(1.7, 15.4), mat('#ffffff', { map: runnerTex(), rough: 0.95 }));
   runner.rotation.x = -Math.PI / 2;
@@ -1562,6 +1561,7 @@ export function buildCruise(def: MapDef): MapView {
 
   // ───────────── Animation ─────────────
   const sky = DAY_SKY.clone();
+  const smokeDay = new THREE.Color('#ececec'), smokeDark = new THREE.Color('#5a5a60');
   const seaDay = new THREE.Color('#2b86c4'), seaStorm = new THREE.Color('#355a74');
   let rough = 1;
   const tick = (t: number, dt: number): void => {
@@ -1598,7 +1598,7 @@ export function buildCruise(def: MapDef): MapView {
       p.m.position.set(314.6 - 0.7 - u * 9, 8.4 + u * 5, Math.sin(u * 5 + p.phase * 9) * 0.6);
       p.m.scale.setScalar(0.6 + u * 2.6);
       p.mat.opacity = 0.55 * (1 - u) * (dark ? 0.6 : 1);
-      p.mat.color.set(dark ? '#5a5a60' : '#ececec');
+      p.mat.color.copy(dark ? smokeDark : smokeDay);
     }
     for (const gl of gulls) {
       const a = t * gl.speed + gl.ph;

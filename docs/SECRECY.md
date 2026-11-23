@@ -16,7 +16,7 @@ Players in a match are Grandma and the cousins; everybody else in the room
 
 | To | Contents | Filtered |
 | --- | --- | --- |
-| Cousins | Every character (position, facing, state, what they hold, charge, plant progress, whispering), every prop not hidden, the will, the budget left, darkness and lightning | One snapshot is shared by all cousins, except each cousin's own entry: `ack` (how far the server has got with their inputs) goes only to its owner, and while the server is guessing a late player's ticks, that player's own entry shows where they were before the guess (`Match.snapshots`, inputs.test.ts). Items show `planted` (cousins can see an item lying where it should not), never `found`. Heirlooms never show which is the Favourite. |
+| Cousins | Every character (position, facing, state, what they hold, charge, plant progress, whispering), every prop not hidden, the will, the budget left, darkness and lightning | One snapshot is shared by all cousins, except each cousin's own entry: `ack` (how far the server has got with their inputs) goes only to its owner, and while the server is guessing a late player's ticks, that player's own entry shows where they were before the guess (`Match.snapshots`, inputs.test.ts). Items show `planted` (cousins can see an item lying where it should not), never `found`. Heirlooms never show which is the Favourite. The budget left counts Grandma's free Tut like any Tut (`Match.willAvailFor`), so a Tut that costs her nothing never tells them the Favourite broke; her own snapshot shows what she really has left (server-review.test.ts). |
 | Grandma | Built from her senses (`grandmaSnapshot`, perception.test.ts) | A character she can neither see nor hear (footsteps by gait, voices to the mumble range) is left out. One she perceives but cannot identify (out of sharp sight, in the dark, behind her) has `holding`, `charge`, `plant` and `whispering` stripped. A prop is included only if she can see it (an item only if she can identify it); a held prop only if she can identify the holder. `planted` shows only once she has found it. Her own cooldowns are hers alone. Line of sight goes through `shared/sight.ts` (walls, the stair underside; railings do not block). |
 
 ## Events (`ev`)
@@ -29,7 +29,7 @@ Players in a match are Grandma and the cousins; everybody else in the room
 | `tattle` | The tattler, Grandma, cousins within earshot | Only possible within `COUSIN.tattleRange` of her and when she can hear it (a whisper from too far is refused). |
 | `will` | Everyone (the will is public) | The free Tut's `reason: 'favourite'` only to Grandma (match.test.ts). The take-over split is a public will change. |
 | `will-rejected`, `found`, `summon-ignored` | Grandma only | `found` reveals an item's owner only when she finds it in front of her. |
-| `moment` | The cousin who earned it; Grandma only Caught Red-Handed (she saw it) and Big Cut (she did it) | Favourite Broken and Framed are held back to the reading (match.test.ts). |
+| `moment` | The cousin who earned it; Grandma only Caught Red-Handed (she saw it) and Big Cut (she did it) | Favourite Broken and Framed are held back to the reading (match.test.ts). No moment text sent mid-match says which heirloom was the Favourite: Caught Red-Handed for breaking it reads "a broken heirloom" (server-review.test.ts). |
 | `quill`, `whistle` | Cousins within `WILL.quillRange` / `HEARING_AID.whistleRange` of her | — |
 | `cane`, `specs-off`, `summon`, `lightning`, `wish`, `wish-done` | Everyone | Public slapstick and public weather; a wish is handed over in front of her. |
 | `toast` | Mostly one player | The broadcasts (a cousin dozed off, Nana's lie-down and return, a take-over, a visit begins, Nana fell over, the will is read) are things everyone sees. |
@@ -66,6 +66,16 @@ only that. Each speaker can only reveal more of themselves, never of others.
   with relay-only candidates; see the README.
 - **A cousin's own client** decides what it sends of its own voice; a modified
   one could send Grandma more (only of itself, which hurts that cousin).
+- **Misheard quick-chat lines can be decoded.** Each `MISHEARD` phrase belongs
+  to exactly one quick-chat line, and the table ships in the client, so a
+  modified Grandma client can tell which line a cousin said at 2–6 m (the
+  per-match secret only picks which of its three mishearings she gets). It
+  gains her nothing a sharper ear would not, and muffled compliments never
+  count anyway. Accepted for now.
+- **A free Tut at the very end of the budget.** Cousins' bar counts the free Tut
+  as spent, so if Grandma then uses the last 5 points of her visit budget, or
+  of the rolling cap within 30 s of it, their bar reads 0 while she still edits:
+  that tells them a free Tut happened (not which heirloom). Accepted, low.
 - **Debug hooks** stay in the build on purpose: `window.__inh` (this client's
   state, net, input, renderer, settings) and `window.__voiceDebug` (this
   client's voice graph). They expose only what this client already received.

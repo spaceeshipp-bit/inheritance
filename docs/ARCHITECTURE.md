@@ -101,12 +101,16 @@ Imports between folders use relative paths with `.js` extensions
 - **Scoring:** `SABOTAGE_POINTS` per act → `grandmaScore()`; the vote is for laughs only.
 - **Disconnects:** a cousin who drops sleeps on the spot (`state: 'sleeping'`), share frozen, can rejoin
   with their token; Grandma drops → 15 s pause where a willing human may take over (first to send
-  `lobby {willingGrandma:true}`), else the will is read as it stands. Fewer than 3 cousins connected
-  (bots count) → read the will.
+  `lobby {willingGrandma:true}`), else the will is read as it stands. Fewer than 3 cousins left
+  (bots count; one who dropped counts as gone only after `DISCONNECT.cousinGrace` s, so a reload never
+  ends the match) → read the will. A dropped cousin sets down what they held (nothing breaks in their name).
 - **Bots:** cousin bots wander between rooms, fulfil wishes, compliment Grandma, and sometimes shove,
   break heirlooms, steal and plant when Grandma can't see them. The bot Grandma wanders the hall, turns
   toward crashes and voices, Blesses compliments/wish deliveries she witnesses and Tuts sabotage she sees
-  or items she finds (respecting the budget). Bots exist so one human can test either role.
+  or items she finds (respecting the budget). At Family Dinner cousin bots stay round the table (moving
+  between seats), say "Excuse me, Nana" at the map's dinner door before any trip away from it, and wander
+  off unexcused at most once (briefly); the bot Grandma keeps her seat at the head of the table and turns
+  to look. Bots exist so one human can test either role.
 - **RTC relay:** `rtc` messages are forwarded to `to` if in the same room. Send `peers` (all connected
   human ids in the room except the recipient) on join/leave.
 
