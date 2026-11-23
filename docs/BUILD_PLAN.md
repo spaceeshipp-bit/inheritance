@@ -89,7 +89,7 @@ Done since the handoff (each with tests; see `git log` and `docs/reviews/2026-11
 | Suite | What it plays | Result |
 | --- | --- | --- |
 | match | a whole match in two browsers: walk, compliment, chat, tattle, Bless/Tut, hearing aid, spectacles, summon, parchment, cane, throw, shove, steal, plant, find, frame, reading, vote, results | 76/76 |
-| fullmatch | Tea, Dinner and the Storm with lively bots: budgets reset, the Storm dark with lightning, reading, results, lobby | 17/17 |
+| fullmatch | Tea, Dinner and the Storm with lively bots: budgets reset, the Storm dark with lightning, reading, results, lobby | 17/17 (re-run 2026-11-23 with thunder, ashes, playing dead, coffins and the Cat-apult in: 17/17) |
 | reconnect | a cousin reloads mid-visit and walks on; Grandma's tab closes, a cousin takes over with J | 16/16 |
 | voice | the voice mesh and hearing rules on real audio (4 pages, fake mics) | 65/65 |
 | lobby-voice | three players in one real lobby | pass |
@@ -276,6 +276,8 @@ The best three are marked ★ and are next once the core work above is done.
   heirloom she flies through off its pedestal (the thrower's fault: The Cat-apult), then bolts;
   each heirloom dies in character (the clock chimes, the teapot whistles, the portrait tears,
   the urn goes poof, the bust cracks) for anyone who knows which one it was.
+- **Mind the Stairs** (new, 2026-11-23): a cousin knocked flying who ends up 2.2 m lower names
+  whoever did it: all the way down the stairs, or over the banister (tumble.test.ts).
 - **Early Burial** (new, 2026-11-23): the funeral parlour's open coffins (the Deluxe on special,
   and Nana's own) shut on any cousin knocked flying into them for 6 s; they can only knock till
   they climb out. *Each map gets its own way to dispose of a relative* (coffin.test.ts).

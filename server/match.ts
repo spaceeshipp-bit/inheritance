@@ -137,6 +137,10 @@ export interface Char extends PhysChar {
   buriedIn: string | null;
   buriedUntil: number;
   knockAt: number;
+  /** The knock (its knockedAt) a tumble is being followed for, the height it started at, and whether it took the stairs. */
+  tumbleOf: number;
+  tumbleY: number;
+  tumbleStairs: boolean;
 }
 
 /** A footprint in Grandpa's ashes, with who left it (server only) and whether Grandma has seen it yet. */
@@ -203,6 +207,9 @@ const WISH_TEXT: Record<WishInfo['kind'], string> = {
   tea: "I'd love a nice cup of tea.",
   pills: 'Where are my pills? Find them!',
 };
+/** A knock that leaves a cousin this many metres lower is a moment (down the stairs, or over the banister). */
+const TUMBLE_HEIGHT = 2.2;
+
 const WISH_PROP: Record<WishInfo['kind'], string> = { 'fetch-cat': 'cat', tea: 'teacup', pills: 'pills' };
 /** What everyone is told as a visit opens (Family Dinner has its own, with the table's rules). */
 const VISIT_OPENING: Record<VisitId, string> = {
@@ -501,6 +508,7 @@ export class Match {
       ashy: 0, ashFrom: null, ashSide: 0, ashTrod: false,
       deadFrom: -Infinity, deadUntil: -Infinity, deadVisit: -1,
       buriedIn: null, buriedUntil: -Infinity, knockAt: -Infinity,
+      tumbleOf: -Infinity, tumbleY: 0, tumbleStairs: false,
     };
   }
 
@@ -1359,6 +1367,7 @@ export class Match {
     if (c.state === 'ragdoll') {
       if (c.holding) this.dropHeld(c, true);
       this.toppleCheck(c);
+      this.followTumble(c);
     }
   }
 
@@ -2133,6 +2142,30 @@ export class Match {
 
   private lightningGap(): number {
     return STORM.lightningEvery + (this.rng() * 2 - 1) * STORM.lightningJitter;
+  }
+
+  // ───────────── down the stairs ─────────────
+
+  /**
+   * A cousin knocked flying by another: once they are TUMBLE_HEIGHT below where
+   * it started, that is a moment (down the stairs if they rolled down a flight,
+   * over the banister if they simply dropped). Once per knock.
+   */
+  private followTumble(c: Char): void {
+    if (c.role !== 'cousin' || !c.knockedBy || c.knockedBy === c.id || this.phase !== 'visit') return;
+    if (c.tumbleOf !== c.knockedAt) {
+      c.tumbleOf = c.knockedAt;
+      c.tumbleY = Math.max(c.body.pos.y, c.body.peakY);
+      c.tumbleStairs = false;
+      if (this.time - c.knockedAt > 0.5) c.tumbleY = Infinity; // a fall that was not this knock's
+      return;
+    }
+    if (!Number.isFinite(c.tumbleY)) return;
+    if (levelOf(c.body.pos) === 'ramp') c.tumbleStairs = true;
+    const height = c.tumbleY - c.body.pos.y;
+    if (height < TUMBLE_HEIGHT || !c.body.onGround) return;
+    c.tumbleY = Infinity;
+    this.log.add({ t: this.time, kind: 'tumble', by: c.knockedBy, victim: c.id, height: r2(height), stairs: c.tumbleStairs });
   }
 
   // ───────────── Early Burial ─────────────
