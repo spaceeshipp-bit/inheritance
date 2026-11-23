@@ -40,7 +40,7 @@ export function isTextEntry(t: EventTarget | null): boolean {
 
 export type Action =
   | 'quickWheel' | 'tattleWheel' | 'gestureWheel' | 'danceWheel' | 'chat' | 'bless' | 'tut' | 'parchment' | 'summon' | 'pin'
-  | 'lockNext' | 'lockPrev' | 'whisper' | 'talk' | 'help' | 'back'
+  | 'lockNext' | 'lockPrev' | 'whisper' | 'talk' | 'help' | 'back' | 'takeover'
   | 'navUp' | 'navDown' | 'navLeft' | 'navRight' | 'select';
 
 /** Standard Gamepad mapping indices. */
@@ -322,6 +322,7 @@ export class Input {
         case PAD.LT: this.setWhisper(down); break;
         case PAD.L3: if (down) this.padRun = !this.padRun; break;
         case PAD.START: if (down) this.onAction('help', true); break;
+        case PAD.BACK: if (down) this.onAction('takeover', true); break;
         default: break;
       }
     }

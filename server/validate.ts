@@ -206,6 +206,8 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
       }
       case 'emote':
         return isEmoteId(m.id) ? { t: 'emote', id: m.id } : null;
+      case 'takeover':
+        return { t: 'takeover' };
       case 'vote': {
         const target = id(m.target);
         return target ? { t: 'vote', target } : null;

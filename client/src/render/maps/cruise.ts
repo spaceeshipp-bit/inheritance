@@ -197,7 +197,7 @@ function seaTex(): THREE.CanvasTexture {
   });
 }
 
-/** White foam streaks running along u (the wake), and its fade (alpha in the green channel). */
+/** White foam streaks running along u (for the wake and the bow wave). */
 function foamTex(): THREE.CanvasTexture {
   return canvasTex(256, 128, (g) => {
     g.fillStyle = '#9fb8c8';
@@ -463,7 +463,6 @@ export function buildCruise(def: MapDef): MapView {
   const linen = mat('#fbf8f0', { rough: 0.9 });
   const marble = mat('#eceae4', { rough: 0.3 });
   const gold = mat('#e0b84a', { rough: 0.3, metal: 0.9 });
-  const green = mat('#2f7a4a', { rough: 0.6 });
   const felt = mat('#1f6b3e', { rough: 0.95 });
   const rope = mat('#c9a878', { rough: 1 });
   const pink = mat('#f07aa8', { rough: 0.5 });

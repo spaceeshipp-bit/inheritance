@@ -258,11 +258,19 @@ describe('S2: voice pairing while a match runs', () => {
     expect(room.match?.grandmaId).toBe(nana.id);
     expect(w.runUntil(() => room.match?.phase === 'visit', 10)).toBe(true);
     w.mgr.onClose(nana.s); // her socket drops: the lie-down
-    // Ann keeps volunteering until the match lets her take over (the match decides when).
+    // Too soon: Nana may yet come back, so pressing J does nothing but say so.
+    w.send(ann, { t: 'takeover' });
+    expect(room.match?.grandmaId).toBe(nana.id);
+    // Ann presses J until the match lets her take over (the match decides when)...
     for (let i = 0; i < 30 && room.match?.grandmaId === nana.id; i++) {
-      w.send(ann, { t: 'lobby', willingGrandma: true });
+      w.send(ann, { t: 'takeover' });
       w.run(0.5);
     }
+    expect(room.match?.grandmaId).toBe(ann.id);
+    // ...and taking over never ticked "Willing to be Grandma" for her (finding C8).
+    expect(ann.conn.last('lobby')?.players.find((p) => p.id === ann.id)?.willingGrandma).toBe(false);
+    // Volunteering in the lobby no longer takes over anything by itself.
+    w.send(bob, { t: 'lobby', willingGrandma: true });
     expect(room.match?.grandmaId).toBe(ann.id);
     const back = w.join('Nana', code, { token: nana.welcome!.token });
     expect(back.id).toBe(nana.id);

@@ -6,6 +6,10 @@ import { dist } from '../../shared/senses.js';
 import type { Vec3 } from '../../shared/types.js';
 import type { Sfx } from './audio/sfx.js';
 import { EmoteWatch } from './hud/emotewatch.js';
+import { curtainCall, reactions, withReactions, type Reaction } from './hud/reactions.js';
+import { EMOTES } from '../../shared/emotes.js';
+import { groundHeight } from '../../shared/map.js';
+import { CHAR_SHAPE, blockersAt, circleRectPush } from '../../shared/movement.js';
 import type { Hud } from './hud/hud.js';
 import type { HudFrame } from './hud/types.js';
 import type { Action, Input } from './input.js';
@@ -51,6 +55,7 @@ export class Game {
   private takeover = el('div', 'takeover');
   private prevCane = 0;
   private emotes: EmoteWatch | null = null;
+  private curtain: { key: string; since: number; spots: Map<string, { pos: Vec3; yaw: number }>; rs: Map<string, Reaction> } | null = null;
 
   constructor(private d: GameDeps) {
     d.input.onAction = (a, down) => this.onAction(a, down);
@@ -62,7 +67,7 @@ export class Game {
     document.body.appendChild(this.takeover);
     show(this.takeover, false);
     window.addEventListener('keydown', (e) => {
-      if (e.code === 'KeyJ' && this.takeover.style.display !== 'none' && !d.input.typing) d.send({ t: 'lobby', willingGrandma: true });
+      if (e.code === 'KeyJ' && this.takeover.style.display !== 'none' && !d.input.typing) d.send({ t: 'takeover' });
     });
   }
 
@@ -94,6 +99,7 @@ export class Game {
 
   end(): void {
     this.emotes?.clear();
+    this.curtain = null;
     clearInterval(this.tickTimer);
     this.d.hud.endMatch();
     this.d.renderer.setMatch(null);
@@ -159,6 +165,7 @@ export class Game {
     const visit = s.phase === 'visit';
     switch (a) {
       case 'help': if (down && s.inMatch) hud.toggleHelp(); return;
+      case 'takeover': if (down && this.takeover.style.display !== 'none') send({ t: 'takeover' }); return;
       case 'whisper': voice.setWhisper(down); return;
       case 'talk': voice.setTalkKey(down); return;
       case 'chat':
@@ -222,6 +229,33 @@ export class Game {
       case 'navRight': hud.parchment?.nav('right'); return;
       default: return;
     }
+  }
+
+  /**
+   * The curtain call after the reading: everyone lined up where the camera
+   * looks, reacting to what the will left them (the heir shimmies, the
+   * disinherited weep, Nana is still alive). Cosmetic, on this screen only.
+   */
+  private curtainCall(view: View, t: number): View {
+    const s = this.s;
+    const shares = s.results?.shares ?? s.reading?.shares ?? null;
+    if (!shares) return view;
+    if (this.curtain?.key !== s.phase && !(this.curtain && s.phase === 'results')) {
+      const ids = [...view.chars.keys()];
+      const spots = curtainCall(ids, s.grandmaId, this.d.renderer.idleSpot, (p) => {
+        const y = groundHeight(p.x, p.z, 1);
+        if (Math.abs(y) > 0.05) return false;
+        return blockersAt(y, CHAR_SHAPE, false).every((b) => !circleRectPush(p.x, p.z, CHAR_SHAPE.radius + 0.1, b));
+      });
+      this.curtain = { key: s.phase, since: t, spots, rs: reactions(shares, s.grandmaId) };
+    }
+    const c = this.curtain!;
+    const placed = [...view.chars.values()].map((ch) => {
+      const at = c.spots.get(ch.id);
+      return at ? { ...ch, pos: { ...at.pos, y: groundHeight(at.pos.x, at.pos.z, 1) }, yaw: at.yaw, state: 'normal' as const, holding: null } : ch;
+    });
+    const chars = new Map(withReactions(placed, c.rs, t - c.since, (e) => EMOTES[e].secs).map((ch) => [ch.id, ch]));
+    return { ...view, chars, self: chars.get(s.selfId) ?? view.self, grandma: chars.get(s.grandmaId) ?? view.grandma };
   }
 
   private finishWheel(): void {
@@ -295,11 +329,13 @@ export class Game {
       });
     }
 
-    // What Nana Saw plays at the end of the reading; otherwise the usual view.
+    // What Nana Saw plays at the end of the reading; otherwise the usual view
+    // (at the vote and the results, the family's curtain call).
     const replay = s.phase === 'reading' ? hud.replayView() : null;
+    const shown = s.phase === 'vote' || s.phase === 'results' ? this.curtainCall(view, t) : view;
     if (replay) renderer.frameReplay(replay, dt, t);
     else renderer.frame({
-      view, selfId: s.selfId, role: s.role, yaw: input.yaw, pitch: input.pitch, dt, time: t,
+      view: shown, selfId: s.selfId, role: s.role, yaw: input.yaw, pitch: input.pitch, dt, time: t,
       dark: s.dark, flash: s.flash, wishKind: s.wish?.kind ?? null, found: this.found,
       level: (id) => voice.level(id), parchment: this.parchmentOpen || s.phase !== 'visit',
       cinematic: s.phase === 'reading' || s.phase === 'vote' || s.phase === 'results',
@@ -347,7 +383,7 @@ export class Game {
     // (`live` above: roles, visit or intermission.)
     const gDown = !this.isGrandma && live && g?.state === 'sleeping';
     show(this.takeover, gDown);
-    if (gDown) this.takeover.textContent = 'Nana has nodded off (disconnected). Press J to take over as Grandma.';
+    if (gDown) this.takeover.textContent = `Nana has nodded off (disconnected). Press ${this.d.input.lastDevice === 'pad' ? 'View' : 'J'} to take over as Grandma.`;
   }
 
   private footsteps(view: View, dt: number): void {

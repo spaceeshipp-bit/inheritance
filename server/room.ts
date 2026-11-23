@@ -447,10 +447,6 @@ export class Room {
         if (typeof msg.willingGrandma === 'boolean') {
           changed = p.willingGrandma !== msg.willingGrandma;
           p.willingGrandma = msg.willingGrandma;
-          if (msg.willingGrandma && this.match?.pause && this.match.takeOverGrandma(p.id)) {
-            this.lastGrandmaId = p.id;
-            changed = true;
-          }
         }
         if (msg.options) {
           if (p.id !== this.hostId) this.error(p, 'Only the host can change the options.');
@@ -465,6 +461,15 @@ export class Room {
         if (this.match && this.peerGroupsKey() !== this.peerKey) this.sendPeers();
         break;
       }
+      case 'takeover':
+        // Taking over a dozing Nana is its own thing: it never ticks "Willing to be Grandma".
+        if (!p.lobby.take(now) || !this.match?.pause) break;
+        if (this.match.takeOverGrandma(p.id)) {
+          this.lastGrandmaId = p.id;
+          this.broadcastLobby();
+          if (this.peerGroupsKey() !== this.peerKey) this.sendPeers();
+        }
+        break;
       case 'start':
         this.start(p);
         break;

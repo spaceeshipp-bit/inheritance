@@ -67,6 +67,8 @@ export type ClientMsg =
   | { t: 'tattle'; accused: string }
   /** Start a gesture or dance (shared/emotes.ts). */
   | { t: 'emote'; id: EmoteId }
+  /** Nana has nodded off (disconnected): take over as Grandma. Leaves "willing" as it was. */
+  | { t: 'takeover' }
   | { t: 'vote'; target: string }
   /** One click on the results screen's playtest survey (about the match just played). */
   | { t: 'survey'; q: SurveyQuestion; a: SurveyAnswer }

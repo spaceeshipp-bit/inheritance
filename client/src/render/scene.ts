@@ -186,6 +186,8 @@ export class GameRenderer {
   }
 
   get mapId(): MapId { return this.map.id; }
+  /** Where the cinematic camera drifts (round `center`, looking at `look`). */
+  get idleSpot(): { center: Vec3; look: Vec3 } { return this.map.idle; }
 
   /** Low preset: minor point lights off, ambient fill up. */
   private applyLightPreset(): void {
