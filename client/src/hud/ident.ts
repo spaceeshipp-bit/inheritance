@@ -77,4 +77,6 @@ export const MOMENT_TITLES: Record<MomentKind, string> = {
   overboard: 'Man Overboard!',
   thunder: 'Under Cover of Thunder',
   grandpa: "Grandpa's Ashes",
+  graveside: 'Dancing on Her Grave',
+  mourner: 'Gone Too Soon',
 };

@@ -55,6 +55,8 @@ export interface CharSnap {
   plant: number;
   /** "Nana's Pet" glow: the current leader. */
   leader: boolean;
+  /** Grandma is playing dead (lying on the floor; everyone can see it). */
+  dead?: boolean;
   /** Grey to the ankles from Grandpa's ashes (still leaving footprints). Grandma: only on someone she can identify. */
   ashy?: boolean;
   /** A gesture or dance under way, and how far into it (s). */
@@ -103,7 +105,7 @@ export interface WishInfo {
 }
 
 /** A tagged moment (for the Reading of the Will highlight list and achievements). */
-export type MomentKind = 'love-you-nana' | 'framed' | 'caught-red-handed' | 'big-cut' | 'favourite-broken' | 'behind-her-back' | 'cheek' | 'overboard' | 'thunder' | 'grandpa';
+export type MomentKind = 'love-you-nana' | 'framed' | 'caught-red-handed' | 'big-cut' | 'favourite-broken' | 'behind-her-back' | 'cheek' | 'overboard' | 'thunder' | 'grandpa' | 'graveside' | 'mourner';
 export interface Moment {
   kind: MomentKind;
   t: number;
@@ -144,6 +146,8 @@ export type LogEvent =
   | { t: number; kind: 'rude'; by: string; emote: EmoteId; at: string | null; atNana: boolean; seen: boolean; sharp?: boolean }
   /** Someone went over the side (a ship's drop zone); `by`: whoever knocked them flying just before, if anyone. */
   | { t: number; kind: 'overboard'; by: string | null; victim: string }
+  /** Grandma dropped to play dead (`up`: and got up again). */
+  | { t: number; kind: 'dead'; up: boolean }
   /** Trod in Grandpa's ashes (`pushedBy`: shoved into them); `seen`: Grandma could tell who. */
   | { t: number; kind: 'ash'; by: string; pushedBy: string | null; seen: boolean }
   | { t: number; kind: 'knock-specs'; by: string; seen?: boolean; sharp?: boolean };
@@ -252,6 +256,8 @@ export interface ReplayNana {
   flash: boolean;
   /** Thunder rolling: she heard nothing (only present while true). */
   thunder?: boolean;
+  /** Playing dead (only present while true). */
+  dead?: boolean;
 }
 
 /** A line spoken in the clip, and what Grandma heard of it (null: nothing). */

@@ -6,7 +6,7 @@
 //          E interact, G plant, Q quick-chat wheel, T tattle wheel,
 //          Z gesture wheel, X dance wheel, Left Alt whisper, Enter typed chat.
 // Grandma: WASD move, mouse look, E Bless, Q Tut, scroll lock name,
-//          Tab parchment, LMB cane, RMB hearing aid, F spectacles, R summon,
+//          Tab parchment, LMB cane, RMB hearing aid, F spectacles, R summon, G play dead,
 //          C pin, V quick-chat wheel, Z gesture wheel, X dance wheel,
 //          Left Alt whisper, Enter typed chat.
 // Gamepad: the design doc's controller table (see padAction).
@@ -39,7 +39,7 @@ export function isTextEntry(t: EventTarget | null): boolean {
 }
 
 export type Action =
-  | 'quickWheel' | 'tattleWheel' | 'gestureWheel' | 'danceWheel' | 'chat' | 'bless' | 'tut' | 'parchment' | 'summon' | 'pin'
+  | 'quickWheel' | 'tattleWheel' | 'gestureWheel' | 'danceWheel' | 'chat' | 'bless' | 'tut' | 'parchment' | 'summon' | 'pin' | 'playDead'
   | 'lockNext' | 'lockPrev' | 'whisper' | 'talk' | 'help' | 'back' | 'takeover'
   | 'navUp' | 'navDown' | 'navLeft' | 'navRight' | 'select';
 
@@ -237,6 +237,7 @@ export class Input {
       case 'Tab': if (g) act('parchment'); break;
       case 'KeyR': if (g) act('summon'); break;
       case 'KeyC': if (g) act('pin'); break;
+      case 'KeyG': if (g) act('playDead'); break;
       case 'Enter': case 'NumpadEnter': act('chat'); break;
       case 'AltLeft': this.setWhisper(down); break;
       case 'KeyH': act('help'); break;
@@ -284,7 +285,7 @@ export class Input {
    * A jump, RT grab, RB throw, X shove, Y interact, D-down plant, LB
    * compliment wheel, D-up tattle, D-left gestures, D-right dances, LT
    * whisper. Grandma: RB Bless, LB Tut, D-left/right lock, View parchment, RT
-   * cane, LT hearing aid, Y spectacles, B summon, X pin, R3 quick-chat wheel,
+   * cane, LT hearing aid, Y spectacles, B summon, X pin, D-up play dead, R3 quick-chat wheel,
    * L3 gestures, D-down dances.
    */
   private padAction(i: number, down: boolean): void {
@@ -305,6 +306,7 @@ export class Input {
         case PAD.BACK: act('parchment'); break;
         case PAD.B: act('summon'); break;
         case PAD.X: act('pin'); break;
+        case PAD.UP: act('playDead'); break;
         case PAD.R3: act('quickWheel'); break;
         case PAD.L3: act('gestureWheel'); break;
         case PAD.DOWN: act('danceWheel'); break;

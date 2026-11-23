@@ -258,11 +258,12 @@ export class CousinHud {
         ear = sense.thunder ? 'thunder' : hb === 'clear' ? 'clear' : hb === 'silent' ? 'silent' : 'muffled';
       }
     }
-    if (eye !== this.lastEye) {
-      this.lastEye = eye;
+    const eyeKey = `${eye}${g?.dead ? ':dead' : ''}`;
+    if (eyeKey !== this.lastEye) {
+      this.lastEye = eyeKey;
       this.eye.className = `sense sense-eye ${eye}`;
       this.eyeIco.innerHTML = eye === 'seen' ? ICONS.eyeOpen : eye === 'blurry' ? ICONS.eyeBlur : ICONS.eyeClosed;
-      setText(this.eyeText, eye === 'seen' ? 'Sees you' : eye === 'blurry' ? 'Blurry' : 'Unseen');
+      setText(this.eyeText, eye === 'seen' ? (g?.dead ? 'Peeking at you?' : 'Sees you') : eye === 'blurry' ? 'Blurry' : g?.dead ? 'Eyes shut' : 'Unseen');
     }
     if (ear !== this.lastEar) {
       this.lastEar = ear;

@@ -22,8 +22,8 @@ export const PING_FAINT_MS = 30000;
 
 /** The keys Grandma's HUD names, on mouse and keyboard and on a controller (input.ts padAction). */
 export const GRANDMA_LABELS = {
-  kbm: { cane: 'LMB', aid: 'RMB', specs: 'F', summon: 'R', bless: 'E', tut: 'Q', parchment: 'Tab', lock: 'Scroll', pin: 'C', lockVerb: 'scroll' },
-  pad: { cane: 'RT', aid: 'LT', specs: 'Y', summon: 'B', bless: 'RB', tut: 'LB', parchment: 'View', lock: 'D-pad ←/→', pin: 'X', lockVerb: 'D-pad ←/→' },
+  kbm: { cane: 'LMB', aid: 'RMB', specs: 'F', summon: 'R', dead: 'G', bless: 'E', tut: 'Q', parchment: 'Tab', lock: 'Scroll', pin: 'C', lockVerb: 'scroll' },
+  pad: { cane: 'RT', aid: 'LT', specs: 'Y', summon: 'B', dead: 'D-pad ↑', bless: 'RB', tut: 'LB', parchment: 'View', lock: 'D-pad ←/→', pin: 'X', lockVerb: 'D-pad ←/→' },
 } as const;
 
 export class GrandmaHud {
@@ -31,7 +31,7 @@ export class GrandmaHud {
   /** Left column: the will, then whatever the HUD stacks under it (the coach). */
   readonly leftCol = el('div', 'left-col');
   private will: WillList;
-  private rings: Record<'cane' | 'aid' | 'specs' | 'summon', Ring>;
+  private rings: Record<'cane' | 'aid' | 'specs' | 'summon' | 'dead', Ring>;
   private target = el('div', 'gm-target');
   private targetKey = '';
   private evidence = el('div', 'evidence');
@@ -41,7 +41,7 @@ export class GrandmaHud {
   private status = el('div', 'gm-status');
   private hintRow = el('div', 'will-hint');
   private evidenceHint = el('div', 'evidence-hint');
-  private ringKeys: Record<'cane' | 'aid' | 'specs' | 'summon', HTMLElement>;
+  private ringKeys: Record<'cane' | 'aid' | 'specs' | 'summon' | 'dead', HTMLElement>;
   private blessKey = el('b');
   private tutKey = el('b');
   /** The device the labels were last written for. */
@@ -70,9 +70,9 @@ export class GrandmaHud {
       bar.appendChild(root);
       return { root, arc: root.querySelectorAll('circle')[1] as SVGCircleElement, state };
     };
-    this.rings = { cane: mk('LMB', 'Cane'), aid: mk('RMB', 'Hearing aid'), specs: mk('F', 'Spectacles'), summon: mk('R', 'Summon') };
+    this.rings = { cane: mk('LMB', 'Cane'), aid: mk('RMB', 'Hearing aid'), specs: mk('F', 'Spectacles'), summon: mk('R', 'Summon'), dead: mk('G', 'Play dead') };
     const keyOf = (r: Ring) => r.root.querySelector('.cd-key') as HTMLElement;
-    this.ringKeys = { cane: keyOf(this.rings.cane), aid: keyOf(this.rings.aid), specs: keyOf(this.rings.specs), summon: keyOf(this.rings.summon) };
+    this.ringKeys = { cane: keyOf(this.rings.cane), aid: keyOf(this.rings.aid), specs: keyOf(this.rings.specs), summon: keyOf(this.rings.summon), dead: keyOf(this.rings.dead) };
     const blessTut = el('div', 'bless-tut');
     const bless = el('span');
     bless.append(this.blessKey, document.createTextNode(' Bless +5'));
@@ -107,6 +107,7 @@ export class GrandmaHud {
     setText(this.ringKeys.aid, L.aid);
     setText(this.ringKeys.specs, L.specs);
     setText(this.ringKeys.summon, L.summon);
+    setText(this.ringKeys.dead, L.dead);
     setText(this.blessKey, L.bless);
     setText(this.tutKey, L.tut);
     setText(this.hintRow, `${L.parchment}: full parchment · ${L.lock}: lock name`);
@@ -135,6 +136,10 @@ export class GrandmaHud {
     setRing(this.rings.specs, me?.specsCooldown ?? 0, SPECTACLES.cooldown, !!me?.specsActive || !!me?.specsOff, me?.specsOff ? 'OFF!' : 'ON');
     this.rings.specs.root.classList.toggle('broken', !!me?.specsOff);
     setRing(this.rings.summon, me?.summonCooldown ?? 0, GRANDMA.summonCooldown, false, '');
+    // Once a visit: lit while she lies there, spent afterwards.
+    const dead = !!me?.dead;
+    setRing(this.rings.dead, dead ? 0 : s.deadVisit === s.visit ? 1 : 0, 1, dead, 'Get up');
+    if (!dead && s.deadVisit === s.visit) setText(this.rings.dead.state, 'used');
 
     // Bless/Tut target: who is in her sights, else the locked name, else a nudge to aim.
     const tId = f.target?.id ?? f.locked ?? null;
@@ -158,7 +163,7 @@ export class GrandmaHud {
     this.target.classList.toggle('none', !tId);
 
     // Status line (spectacles off, parchment, Storm).
-    const st = me?.specsOff ? 'Your spectacles! Everything is a blur.' : s.thunder ? 'THUNDER! You cannot hear a thing.' : me?.parchmentOpen ? 'Writing... (slow)' : s.dark && !s.flash ? 'The lights are out!' : '';
+    const st = me?.dead ? `Playing dead... peek at who comes, and what they do. (${GRANDMA_LABELS[f.device].dead} to get up)` : me?.specsOff ? 'Your spectacles! Everything is a blur.' : s.thunder ? 'THUNDER! You cannot hear a thing.' : me?.parchmentOpen ? 'Writing... (slow)' : s.dark && !s.flash ? 'The lights are out!' : '';
     setText(this.status, st);
     show(this.status, st !== '');
 

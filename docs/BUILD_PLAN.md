@@ -272,6 +272,11 @@ The best three are marked ★ and are next once the core work above is done.
   **Built 2026-11-23:** the broken urn leaves a pile; treading in it gives grey shoes and 16 prints
   (one every 0.6 m, alternating feet); cousins see every print, Grandma only those she has looked
   at, nobody is told whose; shoving someone in earns the Grandpa's Ashes moment (ash.test.ts).
+- **Playing dead** (new, 2026-11-23): once a visit Grandma drops to the floor and peeks (sharp all
+  round to 5 m, nothing beyond); she cannot move or touch the will till she gets up. Rude gestures or
+  sabotage she sees meanwhile are Dancing on Her Grave, a compliment Gone Too Soon; bot cousins go to
+  weep or dance, the bot Grandma tries it now and then. *The darkest joke in the game, and a trap that
+  works because the cousins can never be sure she is not really peeking* (playdead.test.ts).
 - **Nana's diary:** after the vote, Grandma's private suspicions (who she watched, who she trusted)
   are shown next to the truth. *Lets her enjoy her own wrongness with everyone else.*
 

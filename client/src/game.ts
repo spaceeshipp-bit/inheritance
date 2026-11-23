@@ -212,6 +212,7 @@ export class Game {
       }
       case 'parchment': this.toggleParchment(); return;
       case 'summon': send({ t: 'grandma', a: 'summon' }); return;
+      case 'playDead': send({ t: 'grandma', a: 'play-dead', on: !s.selfDead }); return;
       case 'pin': {
         const f = [...s.found].reverse().find((x) => !x.pinned);
         if (!f) { hud.toasts.push('No new evidence to pin.', 'info', 2); return; }
@@ -286,6 +287,8 @@ export class Game {
       // The server times the thunder (she hears nothing while it rolls), so the sound plays on its cue.
       case 'thunder': sfx.play('thunder'); break;
       case 'summon': sfx.play('summon', ev.pos); break;
+      case 'collapse': sfx.play('thud', ev.pos, 1.4); break;
+      case 'risen': sfx.play('gasp', ev.pos, 1.2); break;
       case 'moment': sfx.play('pop', undefined, 0.6); break;
       case 'will':
         if (!this.isGrandma && ev.via !== 'parchment' && gpos) sfx.play(ev.via === 'bless' ? 'bless' : 'tut', gpos, 0.7);

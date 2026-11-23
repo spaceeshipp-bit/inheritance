@@ -68,7 +68,7 @@ Press **H** in game for the full list. Gamepads follow the design doc's controll
 | --- | --- | --- |
 | Move / look | WASD, mouse | WASD, mouse |
 | Run / sneak / jump | Shift / C / Space | — |
-| Main actions | LMB grab, RMB throw (hold to charge), F shove, E interact, G hold to plant a stolen item | E Bless, Q Tut (aimed at who you look at; scroll to lock a name), LMB cane, RMB hearing aid, F spectacles, R summon, C pin, Tab the parchment (the full will) |
+| Main actions | LMB grab, RMB throw (hold to charge), F shove, E interact, G hold to plant a stolen item | E Bless, Q Tut (aimed at who you look at; scroll to lock a name), LMB cane, RMB hearing aid, F spectacles, R summon, G play dead (once a visit), C pin, Tab the parchment (the full will) |
 | Talk | Voice (open mic; push-to-talk in settings, default B), Left Alt whisper, Q quick-chat wheel, T tattle wheel, Enter typed chat | Voice, V quick-chat wheel, Enter typed chat |
 | Gestures and dances | Z gesture wheel, X dance wheel (hold, pick, release; or the number keys) | Z gesture wheel, X dance wheel |
 
@@ -98,7 +98,9 @@ To feel the game on a bad connection, add `?netsim=150,20,2` to the page address
 In: four maps chosen in the lobby (Harrowgate Manor, Sunny Pines Care Home, Pettigrew & Sons Funeral
 Parlour, and The Golden Years, a cruise ship you can be shoved off), Afternoon Tea (and Tea → Dinner →
 Storm with "full match"), Grandma's senses (sight bands, hearing bands, hearing aid, spectacles, the
-Storm's candle, lightning, and thunder that deafens her for a second and a half), Grandpa's ashes (break
+Storm's candle, lightning, and thunder that deafens her for a second and a half), playing dead (once a
+visit Grandma drops to the floor and peeks: whoever dances on her grave, or weeps over her, is noted),
+Grandpa's ashes (break
 the urn and whoever treads in him leaves a trail of grey footprints, so shove a cousin through), the live will with its budget and caps, heirlooms, signature items,
 stealing and planting, shoves and ragdolls, wishes, tattling, quick chat, gestures and dances (sweet ones
 flatter, rude ones are noted if she catches you), Family Dinner round each map's table, the reading of

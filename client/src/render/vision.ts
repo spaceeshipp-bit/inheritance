@@ -5,7 +5,7 @@
 // radius, so sharp foreground never haloes onto a blurred background), then a
 // grading pass (vignette, fade of colour with distance, Storm darkness).
 import * as THREE from 'three';
-import { SENSES, SPECTACLES, STORM } from '../../../shared/constants.js';
+import { PLAY_DEAD, SENSES, SPECTACLES, STORM } from '../../../shared/constants.js';
 import { damp } from '../util.js';
 
 export interface VisionParams {
@@ -28,12 +28,17 @@ export interface VisionParams {
   flash: number;
 }
 
-export function visionParams(o: { specsActive: boolean; specsOff: boolean; dark: boolean; flash: boolean }): VisionParams {
+export function visionParams(o: { specsActive: boolean; specsOff: boolean; dark: boolean; flash: boolean; peek?: boolean }): VisionParams {
   const base: VisionParams = {
     sharp: SENSES.clear, soft: SENSES.muffled, heavy: SENSES.mumble,
     rSoft: 3, rHeavy: 7.5, rFar: 11, rMin: 0, vignette: 0.55, desat: 0.65, dark: 0, flash: 0,
   };
   const specsOff: VisionParams = { ...base, sharp: 0.5, soft: SENSES.clear, heavy: SENSES.mumble, rMin: 4, rSoft: 5, rHeavy: 8.5, rFar: 12, desat: 0.8 };
+  // Playing dead: peeking through her lashes, sharp close by and nothing past it (shared/senses.ts).
+  if (o.peek) {
+    const r = o.dark && !o.flash ? PLAY_DEAD.peekDark : PLAY_DEAD.peek;
+    return { ...base, sharp: r, soft: r + 0.3, heavy: r + 0.6, rSoft: 6, rHeavy: 10, rFar: 14, vignette: 1, desat: 0.5, dark: o.dark && !o.flash ? 1 : 0, flash: o.flash ? 1 : 0 };
+  }
   // A lightning flash lights the house like daylight (no better): her usual
   // eyesight for an instant, spectacles knocked off or not.
   if (o.flash) return { ...(o.specsOff ? specsOff : base), flash: 1 };

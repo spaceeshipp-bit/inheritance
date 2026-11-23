@@ -62,6 +62,9 @@ export class GameState {
   /** Footprints in Grandpa's ashes this visit (as many as we have been sent), and a count of changes to it. */
   prints: AshPrint[] = [];
   printsVersion = 0;
+  /** The visit Grandma last played dead in (she may once a visit), and whether you (Grandma) are lying there now. */
+  deadVisit: VisitId | null = null;
+  selfDead = false;
   wish: WishInfo | null = null;
   reading: ReadingResult | null = null;
   results: FinalResult | null = null;
@@ -141,6 +144,8 @@ export class GameState {
           this.thunder = false;
           this.prints = [];
           this.printsVersion++;
+          this.deadVisit = null;
+          this.selfDead = false;
         }
         this.emit('match', m);
         break;
@@ -196,6 +201,7 @@ export class GameState {
     this.buf.push({ msg: m, chars, props });
     const mine = chars.get(this.selfId);
     if (mine) this.predictor.reconcile(mine);
+    this.selfDead = !!mine?.dead;
     while (this.buf.length > 2 && this.buf[0].msg.time < m.time - BUFFER_SECONDS) this.buf.shift();
   }
 
@@ -211,6 +217,7 @@ export class GameState {
       case 'summon': this.summon = { pos: ev.pos, endsAt: ev.endsAt }; break;
       // Straight away, not on the next snapshot: a crash in the same tick is already unheard.
       case 'thunder': this.thunder = true; break;
+      case 'collapse': this.deadVisit = this.visit; break;
       case 'prints':
         if (ev.clear) this.prints = [];
         this.prints.push(...ev.prints);
@@ -226,7 +233,7 @@ export class GameState {
     if (!g) return null;
     return {
       pos: g.pos, yaw: g.yaw, aidActive: !!g.aidActive, specsActive: !!g.specsActive, specsOff: !!g.specsOff,
-      dark: this.dark && !this.flash, flash: this.flash, thunder: this.thunder,
+      dark: this.dark && !this.flash, flash: this.flash, thunder: this.thunder, peek: !!g.dead,
     };
   }
 

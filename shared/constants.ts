@@ -211,6 +211,14 @@ export const STORM = {
 } as const;
 
 /**
+ * Grandma plays dead (once a visit, G): she drops where she stands for up to
+ * `max` s (she can get up after `minDown`), peeking through her lashes: all
+ * round her, everything within `peek` m (`peekDark` by candlelight) is sharp,
+ * nothing beyond. Whoever dances on her grave, or mourns her, is noted.
+ */
+export const PLAY_DEAD = { max: 12, minDown: 1.5, peek: 5, peekDark: 2.5 } as const;
+
+/**
  * Grandpa's ashes. The urn, broken, leaves a pile `pileRadius` m across; whoever
  * walks (or is shoved) through it leaves `prints` grey footprints, one every
  * `stride` m. Cousins see every print; Grandma only the ones she has laid eyes on.

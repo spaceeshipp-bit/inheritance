@@ -10,7 +10,7 @@
 import {
   COUSIN, COUSINS, CRIME_SCENE, DISCONNECT, FULL_VISITS, GRANDMA, HEARING_AID, HEIRLOOM, INTERMISSION_TIME, MISHEARD,
   PREFERENCE_CARDS, QUICKCHAT, READING_TIME, RESULTS_TIME, ROLE_REVEAL_TIME, SENSES, SLICE_VISITS, SNAPSHOT_HZ,
-  SPECTACLES, STORM, TICK_HZ, VISITS, VOICE, VOTE_TIME, WILL, WISH, INPUT, PROTOCOL_VERSION, DINNER, ASH,
+  SPECTACLES, STORM, TICK_HZ, VISITS, VOICE, VOTE_TIME, WILL, WISH, INPUT, PROTOCOL_VERSION, DINNER, ASH, PLAY_DEAD,
 } from '../shared/constants.js';
 import { HEIRLOOM_VARIANTS, MAP_IDS, groundHeight, mapById, type MapDef, type MapId } from '../shared/map.js';
 import { createBody, forwardOf, integrateBody, wrapAngle, yawToward, type BodyShape, type MoveBody } from '../shared/movement.js';
@@ -129,6 +129,10 @@ export interface Char extends PhysChar {
   ashFrom: Vec3 | null;
   ashSide: 0 | 1;
   ashTrod: boolean;
+  /** Grandma playing dead: since when, until when (the latest she gets up), and the visit she last did it in. */
+  deadFrom: number;
+  deadUntil: number;
+  deadVisit: number;
 }
 
 /** A footprint in Grandpa's ashes, with who left it (server only) and whether Grandma has seen it yet. */
@@ -436,7 +440,7 @@ export class Match {
       if (moment.kind === 'big-cut') return { e: 'moment', moment };
       if (moment.kind === 'favourite-broken' || moment.kind === 'framed') return null;
       if (to === moment.actor) return { e: 'moment', moment };
-      if (to === this.grandmaId && (moment.kind === 'caught-red-handed' || moment.kind === 'cheek')) return { e: 'moment', moment };
+      if (to === this.grandmaId && (moment.kind === 'caught-red-handed' || moment.kind === 'cheek' || moment.kind === 'graveside' || moment.kind === 'mourner')) return { e: 'moment', moment };
       return null;
     }));
     this.log.onLog((ev, i) => {
@@ -489,6 +493,7 @@ export class Match {
       cousinIndex, itemId: role === 'cousin' ? `item-${COUSINS[cousinIndex % COUSINS.length].key}` : null,
       parchmentOpen: false, aidT: 0, aidCd: 0, specsT: 0, specsCd: 0, specsOff: false, caneCd: 0, summonCd: 0, quillT: 0, whistleT: 0,
       ashy: 0, ashFrom: null, ashSide: 0, ashTrod: false,
+      deadFrom: -Infinity, deadUntil: -Infinity, deadVisit: -1,
     };
   }
 
@@ -869,7 +874,13 @@ export class Match {
       if (willAction) this.emit(id, { e: 'will-rejected', target: a.target, reason: 'not-now' });
       return;
     }
+    if (this.playingDead && a.a !== 'play-dead' && a.a !== 'pin' && !(a.a === 'parchment' && !a.open)) {
+      if (willAction) this.emit(id, { e: 'will-rejected', target: a.target, reason: 'not-now' });
+      this.emit(id, { e: 'toast', text: "You're dead, dear. Press G to get up first." });
+      return;
+    }
     switch (a.a) {
+      case 'play-dead': this.playDead(g, a.on); break;
       case 'bless': this.quickEdit(a.target, WILL.quickStep); break;
       case 'tut': this.quickEdit(a.target, -WILL.quickStep); break;
       case 'set': {
@@ -1125,8 +1136,14 @@ export class Match {
     if (!g) return null;
     return {
       pos: g.body.pos, yaw: g.yaw, aidActive: g.aidT > 0, specsActive: g.specsT > 0 && !g.specsOff, specsOff: g.specsOff,
-      dark: this.dark, flash: this.flash, thunder: this.thunder,
+      dark: this.dark, flash: this.flash, thunder: this.thunder, peek: this.playingDead,
     };
+  }
+
+  /** Grandma is lying on the floor playing dead (peeking). */
+  get playingDead(): boolean {
+    const g = this.grandma;
+    return !!g && this.time < g.deadUntil;
   }
 
   /** Thunder is rolling: Grandma hears nothing at all (no voices, no crashes, no footsteps). */
@@ -1228,6 +1245,7 @@ export class Match {
       if (v === 'dinner') this.updateDinner(h);
       this.updateGrandmaSystems(h);
       this.updateWish();
+      this.updatePlayDead();
       this.updateAsh();
       this.updateFound();
       this.updateSummon();
@@ -1254,6 +1272,8 @@ export class Match {
     for (const [id, t] of this.excusedUntil) this.excusedUntil.set(id, t + h);
     for (const c of this.chars.values()) {
       c.knockedAt += h;
+      c.deadFrom += h;
+      c.deadUntil += h;
       c.yawHold += h;
       c.shoveBufferUntil += h;
       c.emoteCd += h;
@@ -1269,7 +1289,8 @@ export class Match {
     const has = this.takeInput(c, h);
     const inp = c.input;
     const live = this.phase === 'visit' || this.phase === 'intermission';
-    const upright = c.state === 'normal';
+    // Playing dead: on the floor, eyes (nearly) shut; she can only look about and get up.
+    const upright = c.state === 'normal' && !(c.role === 'grandma' && this.time < c.deadUntil);
     if (c.emote) {
       // Moving, acting, picking something up, opening the parchment or falling over ends it.
       const p = c.pressed;
@@ -1280,7 +1301,7 @@ export class Match {
     }
     const canMove = live && upright && c.connected;
     const canAct = this.phase === 'visit' && upright && c.connected;
-    if (upright && c.connected) this.faceInput(c, inp);
+    if (c.state === 'normal' && c.connected) this.faceInput(c, inp);
     c.shoveCd = Math.max(0, c.shoveCd - h);
     if (c.role === 'grandma') {
       c.aidT = Math.max(0, c.aidT - h);
@@ -2062,6 +2083,51 @@ export class Match {
     return STORM.lightningEvery + (this.rng() * 2 - 1) * STORM.lightningJitter;
   }
 
+  // ───────────── playing dead ─────────────
+
+  /** Drop and play dead (once a visit), or get up again (not straight away). */
+  private playDead(g: Char, on: boolean): void {
+    if (!on) {
+      if (this.playingDead && this.time - g.deadFrom >= PLAY_DEAD.minDown) this.riseFromDead(g, true);
+      return;
+    }
+    if (this.playingDead || g.state !== 'normal') return;
+    if (g.deadVisit === this.visitIndex) {
+      this.emit(g.id, { e: 'toast', text: 'You have already died once this visit. Twice would look suspicious.' });
+      return;
+    }
+    if (g.parchmentOpen) this.closeParchment(g);
+    this.dropHeld(g, false);
+    g.emote = null;
+    g.body.vel = { x: 0, y: g.body.vel.y, z: 0 };
+    g.deadVisit = this.visitIndex;
+    g.deadFrom = this.time;
+    g.deadUntil = this.time + PLAY_DEAD.max;
+    this.log.nanaDead = true;
+    this.log.mourned.clear();
+    this.log.add({ t: this.time, kind: 'dead', up: false });
+    this.emitAll({ e: 'collapse', pos: v3(g.body.pos) });
+    this.emitAll((to) => ({ e: 'toast', text: to === g.id
+      ? 'You drop like a stone. Peek at who comes, and what they do. G to get up.'
+      : 'Nana has collapsed! Is she... is she breathing?' }));
+  }
+
+  /** Up again (`said`: with a word to everyone; not when the visit just ended). */
+  private riseFromDead(g: Char, said: boolean): void {
+    g.deadUntil = -Infinity;
+    this.log.nanaDead = false;
+    this.log.add({ t: this.time, kind: 'dead', up: true });
+    if (!said) return;
+    this.emitAll({ e: 'risen', pos: v3(g.body.pos) });
+    this.emitAll({ e: 'toast', text: 'Nana sits bolt upright. "I\'m not dead yet!"' });
+  }
+
+  /** She gets up on her own once PLAY_DEAD.max is up. */
+  private updatePlayDead(): void {
+    const g = this.grandma;
+    if (g && g.deadUntil > -Infinity && this.time >= g.deadUntil) this.riseFromDead(g, true);
+  }
+
   // ───────────── Grandpa's ashes ─────────────
 
   /**
@@ -2303,6 +2369,7 @@ export class Match {
       this.closeParchment(g);
       g.aidT = 0;
       g.specsT = 0;
+      if (this.playingDead) this.riseFromDead(g, false);
     }
     if (this.wish) this.endWish(true);
     this.nextWishAt = Infinity;
@@ -2474,7 +2541,7 @@ export class Match {
     }));
     const nana = g ? {
       x: r2(g.body.pos.x), y: r2(g.body.pos.y), z: r2(g.body.pos.z), yaw: r2(g.yaw), pitch: r2(g.pitch),
-      specs: g.specsT > 0 && !g.specsOff, aid: g.aidT > 0, dark: this.dark, flash: this.flash, ...(this.thunder ? { thunder: true } : {}),
+      specs: g.specsT > 0 && !g.specsOff, aid: g.aidT > 0, dark: this.dark, flash: this.flash, ...(this.thunder ? { thunder: true } : {}), ...(this.playingDead ? { dead: true } : {}),
     } : null;
     return { t: r2(this.time), chars, props, nana };
   }
@@ -2564,6 +2631,7 @@ export class Match {
     };
     if (c.emote) { s.emote = c.emote.id; s.emoteT = r2(this.time - c.emote.at); }
     if (c.ashy > 0) s.ashy = true;
+    if (c.role === 'grandma' && this.time < c.deadUntil) s.dead = true;
     // How far the server has got with your inputs is for your own prediction only.
     if (forId === c.id) s.ack = g ? g.base : c.ack;
     if (c.role === 'grandma') {

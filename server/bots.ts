@@ -197,6 +197,8 @@ type Task =
   | { k: 'tattle'; accused: string; until: number; side: number }
   /** Pull a face at Nana behind her back (or dance between visits). */
   | { k: 'cheek' | 'dance'; until: number; emote: EmoteId; started: boolean }
+  /** Nana has collapsed: go to her and weep (or dance on her grave). */
+  | { k: 'graveside'; until: number; emote: EmoteId; started: boolean }
   /** Family Dinner: "Excuse me, Nana" at the dinner door, then `next` (chosen at `at`), the trip it was for. */
   | { k: 'excuse'; until: number; at: number; next: Task }
   /** Family Dinner: stay put at the table, facing Nana. */
@@ -242,6 +244,8 @@ export class CousinBot implements Bot {
   /** Gestures: their own dice, and when the next face may be pulled behind Nana's back. */
   private erng: () => number;
   private nextCheekAt = 0;
+  /** The collapse (her deadFrom) this bot has already reacted to. */
+  private graveFor = -Infinity;
   /**
    * Family Dinner: the trip away from the table under way (after "Excuse me,
    * Nana", or the one unexcused wander a Dinner allows), and whether that
@@ -333,6 +337,8 @@ export class CousinBot implements Bot {
           ? { k: 'dance', until: m.time + 7, emote: BOT_DANCES[Math.floor(this.erng() * BOT_DANCES.length)], started: false }
           : this.wanderTask(c, 6);
       }
+    } else if (this.graveside(c)) {
+      // (a new task: to Nana's side)
     } else if (!this.task || m.time > this.task.until) {
       this.task = this.dinnerGate(c, this.choose(c));
       this.walker.reset();
@@ -342,6 +348,23 @@ export class CousinBot implements Bot {
     this.run(c, inp);
     this.keepSpace(c, inp);
     m.botInput(this.id, inp);
+  }
+
+  /**
+   * Nana has just dropped (playing dead, though nobody can be sure): most bots
+   * nearby go over, the sweet ones to weep, the rest to dance on her grave or
+   * measure her up. Once per collapse; never from the dinner table.
+   */
+  private graveside(c: Char): boolean {
+    const m = this.m, g = m.grandma;
+    if (!g || !m.playingDead || this.graveFor === g.deadFrom) return false;
+    this.graveFor = g.deadFrom;
+    if (c.holding || this.atDinner() || flatDist(c.body.pos, g.body.pos) > 10 || !sameFloor(c.body.pos, g.body.pos) || this.erng() > 0.75) return false;
+    const sweet = this.erng() < this.helpful / (this.helpful + this.mischief);
+    const pool: EmoteId[] = sweet ? ['crocodile-tears', 'heart-hands'] : ['grave-stomp', 'coffin-measure', 'money-count'];
+    this.task = { k: 'graveside', until: m.time + 9, emote: pool[Math.floor(this.erng() * pool.length)], started: false };
+    this.walker.reset();
+    return true;
   }
 
   // ───── pacing ─────
@@ -788,6 +811,22 @@ export class CousinBot implements Bot {
         }
         break;
       }
+      case 'graveside': {
+        if (!t.started) {
+          if (!g || !m.playingDead) { this.done(); break; }
+          if (flatDist(c.body.pos, g.body.pos) > 1.7) { this.go(c, inp, g.body.pos, false); break; }
+          inp.move = { x: 0, z: 0 };
+          this.face(inp, c, g.body.pos);
+          if (Math.abs(wrapAngle(c.yaw - inp.yaw)) < 0.25) {
+            m.handleEmote(this.id, t.emote);
+            t.started = true;
+          }
+        } else {
+          inp.move = { x: 0, z: 0 };
+          if (!c.emote) this.done();
+        }
+        break;
+      }
       case 'cheek':
       case 'dance': {
         // Stand still (facing Nana, for a face pulled at her) and play it out.
@@ -1118,6 +1157,11 @@ export class GrandmaBot implements Bot {
   private tap = { primary: false, secondary: false, shove: false };
   private parchment: { openAt: number; setAt: number; closeAt: number; visit: number } | null = null;
   private summonAt = Infinity;
+  /** Playing dead: when she means to drop this visit, and when she gets up again. */
+  private deadAt = Infinity;
+  private riseAt = Infinity;
+  /** Her own dice for playing dead, so adding it left the match's other rolls (and the tuned bot tests) as they were. */
+  private drng: () => number;
   private planned = -1;
   private voted = false;
   private scanAt = 0;
@@ -1125,6 +1169,7 @@ export class GrandmaBot implements Bot {
 
   constructor(private m: Match, readonly id: string) {
     this.walker = new Walker(m.rng);
+    this.drng = gestureRng(`${id}:dead`);
   }
 
   vote(): string | null {
@@ -1452,6 +1497,7 @@ export class GrandmaBot implements Bot {
       const len = m.phaseEndsAt - m.time;
       this.parchment = m.rng() < 0.7 ? { openAt: m.time + len * (0.25 + m.rng() * 0.4), setAt: 0, closeAt: 0, visit: m.visitIndex } : null;
       this.summonAt = m.rng() < 0.5 ? m.time + len * (0.3 + m.rng() * 0.5) : Infinity;
+      this.deadAt = this.drng() < 0.35 ? m.time + len * (0.2 + this.drng() * 0.5) : Infinity;
       this.seenWith.clear();
       this.noticed.clear();
       this.sightings.clear();
@@ -1468,6 +1514,33 @@ export class GrandmaBot implements Bot {
     if (m.time >= this.scanAt) {
       this.scanAt = m.time + 0.1;
       this.scan();
+    }
+    // Playing dead: lie still, peek about, and get up when she has seen enough
+    // (her reactions wait till then: the dead do not Tut).
+    if (m.playingDead) {
+      if (m.time >= this.riseAt) {
+        this.riseAt = Infinity;
+        m.handleGrandma(this.id, { a: 'play-dead', on: false });
+        this.later(0.5, () => m.handleEmote(this.id, 'cane-shake'));
+      } else {
+        this.lookYaw = wrapAngle(this.lookYaw + dt * 0.7);
+        inp.yaw = this.lookYaw;
+      }
+      m.botInput(this.id, inp);
+      return;
+    }
+    if (m.time >= this.deadAt && !g.parchmentOpen && m.visits[m.visitIndex] !== 'dinner') {
+      // Only worth it with an audience: someone within a few metres.
+      const near = m.cousinIds.some((id) => { const c = m.chars.get(id); return !!c && c.state === 'normal' && flatDist(c.body.pos, g.body.pos) < 7 && sameFloor(c.body.pos, g.body.pos); });
+      if (near) {
+        this.deadAt = Infinity;
+        this.riseAt = m.time + 5 + this.drng() * 4;
+        this.lookYaw = g.yaw;
+        m.handleGrandma(this.id, { a: 'play-dead', on: true });
+        m.botInput(this.id, inp);
+        return;
+      }
+      this.deadAt = m.time + 4;
     }
     // Scheduled reactions.
     if (this.reactions.some((r) => r.at <= m.time)) {

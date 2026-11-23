@@ -45,6 +45,7 @@ export class CameraRig {
   private viewModel = new THREE.Group();
   private swingT = 0;
   private eyeY = 1.8;
+  private roll = 0;
   private losRay = new THREE.Raycaster();
   private losDir = new THREE.Vector3();
   private blockers: THREE.Object3D[] = [];
@@ -141,15 +142,18 @@ export class CameraRig {
   }
 
   /** First person for Grandma. */
-  updateGrandma(pos: Vec3, yaw: number, pitch: number, dt: number, o: { specs: boolean; down: boolean; parchment: boolean }): void {
-    const eye = o.down ? 0.5 : 1.8;
-    this.eyeY += (eye - this.eyeY) * damp(8, dt);
+  updateGrandma(pos: Vec3, yaw: number, pitch: number, dt: number, o: { specs: boolean; down: boolean; dead?: boolean; parchment: boolean }): void {
+    // Knocked down: eyes low and tilted. Playing dead: cheek to the carpet, looking along the floor.
+    const eye = o.dead ? 0.28 : o.down ? 0.5 : 1.8;
+    this.eyeY += (eye - this.eyeY) * damp(o.dead ? 5 : 8, dt);
     const fx = -Math.sin(yaw) * 0.12, fz = -Math.cos(yaw) * 0.12;
     this.camera.position.set(pos.x + fx, pos.y + this.eyeY, pos.z + fz);
-    this.camera.rotation.set(clamp(pitch, -1.2, 1.2), yaw, o.down ? 0.6 : 0, 'YXZ');
+    const roll = o.dead ? 1.25 : o.down ? 0.6 : 0;
+    this.roll += (roll - this.roll) * damp(6, dt);
+    this.camera.rotation.set(clamp(o.dead ? pitch + 0.25 : pitch, -1.2, 1.2), yaw, this.roll, 'YXZ');
     const half = o.specs ? SPECTACLES.coneHalfAngleDeg : SENSES.coneHalfAngleDeg;
     this.setFov(vfovForHalfAngle(half, this.camera.aspect), dt);
-    this.viewModel.visible = !o.down && !o.parchment;
+    this.viewModel.visible = !o.down && !o.dead && !o.parchment;
     if (this.swingT > 0) this.swingT -= dt;
     const s = this.swingT > 0 ? Math.sin((1 - this.swingT / 0.35) * Math.PI) : 0;
     this.viewModel.rotation.set(0.25 - s * 1.4, 0, -0.15 - s * 0.3);

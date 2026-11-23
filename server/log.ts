@@ -44,6 +44,14 @@ export class EventLog {
   private lastLoveYou = new Map<string, number>();
   /** Last Behind Her Back / The Cheek of It moment per actor. */
   private lastRude = new Map<string, number>();
+  /**
+   * Grandma is playing dead right now (the match keeps this up to date): what
+   * she sees is Dancing on Her Grave, a compliment Gone Too Soon (once each per
+   * collapse: `mourned` is cleared when she drops again).
+   */
+  nanaDead = false;
+  private lastGrave = new Map<string, number>();
+  readonly mourned = new Set<string>();
   /** The log index of the event each moment is about (for its replay). Server-side only. */
   private momentEvents = new Map<Moment, number>();
 
@@ -246,6 +254,21 @@ export class EventLog {
         this.addMoment({ kind: 'love-you-nana', t: ev.t, actor: ev.by, victim: ev.victim, text: `${n(ev.by)} told Nana they loved her, then shoved ${n(ev.victim)}.` }, this.events.length - 1);
       }
     }
+    // While she plays dead: rudeness or sabotage she sees is Dancing on Her Grave; a compliment is Gone Too Soon.
+    if (this.nanaDead) {
+      if ((ev.kind === 'rude' || isSabotage(ev)) && ev.seen && ev.by) {
+        const last = this.lastGrave.get(ev.by) ?? -Infinity;
+        if (ev.t - last >= 6) {
+          this.lastGrave.set(ev.by, ev.t);
+          this.addMoment({ kind: 'graveside', t: ev.t, actor: ev.by, ...(ev.kind === 'shove' ? { victim: ev.victim } : {}), text: `${n(ev.by)} ${graveside(ev, n)} She was only resting.` }, this.events.length - 1);
+        }
+        return;
+      }
+      if (ev.kind === 'compliment' && !this.mourned.has(ev.by)) {
+        this.mourned.add(ev.by);
+        this.addMoment({ kind: 'mourner', t: ev.t, actor: ev.by, text: `${n(ev.by)} wept over Nana's body: "${ev.line}". She heard every word.` }, this.events.length - 1);
+      }
+    }
     // Rudeness aimed at Nana: unseen, it is Behind Her Back; up close and seen, The Cheek of It.
     if (ev.kind === 'rude' && ev.atNana && (!ev.seen || ev.sharp)) {
       const last = this.lastRude.get(ev.by) ?? -Infinity;
@@ -299,6 +322,18 @@ export class EventLog {
 }
 
 /** An act of sabotage in a few words. `favourite`: may say the heirloom was her Favourite (only at the reading). */
+/** What someone did over Nana's "body" (never which heirloom: the Favourite stays secret until the reading). */
+function graveside(ev: SabotageEvent | Extract<LogEvent, { kind: 'rude' }>, n: (id: string) => string): string {
+  switch (ev.kind) {
+    case 'rude': return `${EMOTES[ev.emote].did} over Nana's body.`;
+    case 'shove': return `shoved ${n(ev.victim)} over Nana's body.`;
+    case 'break': return "smashed an heirloom beside Nana's body.";
+    case 'steal': return `went through ${n(ev.owner)}'s pockets beside Nana's body.`;
+    case 'plant': return "planted evidence beside Nana's body.";
+    case 'knock-specs': return "knocked the spectacles off Nana's body.";
+  }
+}
+
 function describe(ev: SabotageEvent, favourite = true): string {
   switch (ev.kind) {
     case 'shove': return 'a shove';

@@ -41,7 +41,9 @@ export type GrandmaAction =
   | { a: 'set'; target: string; value: number }
   | { a: 'parchment'; open: boolean }
   | { a: 'summon' }
-  | { a: 'pin'; item: string };
+  | { a: 'pin'; item: string }
+  /** Drop and play dead (`on`), or get up again. */
+  | { a: 'play-dead'; on: boolean };
 
 /**
  * The playtest survey on the results screen (GDD "Playtest metrics"): would
@@ -134,6 +136,9 @@ export type GameEvent =
   | { e: 'cane'; victim: string; pos: Vec3 }
   | { e: 'specs-off'; pos: Vec3 }
   | { e: 'lightning' }
+  /** Nana dropped to the floor (playing dead), or sat bolt upright again. */
+  | { e: 'collapse'; pos: Vec3 }
+  | { e: 'risen'; pos: Vec3 }
   /**
    * Ash footprints: new ones (cousins: all; Grandma: those she has now seen).
    * `clear`: a new visit, the floors have been hoovered. Never says whose they are.

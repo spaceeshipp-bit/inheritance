@@ -311,7 +311,7 @@ export class GameRenderer {
     const g = view.grandma;
     const sense: GrandmaSenseState | null = g ? {
       pos: g.pos, yaw: g.yaw, aidActive: !!g.aidActive, specsActive: !!g.specsActive, specsOff: !!g.specsOff,
-      dark: f.dark && !f.flash, flash: f.flash,
+      dark: f.dark && !f.flash, flash: f.flash, peek: !!g.dead,
     } : null;
     if (isGrandma && sense && view.self) { sense.pos = view.self.pos; sense.yaw = f.yaw; }
     this.lastSense = sense;
@@ -380,11 +380,11 @@ export class GameRenderer {
     } else if (isGrandma) {
       const pos = self?.pos ?? g?.pos ?? { x: 0, y: 0, z: 0 };
       this.rig.updateGrandma(pos, f.yaw, f.pitch, dt, {
-        specs: !!self?.specsActive && !self?.specsOff, down: self?.state === 'ragdoll', parchment: f.parchment,
+        specs: !!self?.specsActive && !self?.specsOff, down: self?.state === 'ragdoll', dead: !!self?.dead, parchment: f.parchment,
       });
       this.candle.position.copy(this.rig.camera.position);
       this.scene.fog = this.grandmaFog({ flash: lit, dark: stormy, specsOff: !!self?.specsOff, specsActive: !!self?.specsActive });
-      const vp = visionParams({ specsActive: !!self?.specsActive, specsOff: !!self?.specsOff, dark: stormy && !lit, flash: lit });
+      const vp = visionParams({ specsActive: !!self?.specsActive, specsOff: !!self?.specsOff, dark: stormy && !lit, flash: lit, peek: !!self?.dead });
       if (this.calm) vp.flash = Math.min(vp.flash, fl);
       this.vision.render(this.scene, this.rig.camera, vp, dt);
     } else {

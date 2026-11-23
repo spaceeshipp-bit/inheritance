@@ -129,6 +129,8 @@ function parseGrandma(m: Obj): ({ t: 'grandma' } & GrandmaAction) | null {
       return typeof m.open === 'boolean' ? { t: 'grandma', a: 'parchment', open: m.open } : null;
     case 'summon':
       return { t: 'grandma', a: 'summon' };
+    case 'play-dead':
+      return typeof m.on === 'boolean' ? { t: 'grandma', a: 'play-dead', on: m.on } : null;
     case 'pin': {
       const item = id(m.item);
       return item ? { t: 'grandma', a: 'pin', item } : null;

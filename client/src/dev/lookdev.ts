@@ -58,6 +58,13 @@ const S = def.spawns;
 const g0 = S.grandma;
 const off = (dx: number, dz: number): Vec3 => ({ x: g0.x + dx, y: 0, z: g0.z + dz });
 // A side-on tableau: Nana blows a kiss to the sweet one; around her, the rest of the family.
+const DEAD_POSES: Pose[] = [
+  { id: 'nana', role: 'grandma', at: off(1.2, -1.2), face: off(1.2, 0) },
+  { id: 'agatha', role: 'cousin', at: off(2.5, -1.0), face: off(1.2, -1.2), emote: 'crocodile-tears', t: 1.2 },
+  { id: 'barnaby', role: 'cousin', at: off(0.0, -2.2), face: off(1.2, -1.2), emote: 'grave-stomp', t: 0.35 },
+  { id: 'clem', role: 'cousin', at: off(2.3, -2.5), face: off(1.2, -1.2), emote: 'coffin-measure', t: 0.9 },
+  { id: 'dudley', role: 'cousin', at: off(-0.2, -0.4), face: off(1.2, -1.2), emote: 'money-count', t: 1.0 },
+];
 const MANOR_POSES: Pose[] = [
   { id: 'nana', role: 'grandma', at: off(0.8, -1.0), face: off(2.2, -2.3), emote: 'blow-kiss', t: 1.05 },
   { id: 'agatha', role: 'cousin', at: off(2.2, -2.3), face: off(0.8, -1.0), emote: 'heart-hands', t: 1.1 },
@@ -79,7 +86,7 @@ const GENERIC_POSES: Pose[] = [
   })),
 ];
 // 'bake': the map alone (for baking its lightmap); no family, no props.
-const POSES: Pose[] = shot === 'dinner' || shot === 'bake' ? [] : mapId === 'manor' ? MANOR_POSES : GENERIC_POSES;
+const POSES: Pose[] = shot === 'dinner' || shot === 'bake' ? [] : shot === 'dead' && mapId === 'manor' ? DEAD_POSES : mapId === 'manor' ? MANOR_POSES : GENERIC_POSES;
 const models: CharacterModel[] = [];
 // 'ash': Grandpa's urn broken on the floor, and a trail of grey footprints leading to one of the family.
 const ASHY = mapId === 'manor' ? 'dudley' : 'c3';
@@ -93,6 +100,8 @@ POSES.forEach((p, i) => {
     running: false, sneaking: false, whispering: false, charge: 0, plant: 0, leader: i === 1,
     ...(p.emote ? { emote: p.emote, emoteT: t } : {}),
     ...(shot === 'ash' && p.id === ASHY ? { ashy: true } : {}),
+    // 'dead': Nana playing dead, the family round her "body".
+    ...(shot === 'dead' && p.role === 'grandma' ? { dead: true } : {}),
   });
   // Let the springs settle into the pose over a second.
   const T = p.t ?? 1;
@@ -150,6 +159,10 @@ if (shot === 'hall') {
   camera.position.set(cx + w * 0.1, Math.max(w, d) * 0.85, b.max.z + d * 0.45);
   camera.lookAt(cx, 0, cz);
   camera.fov = 50;
+} else if (shot === 'dead' && mapId === 'manor') {
+  camera.position.set(g0.x + 4.8, 2.3, g0.z + 1.6);
+  camera.lookAt(g0.x + 1.2, 0.4, g0.z - 1.2);
+  camera.fov = 55;
 } else if (shot === 'ash' && mapId === 'manor') {
   // From above the trail, looking down it to whoever left it.
   camera.position.set(g0.x + 4.6, 2.6, g0.z + 1.9);

@@ -1,7 +1,7 @@
 // Grandma's senses as pure functions. The server uses them for game logic
 // (moments, "found" evidence, scrambling text she reads); the client uses them
 // for her audio filter, her blurred view and the cousins' "Nana Senses" HUD.
-import { HEARING_AID, SENSES, SPECTACLES, STORM } from './constants.js';
+import { HEARING_AID, PLAY_DEAD, SENSES, SPECTACLES, STORM } from './constants.js';
 import type { Vec3 } from './types.js';
 
 export type HearingBand = 'clear' | 'muffled' | 'mumble' | 'silent';
@@ -21,6 +21,8 @@ export interface GrandmaSenseState {
   flash?: boolean;
   /** The Storm: thunder is rolling and she hears nothing at all. */
   thunder?: boolean;
+  /** Playing dead: peeking through her lashes, all round, close up only. */
+  peek?: boolean;
 }
 
 export function dist(a: Vec3, b: Vec3): number {
@@ -88,6 +90,7 @@ export function grandmaVoiceFilter(d: number, aidActive: boolean, speakerRange =
 /**
  * How clearly Grandma sees a point (geometry only: line of sight through walls
  * is checked separately with shared/sight.ts).
+ * - Playing dead: sharp all round to PLAY_DEAD.peek (peekDark in the Storm's dark), nothing beyond.
  * - Outside her view cone: nothing.
  * - The Storm, power out: her candle shows faces within STORM.candleClear and
  *   shapes to STORM.candleDim; beyond that, nothing.
@@ -97,6 +100,8 @@ export function grandmaVoiceFilter(d: number, aidActive: boolean, speakerRange =
  */
 export function visionBand(g: GrandmaSenseState, p: Vec3): VisionBand {
   const d = dist(g.pos, p);
+  // Playing dead: lying there peeking, she sees all round her, sharply, but only close by.
+  if (g.peek) return d <= (g.dark && !g.flash ? PLAY_DEAD.peekDark : PLAY_DEAD.peek) ? 'sharp' : 'none';
   const specsOn = g.specsActive && !g.specsOff;
   const halfAngle = specsOn ? SPECTACLES.coneHalfAngleDeg : SENSES.coneHalfAngleDeg;
   if (angleFromFacing(g, p) > halfAngle) return 'none';

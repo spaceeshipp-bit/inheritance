@@ -571,3 +571,10 @@ body.band-patterns .swatch[data-pat="7"] { background-image: radial-gradient(cir
 .practice-list.complete { border-color: var(--good); }
 @media (max-width: 1100px) { .practice-list { top: auto; bottom: 120px; width: 230px; } }
 
+
+/* Nana playing dead: her eyelids, nearly shut, with a sliver to peek through. */
+.eyelids { position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity 0.5s; z-index: 0;
+  background: linear-gradient(to bottom, #0b0705 0%, #0b0705 30%, rgba(11,7,5,0.75) 37%, rgba(11,7,5,0) 44%, rgba(11,7,5,0) 58%, rgba(11,7,5,0.75) 65%, #0b0705 72%, #0b0705 100%); }
+.eyelids.on { opacity: 1; animation: lidFlutter 3.2s ease-in-out infinite; }
+@keyframes lidFlutter { 0%, 100% { transform: scaleY(1); } 48% { transform: scaleY(1); } 52% { transform: scaleY(1.25); } 56% { transform: scaleY(1); } }
+body.reduced-motion .eyelids.on { animation: none; }

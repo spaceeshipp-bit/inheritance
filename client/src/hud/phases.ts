@@ -7,7 +7,7 @@ import { botGlyph, isBot, nameOf, swatch } from './ident.js';
 import { WillList } from './willview.js';
 
 export const COUSIN_KEYS = 'WASD move - Shift run - C sneak - Space jump - LMB grab - RMB throw - F shove - E interact/steal - G plant - Q quick-chat - T tattle - Z gesture - X dance - Alt whisper - Enter chat';
-export const GRANDMA_KEYS = 'WASD move - E Bless - Q Tut - Scroll lock name - Tab parchment - LMB cane - RMB hearing aid - F spectacles - R summon - C pin - V quick-chat - Z gesture - X dance - Enter chat';
+export const GRANDMA_KEYS = 'WASD move - E Bless - Q Tut - Scroll lock name - Tab parchment - LMB cane - RMB hearing aid - F spectacles - R summon - G play dead - C pin - V quick-chat - Z gesture - X dance - Enter chat';
 
 /** The one-line goal on each role card (review P3: no stated goal). */
 export const ROLE_GOAL = {
@@ -43,6 +43,7 @@ export class RoleReveal {
         'You only see sharply up close. Spectacles (F) help for a moment; the hearing aid (RMB) too.',
         'Catch them at it! Planted evidence is not always what it seems...',
         'Shake your cane at them (Z), or dance (X) to remind them you are still alive.',
+        'Once a visit, play dead (G): drop to the floor and peek at who weeps and who dances on your grave.',
       ]) ul.appendChild(el('li', '', t));
       this.root.appendChild(ul);
       if (m.prefCards?.length) {

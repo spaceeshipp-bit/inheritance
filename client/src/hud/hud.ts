@@ -62,6 +62,8 @@ export class Hud {
   private grandmaHud: GrandmaHud | null = null;
   private coach: Coach | null = null;
   private roleRoot = el('div', 'role-hud');
+  /** Nana playing dead: her eyelids, nearly shut, over the view. */
+  private lids = el('div', 'eyelids');
   private overlay: Overlay | null = null;
   private overlayKey = '';
   private help = el('div', 'help-card');
@@ -91,7 +93,7 @@ export class Hud {
     this.hChip.innerHTML = '<kbd>H</kbd><span>Controls</span>';
     this.hChip.title = 'Show the controls (H)';
     this.hChip.addEventListener('click', () => this.toggleHelp());
-    hudRoot.append(this.roleRoot, this.top.root, this.toasts.root, this.chat.root, this.lockHint, this.hChip, this.captions.root);
+    hudRoot.append(this.lids, this.roleRoot, this.top.root, this.toasts.root, this.chat.root, this.lockHint, this.hChip, this.captions.root);
     labels.append(this.bubbles.root, this.floats.root);
     // Wheels and the controls card sit above the phase cards (style.css), so the
     // intermission's wheels and "Press H any time" on the role card both show.
@@ -159,7 +161,7 @@ export class Hud {
     this.help.innerHTML = '';
     this.help.append(el('div', 'pref-title', 'Controls (H to close)'), el('div', 'help-keys', m.role === 'grandma' ? GRANDMA_KEYS : COUSIN_KEYS),
       el('div', 'help-keys', 'Gamepad: left stick move, right stick look. ' + (m.role === 'grandma'
-        ? 'RB Bless, LB Tut, D-pad left/right lock name, View parchment, RT cane, LT hearing aid, Y spectacles, B summon, X pin, R3 quick-chat wheel, L3 gestures, D-pad down dances.'
+        ? 'RB Bless, LB Tut, D-pad left/right lock name, View parchment, RT cane, LT hearing aid, Y spectacles, B summon, D-pad up play dead, X pin, R3 quick-chat wheel, L3 gestures, D-pad down dances.'
         : 'L3 run, B sneak, A jump, RT grab, RB throw, X shove, Y interact, D-pad down plant, LB compliment wheel, D-pad up tattle, D-pad left gestures, D-pad right dances, LT whisper.')),
       el('div', 'help-keys muted', 'Esc: settings (press it twice while the mouse is captured).'));
     this.prevShoveCd = 0;
@@ -305,6 +307,8 @@ export class Hud {
         break;
       case 'whistle': this.soundCaption('whistle', ev.pos, 'Hearing-aid whistle'); break;
       case 'quill': this.soundCaption('quill', ev.pos, 'Quill scratching'); break;
+      case 'collapse': this.soundCaption('thud', ev.pos, g ? 'Thud (you, hitting the carpet)' : 'Thud! Nana collapsed'); break;
+      case 'risen': this.soundCaption('gasp', ev.pos, 'Gasp! Nana is up again'); break;
       case 'thunder':
         this.captions.sound(g ? 'THUNDER (you hear nothing)' : 'THUNDER (Nana hears nothing)', 3);
         // The first time in a match, say what it is for.
@@ -482,6 +486,7 @@ export class Hud {
     }
     const live = s.phase === 'visit' || s.phase === 'roles' || s.phase === 'intermission';
     const visit = s.phase === 'visit';
+    this.lids.classList.toggle('on', visit && s.role === 'grandma' && !!f.view.self?.dead);
     show(this.roleRoot, visit);
     show(this.top.root, live);
     show(this.hChip, live);

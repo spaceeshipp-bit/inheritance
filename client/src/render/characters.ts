@@ -353,7 +353,8 @@ export class CharacterModel {
     this.mouthMesh.scale.y = 1 + clamp(f.mouth, 0, 1) * 5;
 
     const ragdoll = c.state === 'ragdoll';
-    const sleeping = c.state === 'sleeping';
+    // Asleep (disconnected) or Nana playing dead: flat on her back.
+    const sleeping = c.state === 'sleeping' || !!c.dead;
     const speed = Math.hypot(c.vel.x, c.vel.z);
     // Local-frame travel direction (undo yaw).
     const cy = Math.cos(-c.yaw), sy = Math.sin(-c.yaw);

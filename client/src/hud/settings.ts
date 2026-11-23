@@ -11,7 +11,7 @@ import { ICONS } from './icons.js';
 const GAME_KEY_USES: Record<string, string> = {
   KeyW: 'move', KeyA: 'move', KeyS: 'move', KeyD: 'move', ArrowUp: 'move', ArrowDown: 'move', ArrowLeft: 'move', ArrowRight: 'move',
   ShiftLeft: 'run', ShiftRight: 'run', ControlLeft: 'sneak', ControlRight: 'sneak', Space: 'jump',
-  KeyF: 'shove / spectacles', KeyE: 'interact / Bless', KeyG: 'plant', KeyQ: 'compliment wheel / Tut', KeyT: 'tattle',
+  KeyF: 'shove / spectacles', KeyE: 'interact / Bless', KeyG: 'plant / play dead', KeyQ: 'compliment wheel / Tut', KeyT: 'tattle',
   KeyC: 'sneak / pin', KeyR: 'summon', KeyV: "Nana's quick-chat", Tab: 'full parchment', AltLeft: 'whisper',
   Enter: 'chat', KeyH: 'controls help', Escape: 'settings',
 };
