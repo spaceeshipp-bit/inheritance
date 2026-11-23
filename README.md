@@ -24,7 +24,16 @@ Open http://localhost:3000, type a name, and **Create a new room**. Share the 5-
 friends type it and press **Join room**. The host presses **Start** with 1 to 8 players; with "Fill
 with bots" on (the default), bots take the empty seats up to 5, so one person can play against bots.
 Tick "Willing to be Grandma" to be in the draw: Grandma is picked at random from the willing, and
-nobody who did not tick it is ever made Grandma (with nobody willing, a bot plays her).
+nobody who did not tick it is ever made Grandma (with nobody willing, a bot plays her). With the
+host's "Rotate Grandma" on, the willing player who came off worst in the last will is next.
+
+New to it? **Practise as a cousin** (4 minutes) or **Practise as Grandma** (3 minutes) on the title
+screen: a round on your own against bots, with a checklist that ticks itself off as you flatter,
+pinch, plant and smash (or, as Nana, peer, listen, Bless and Tut).
+
+The host also picks the house: Harrowgate Manor, Sunny Pines Care Home, Pettigrew & Sons Funeral
+Parlour, The Golden Years, or "Surprise me". Settings (gear, top right, or Esc) include graphics,
+sensitivity, volumes, push-to-talk, your microphone and speakers, reduced motion and captions.
 
 For development, `npm run dev` runs the server (restarting on changes) and the Vite client with hot
 reload on http://localhost:5173.
