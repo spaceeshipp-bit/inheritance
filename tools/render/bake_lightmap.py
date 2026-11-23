@@ -148,4 +148,15 @@ except ImportError:
     out.save()
 with open(os.path.join(out_dir, map_id + ".json"), "w") as f:
     json.dump({"signature": layout["signature"], "scale": scale}, f, indent=2)
+# The game reads index.json first (so it never asks for a bake that is not there).
+index_path = os.path.join(out_dir, "index.json")
+try:
+    with open(index_path) as f:
+        index = json.load(f)
+except (OSError, ValueError):
+    index = {"maps": []}
+index["maps"] = sorted(set(index.get("maps", [])) | {map_id})
+with open(index_path, "w") as f:
+    json.dump(index, f, indent=2)
+    f.write("\n")
 print("BAKED", jpg, "scale", scale)

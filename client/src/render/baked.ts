@@ -10,10 +10,25 @@ interface BakeInfo { signature: string; /** Multiply the stored light by this (i
 
 const tried = new WeakSet<MapView>();
 
+/**
+ * Which maps have a bake (lightmaps/index.json, kept up to date by
+ * tools/render/bake_lightmap.py), fetched once: asking for a map's bake that
+ * does not exist would put a 404 in the console.
+ */
+let bakedList: Promise<Set<string>> | null = null;
+function bakedMaps(base: string): Promise<Set<string>> {
+  bakedList ??= fetch(`${base}lightmaps/index.json`, { cache: 'no-cache' })
+    .then((r) => (r.ok ? r.json() : { maps: [] }))
+    .then((j: { maps?: unknown }) => new Set(Array.isArray(j.maps) ? j.maps.filter((x): x is string => typeof x === 'string') : []))
+    .catch(() => new Set<string>());
+  return bakedList;
+}
+
 /** Load and apply a map's baked lightmap, once. Resolves to whether it was applied. */
 export async function applyBakedLight(view: MapView, base = ''): Promise<boolean> {
   if (tried.has(view) || !view.lightmap) return false;
   tried.add(view);
+  if (!(await bakedMaps(base)).has(view.id)) return false;
   let info: BakeInfo;
   try {
     const res = await fetch(`${base}lightmaps/${view.id}.json`, { cache: 'no-cache' });

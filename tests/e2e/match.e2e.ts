@@ -18,6 +18,7 @@
 //   npx tsx tests/e2e/match.e2e.ts
 import type { ServerHandle } from '../../server/index.js';
 import type { Match } from '../../server/match.js';
+import { hasLOS } from '../../server/nav.js';
 import { forwardOf } from '../../shared/movement.js';
 import { angleFromFacing, visionBand } from '../../shared/senses.js';
 import type { Vec3 } from '../../shared/types.js';
@@ -196,8 +197,10 @@ export async function run(): Promise<Report> {
     await sleep(300);
     await ann.mouse('left');
     const caneSwung = await ann.waitFor('cane swing', async () => match.chars.get(annId)!.caneCd > 0, 3000, 50);
+    // Watch for the ragdoll straight away: it is over in a second or so, sooner than his page may report the cane.
+    const floppyNow = await ann.waitFor('floppy', async () => match.chars.get(bobId)!.state === 'ragdoll', 1200, 20);
     r.check('left click canes the cousin in front of her', await bob.waitFor('cane', async () => ((await bob!.rx()).events.cane ?? 0) > 0, 3000), `${distToNana().toFixed(2)} m, relocked ${relocked}, swung ${caneSwung}, yaw ${match.chars.get(annId)!.yaw.toFixed(2)}`);
-    r.check('...and he goes floppy', match.chars.get(bobId)!.state === 'ragdoll' || await bob.waitFor('ragdoll', async () => (await bob!.me())?.state === 'ragdoll', 1500, 50));
+    r.check('...and he goes floppy', floppyNow || match.chars.get(bobId)!.state === 'ragdoll' || await bob.waitFor('ragdoll', async () => (await bob!.me())?.state === 'ragdoll', 1500, 50));
     await bob.shot('cousin-caned');
     await bob.waitFor('upright', async () => match.chars.get(bobId)!.state === 'normal', 5000);
 
@@ -308,7 +311,9 @@ export async function run(): Promise<Report> {
 
     // ── secrecy while the visit runs ──
     const annRx = await ann.rx();
-    const forbidden = annRx.log.filter((x) => x.msg.e === 'moment' && !['big-cut', 'caught-red-handed'].includes((x.msg.moment as { kind: string }).kind));
+    // She is told only the ones she did or witnessed (SECRECY.md): Big Cut, Caught Red-Handed, The Cheek of It, and those at her "graveside".
+    const witnessed = ['big-cut', 'caught-red-handed', 'cheek', 'graveside', 'mourner'];
+    const forbidden = annRx.log.filter((x) => x.msg.e === 'moment' && !witnessed.includes((x.msg.moment as { kind: string }).kind));
     r.check('Grandma is never told about moments she could not witness', forbidden.length === 0, forbidden.map((x) => (x.msg.moment as { kind: string }).kind).join(','));
 
     // ── reading, vote, results ──
@@ -383,7 +388,9 @@ export async function run(): Promise<Report> {
 function pickHeirloom(m: Match, who: string): string | null {
   const me = m.chars.get(who)!.body.pos;
   const cands = [...m.props.values()].filter((p) => p.kind === 'heirloom' && !p.broken && !p.heldBy);
-  cands.sort((a, b) => (a.pos.y > 2 ? 100 : 0) + flat(a.pos, me) - ((b.pos.y > 2 ? 100 : 0) + flat(b.pos, me)));
+  // Downstairs, in a straight line from here (the walk steers straight; the hall has furniture), nearest first.
+  const cost = (p: { pos: Vec3 }) => (p.pos.y > 2 ? 100 : 0) + (hasLOS(me, p.pos, 'ground') ? 0 : 50) + flat(p.pos, me);
+  cands.sort((a, b) => cost(a) - cost(b));
   return cands[0]?.id ?? null;
 }
 
@@ -398,7 +405,10 @@ function nearestBot(m: Match, who: string, bots: string[], withItem = false): st
       const it = c.itemId ? m.props.get(c.itemId) : undefined;
       if (!it || it.heldBy !== id || !it.onBody) continue;
     }
-    const d = flat(c.body.pos, me);
+    // Prefer one we can walk straight up to (the walk steers in a straight line; the hall has furniture),
+    // and one standing on its own (the idle bots stand in a clump, and the middle one is out of reach).
+    const crowded = [...m.chars.values()].some((o) => o !== c && o.id !== who && flat(o.body.pos, c.body.pos) < 1.1);
+    const d = flat(c.body.pos, me) + (withItem && !hasLOS(me, c.body.pos, 'ground') ? 100 : 0) + (withItem && crowded ? 50 : 0);
     if (d < bd) { bd = d; best = id; }
   }
   return best;
