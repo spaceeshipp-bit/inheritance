@@ -257,6 +257,11 @@ export class EventLog {
           : { kind: 'behind-her-back', t: ev.t, actor: ev.by, text: `${n(ev.by)} ${did} behind Nana's back.` }, this.events.length - 1);
       }
     }
+    if (ev.kind === 'overboard') {
+      this.addMoment(ev.by
+        ? { kind: 'overboard', t: ev.t, actor: ev.by, victim: ev.victim, text: `${n(ev.by)} sent ${n(ev.victim)} overboard.` }
+        : { kind: 'overboard', t: ev.t, actor: ev.victim, text: `${n(ev.victim)} went overboard all on their own.` }, this.events.length - 1);
+    }
     if (ev.kind === 'break' && ev.favourite) {
       this.addMoment({
         kind: 'favourite-broken', t: ev.t, actor: ev.by ?? 'nobody',

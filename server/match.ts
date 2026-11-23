@@ -1180,10 +1180,17 @@ export class Match {
     const SPAWNS = this.mapDef.spawns;
     for (const c of all) {
       const spawn = c.role === 'grandma' ? SPAWNS.grandma : SPAWNS.cousins[Math.max(0, this.cousinIds.indexOf(c.id)) % SPAWNS.cousins.length];
+      const was = c.body.pos;
+      const overboard = (this.mapDef.drops ?? []).some((v) => was.x >= v.min.x && was.x <= v.max.x && was.z >= v.min.z && was.z <= v.max.z);
       if (rescueIfLost(c, spawn)) {
         this.dropHeld(c, false);
         const lost = this.mapDef.lostToast;
         if (lost && this.phase === 'visit') this.emitAll(() => ({ e: 'toast', text: lost.replace('{name}', c.name) }));
+        if (overboard && this.phase === 'visit') {
+          // Who sent them over: whoever knocked them flying in the last few seconds (never themselves).
+          const by = c.knockedBy && c.knockedBy !== c.id && this.time - c.knockedAt < 8 ? c.knockedBy : null;
+          this.log.add({ t: this.time, kind: 'overboard', by, victim: c.id });
+        }
       }
     }
     this.updateProps(h);

@@ -74,4 +74,5 @@ export const MOMENT_TITLES: Record<MomentKind, string> = {
   'favourite-broken': 'Her Favourite, Broken',
   'behind-her-back': 'Behind Her Back',
   cheek: 'The Cheek of It',
+  overboard: 'Man Overboard!',
 };

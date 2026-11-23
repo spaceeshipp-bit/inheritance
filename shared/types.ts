@@ -101,7 +101,7 @@ export interface WishInfo {
 }
 
 /** A tagged moment (for the Reading of the Will highlight list and achievements). */
-export type MomentKind = 'love-you-nana' | 'framed' | 'caught-red-handed' | 'big-cut' | 'favourite-broken' | 'behind-her-back' | 'cheek';
+export type MomentKind = 'love-you-nana' | 'framed' | 'caught-red-handed' | 'big-cut' | 'favourite-broken' | 'behind-her-back' | 'cheek' | 'overboard';
 export interface Moment {
   kind: MomentKind;
   t: number;
@@ -140,6 +140,8 @@ export type LogEvent =
    * at), `seen` if she could tell who it was, `sharp` if she saw it up close.
    */
   | { t: number; kind: 'rude'; by: string; emote: EmoteId; at: string | null; atNana: boolean; seen: boolean; sharp?: boolean }
+  /** Someone went over the side (a ship's drop zone); `by`: whoever knocked them flying just before, if anyone. */
+  | { t: number; kind: 'overboard'; by: string | null; victim: string }
   | { t: number; kind: 'knock-specs'; by: string; seen?: boolean; sharp?: boolean };
 
 export interface MatchOptions {
