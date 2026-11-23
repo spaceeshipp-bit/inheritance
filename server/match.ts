@@ -351,6 +351,10 @@ export class Match {
   private wishCount = 0;
   private lastWishKind: WishInfo['kind'] | null = null;
   private flashUntil = 0;
+  /** The Storm: the next (or current) thunderclap, from..until; she hears nothing while it rolls. */
+  private thunderFrom = Infinity;
+  private thunderUntil = -Infinity;
+  private thunderSent = true;
   private nextLightning = Infinity;
   private sharesAtOpen: Record<string, number> | null = null;
   private allNames: Record<string, string> = {};
@@ -1108,8 +1112,13 @@ export class Match {
     if (!g) return null;
     return {
       pos: g.body.pos, yaw: g.yaw, aidActive: g.aidT > 0, specsActive: g.specsT > 0 && !g.specsOff, specsOff: g.specsOff,
-      dark: this.dark, flash: this.flash,
+      dark: this.dark, flash: this.flash, thunder: this.thunder,
     };
+  }
+
+  /** Thunder is rolling: Grandma hears nothing at all (no voices, no crashes, no footsteps). */
+  get thunder(): boolean {
+    return this.dark && this.time >= this.thunderFrom && this.time < this.thunderUntil;
   }
 
   /**
@@ -1138,7 +1147,7 @@ export class Match {
   /** How Grandma hears a voice from a speaker at `p` (whispering shrinks it to 1.5 m). */
   grandmaHears(p: Vec3, whisper: boolean): HearingBand {
     const g = this.grandma;
-    if (!g || !g.connected || this.pause) return 'silent';
+    if (!g || !g.connected || this.pause || this.thunder) return 'silent';
     return hearingBand(dist(g.body.pos, p), g.aidT > 0, whisper ? VOICE.whisperRange : Infinity);
   }
 
@@ -1167,6 +1176,8 @@ export class Match {
       if (this.wish && this.phase === 'visit') this.emitAll({ e: 'wish', wish: this.wish.info });
     }
     this.checkFewCousins();
+    // The Storm first, so a crash on the very tick the thunder starts is one she never heard.
+    if (this.phase === 'visit') this.updateStorm();
     if (!this.cfg.botsIdle) {
       for (const b of this.bots.values()) {
         try { b.update(h); } catch (err) { console.error('[bot] error', b.id, err); }
@@ -1204,7 +1215,6 @@ export class Match {
       if (v === 'dinner') this.updateDinner(h);
       this.updateGrandmaSystems(h);
       this.updateWish();
-      this.updateStorm();
       this.updateFound();
       this.updateSummon();
     }
@@ -1221,6 +1231,8 @@ export class Match {
     if (this.summon) this.summon.endsAt += h;
     this.nextLightning += h;
     this.flashUntil += h;
+    this.thunderFrom += h;
+    this.thunderUntil += h;
     for (const r of this.will.recent) r.t += h;
     for (const cr of this.crimes) cr.t += h;
     for (const r of this.freeRecent) r.t += h;
@@ -1911,13 +1923,15 @@ export class Match {
     const culprit = by ? this.chars.get(by) : undefined;
     const who = culprit ? this.perceive(culprit.body.pos) : this.perceive(p.pos, PROP_MID);
     const pos = { ...p.pos };
-    const idx = this.log.add({ t: this.time, kind: 'break', by, heirloom: p.id, favourite: p.favourite, pos, seen: who.identifiable, sharp: who.sharp });
-    this.addCrime('break', by, pos, idx);
-    // Everyone hears a crash. Grandma gets the exact spot and which heirloom only
-    // if she saw it; otherwise a rough direction to turn towards.
+    // Everyone hears a crash, except Grandma under the thunder. She gets the exact
+    // spot and which heirloom only if she saw it; otherwise a rough direction to
+    // turn towards, or (thunder, unseen) nothing at all.
     const sawIt = this.perceive(pos, PROP_MID).visible;
+    const unheard = this.thunder && !sawIt;
+    const idx = this.log.add({ t: this.time, kind: 'break', by, heirloom: p.id, favourite: p.favourite, pos, seen: who.identifiable, sharp: who.sharp, ...(unheard ? { thunder: true } : {}) });
+    this.addCrime('break', by, pos, idx);
     this.emitAll((to) => (to === this.grandmaId
-      ? (sawIt ? { e: 'crash', pos: v3(pos), heirloom: p.id, favourite: p.favourite } : { e: 'crash', pos: coarse(pos), heirloom: '', favourite: p.favourite })
+      ? (sawIt ? { e: 'crash', pos: v3(pos), heirloom: p.id, favourite: p.favourite } : unheard ? null : { e: 'crash', pos: coarse(pos), heirloom: '', favourite: p.favourite })
       : { e: 'crash', pos: v3(pos), heirloom: p.id }));
     if (p.favourite) {
       this.freeTuts++;
@@ -2014,6 +2028,15 @@ export class Match {
       this.flashUntil = this.time + STORM.flashDuration;
       this.nextLightning = this.time + this.lightningGap();
       this.emitAll({ e: 'lightning' });
+      // Its thunder follows a moment later (sooner than the next flash).
+      const [lo, hi] = STORM.thunderDelay;
+      this.thunderFrom = this.time + lo + this.rng() * (hi - lo);
+      this.thunderUntil = this.thunderFrom + STORM.thunderDuration;
+      this.thunderSent = false;
+    }
+    if (!this.thunderSent && this.time >= this.thunderFrom) {
+      this.thunderSent = true;
+      this.emitAll({ e: 'thunder', duration: r2(this.thunderUntil - this.time) });
     }
   }
 
@@ -2150,6 +2173,9 @@ export class Match {
     const v = this.visits[i];
     this.dark = v === 'storm';
     this.flash = false;
+    this.thunderFrom = Infinity;
+    this.thunderUntil = -Infinity;
+    this.thunderSent = true;
     this.nextLightning = this.dark ? this.time + this.lightningGap() * (this.fast ? 0.4 : 1) : Infinity;
     this.nextWishAt = this.time + (this.fast ? 2 : 3) + this.rng() * 3;
     this.summon = null;
@@ -2204,6 +2230,9 @@ export class Match {
     this.nextWishAt = Infinity;
     this.dark = false;
     this.flash = false;
+    this.thunderFrom = Infinity;
+    this.thunderUntil = -Infinity;
+    this.thunderSent = true;
     this.summon = null;
   }
 
@@ -2354,7 +2383,7 @@ export class Match {
         const per = this.perceive(c.body.pos);
         const steps = this.footstepRange(c);
         if (per.visible) seen = per.sharp ? 'sharp' : per.identifiable ? 'soft' : 'shape';
-        else if (per.dist <= Math.max(SENSES.mumble, steps)) seen = 'heard';
+        else if (!this.thunder && per.dist <= Math.max(SENSES.mumble, steps)) seen = 'heard';
       }
       return {
         id: c.id, x: r2(c.body.pos.x), y: r2(c.body.pos.y), z: r2(c.body.pos.z), yaw: r2(c.yaw), state: c.state, holding: c.holding, seen,
@@ -2367,7 +2396,7 @@ export class Match {
     }));
     const nana = g ? {
       x: r2(g.body.pos.x), y: r2(g.body.pos.y), z: r2(g.body.pos.z), yaw: r2(g.yaw), pitch: r2(g.pitch),
-      specs: g.specsT > 0 && !g.specsOff, aid: g.aidT > 0, dark: this.dark, flash: this.flash,
+      specs: g.specsT > 0 && !g.specsOff, aid: g.aidT > 0, dark: this.dark, flash: this.flash, ...(this.thunder ? { thunder: true } : {}),
     } : null;
     return { t: r2(this.time), chars, props, nana };
   }
@@ -2508,7 +2537,8 @@ export class Match {
       const per = this.perceive(c.body.pos);
       known.set(c.id, per);
       const steps = this.footstepRange(c);
-      if (!per.visible && per.dist > Math.max(SENSES.mumble, steps)) continue;
+      // Someone she can only hear is lost to her while the thunder rolls.
+      if (!per.visible && (this.thunder || per.dist > Math.max(SENSES.mumble, steps))) continue;
       const s = this.charSnap(c, this.petId, g.id);
       delete s.ack;
       if (!per.identifiable) { s.holding = null; s.charge = 0; s.plant = 0; s.whispering = false; }
@@ -2556,6 +2586,7 @@ export class Match {
     return {
       t: 'snap', time: r3(this.time), tick: this.tick, chars: view.chars, props: view.props,
       shares: { ...this.will.shares }, willAvail: { budget: av.budget, rolling: av.rolling }, dark: this.dark, flash: this.flash,
+      ...(this.thunder ? { thunder: true } : {}),
     };
   }
 

@@ -393,6 +393,8 @@ kbd { display: inline-block; min-width: 22px; padding: 1px 6px; border-radius: 5
 .sense-heard { display: flex; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 6px; font-weight: 800; font-size: 13px; background: rgba(255,80,60,0.4); color: #fff; margin-bottom: 3px; }
 .sense-heard .sense-ico { width: 24px; height: 18px; }
 .sense-heard.flash { animation: heardFlash 0.45s 4 alternate; }
+.sense-heard.safe { background: rgba(80,200,120,0.4); }
+.sense.thunder { background: rgba(140,170,255,0.3); color: #dfe6ff; }
 @keyframes heardFlash { from { background: rgba(255,80,60,0.85); } to { background: rgba(255,80,60,0.25); } }
 
 /* Floating words: CRASH!, SHOVED!, whiff. */

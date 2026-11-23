@@ -15,9 +15,9 @@
 // events her client is sent (crashes, voices, shoves within earshot, tattles,
 // found evidence, wishes...) and what she can see right now (canSeeNow). She
 // never reads the secret log.
-import { BOTS, COUSIN, CRIME_SCENE, DINNER, GRANDMA, HEARING_AID, QUICKCHAT, SENSES, VOICE, WILL, WISH } from '../shared/constants.js';
+import { BOTS, COUSIN, CRIME_SCENE, DINNER, GRANDMA, HEARING_AID, QUICKCHAT, SENSES, WILL, WISH } from '../shared/constants.js';
 import type { GameEvent, InputMsg } from '../shared/protocol.js';
-import { angleFromFacing, dist, flatDist, hearingBand, visionBand } from '../shared/senses.js';
+import { angleFromFacing, dist, flatDist, visionBand } from '../shared/senses.js';
 import type { LogEvent, PropKind, Vec3 } from '../shared/types.js';
 import { PROP_MID, eyeOf, lineOfSight } from '../shared/sight.js';
 import { available } from '../shared/will.js';
@@ -893,8 +893,11 @@ export class CousinBot implements Bot {
             inp.yaw = wrapAngle(t.aim);
             inp.pitch = -0.35;
             inp.move = { x: 0, z: 0 };
-            if (!this.watched(c, t.careless)) t.chargeStart = m.time;
-            else {
+            if (!this.watched(c, t.careless)) {
+              // In the Storm a clever cousin waits for the thunder (everyone hears it roll), so Nana never hears the crash.
+              const waitForThunder = m.dark && !m.thunder && !t.careless && m.time - t.holdSince < 7;
+              if (!waitForThunder) t.chargeStart = m.time;
+            } else {
               // Nana is looking: wander off with it and aim again out of her sight.
               this.go(c, inp, this.awayFromGrandma(c), false);
               t.aim = null;
@@ -1185,9 +1188,8 @@ export class GrandmaBot implements Bot {
 
   /** Could she hear a voice from `p` at all? */
   private audible(p: Vec3, whisper: boolean): boolean {
-    const g = this.m.grandma;
-    if (!g) return false;
-    return hearingBand(dist(g.body.pos, p), g.aidT > 0, whisper ? VOICE.whisperRange : Infinity) !== 'silent';
+    // As the match hears for her: nothing at all while the Storm's thunder rolls.
+    return this.m.grandmaHears(p, whisper) !== 'silent';
   }
 
   /** The upright cousin she can make out nearest to `p` (within `r`), if any. */

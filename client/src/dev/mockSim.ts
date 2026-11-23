@@ -81,6 +81,7 @@ export class MockSim {
   private nextWish = 4;
   private nextLightning = 6;
   private flashUntil = 0;
+  private thunderAt = Infinity;
   private gAct = 6;
   private quillAt = 0;
   private parchmentUntil = 0;
@@ -308,8 +309,13 @@ export class MockSim {
         this.nextLightning = now + STORM.lightningEvery * 0.4 + this.r() * STORM.lightningJitter;
         this.flashUntil = Math.max(this.flashUntil, now + STORM.flashDuration);
         this.c.emit({ e: 'lightning' });
+        this.thunderAt = now + STORM.thunderDelay[0];
       }
       this.flash = now < this.flashUntil;
+      if (now >= this.thunderAt) {
+        this.thunderAt = Infinity;
+        this.c.emit({ e: 'thunder', duration: STORM.thunderDuration });
+      }
     }
     // Wishes.
     if (!this.wish && now > this.nextWish) {

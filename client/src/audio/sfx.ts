@@ -34,6 +34,7 @@ export class Sfx {
   private role: 'grandma' | 'cousin' | 'lobby' = 'lobby';
   private pos: Vec3 = { x: 0, y: 0, z: 0 };
   private aid = false;
+  private thunder = false;
   volume = 0.7;
 
   constructor() {
@@ -79,10 +80,12 @@ export class Sfx {
     try { await ctx.setSinkId(this.output); } catch { /* gone: stay on the default */ }
   }
 
-  setListener(pos: Vec3, yaw: number, role: 'grandma' | 'cousin' | 'lobby', aid: boolean): void {
+  /** `thunder`: the Storm's thunder is rolling, and Grandma hears nothing else. */
+  setListener(pos: Vec3, yaw: number, role: 'grandma' | 'cousin' | 'lobby', aid: boolean, thunder = false): void {
     this.pos = pos;
     this.role = role;
     this.aid = aid;
+    this.thunder = thunder;
     const ctx = this.ctx;
     if (!ctx) return;
     const L = ctx.listener;
@@ -125,6 +128,7 @@ export class Sfx {
       chain.push(panner);
       out = panner;
       if (this.role === 'grandma') {
+        if (this.thunder && kind !== 'thunder') return;
         const f = grandmaVoiceFilter(d / (LOUDNESS[kind] ?? 1), this.aid);
         if (f.gain <= 0) return;
         const lp = ctx.createBiquadFilter();

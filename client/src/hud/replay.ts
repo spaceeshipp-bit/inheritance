@@ -105,11 +105,19 @@ export class ReplayClip {
     return nana ? { x: nana.x, y: nana.y, z: nana.z } : { x: 0, y: 0, z: 0 };
   }
 
+  /** Was the thunder rolling at clip time `clip` (she heard nothing)? */
+  thunderAt(clip: number): boolean {
+    return !!this.bracket(this.r.frames[0].t + clip).a.nana?.thunder;
+  }
+
   /** Lines spoken in the last few seconds before match time `T`: what was said, and what she heard. */
   speechAt(clip: number): { said: string; heard: string } | null {
     const T = this.r.frames[0].t + clip;
     const recent = this.r.speech.filter((s) => s.t <= T && T - s.t <= 2.8).pop();
-    if (!recent) return null;
+    if (!recent) {
+      // Under the thunder there is nothing to hear, and that is the joke.
+      return this.thunderAt(clip) ? { said: '', heard: 'THUNDER. (Nana hears nothing.)' } : null;
+    }
     const who = recent.from ? cleanName(this.s.name(recent.from)) : 'Someone';
     return {
       said: `${who}: "${cleanText(recent.said)}"`,
@@ -158,7 +166,7 @@ export class ReplayTheatre {
     setText(this.cardText, cleanText(clip.r.moment.text));
     const line = c.title ? null : clip.speechAt(c.clip);
     show(this.heard, !!line);
-    show(this.said, !!line);
+    show(this.said, !!line?.said);
     if (line) { setText(this.heard, line.heard); setText(this.said, line.said); }
     return true;
   }

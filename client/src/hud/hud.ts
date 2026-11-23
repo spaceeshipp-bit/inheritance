@@ -51,6 +51,8 @@ export class Hud {
   readonly wheel = new Wheel();
   readonly chat = new ChatBox();
   private practice: PracticeList | null = null;
+  /** Said what the thunder is for, once a match. */
+  private thunderTold = false;
   readonly captions = new Captions();
   readonly floats = new Floats();
   readonly settingsPanel: SettingsPanel;
@@ -135,6 +137,7 @@ export class Hud {
     this.endMatch();
     const m = this.s.match;
     if (!m) return;
+    this.thunderTold = false;
     // A practice round: its checklist, for whoever is practising (the host, in their practised role).
     if (m.options.practice && m.options.practice === m.role) {
       this.practice = new PracticeList(m.options.practice);
@@ -302,7 +305,14 @@ export class Hud {
         break;
       case 'whistle': this.soundCaption('whistle', ev.pos, 'Hearing-aid whistle'); break;
       case 'quill': this.soundCaption('quill', ev.pos, 'Quill scratching'); break;
-      case 'lightning': this.captions.sound('Thunder', 3); break;
+      case 'thunder':
+        this.captions.sound(g ? 'THUNDER (you hear nothing)' : 'THUNDER (Nana hears nothing)', 3);
+        // The first time in a match, say what it is for.
+        if (!this.thunderTold) {
+          this.thunderTold = true;
+          t.push(g ? 'Thunder! While it rolls you cannot hear a thing. Keep your eyes open.' : 'Thunder! While it rolls Nana hears nothing at all. Time your crashes to it.', 'info', 5);
+        }
+        break;
       case 'crash':
         this.grandmaHud?.crash(ev.pos, !!ev.favourite);
         if (ev.favourite) t.push('MY FAVOURITE! Who did that?!', 'bad', 4);
@@ -336,7 +346,8 @@ export class Hud {
     const sense = this.s.senseOf(g ?? null);
     if (g && sense) {
       const band = hearingBand(dist(g.pos, pos) / (LOUDNESS.crash ?? 1), sense.aidActive);
-      if (band !== 'silent') this.cousinHud?.nanaHeard(band === 'clear' ? 'Nana heard that!' : 'Nana heard that (muffled)');
+      if (sense.thunder) { if (band !== 'silent') this.cousinHud?.nanaHeard('Under the thunder: Nana heard nothing', true); }
+      else if (band !== 'silent') this.cousinHud?.nanaHeard(band === 'clear' ? 'Nana heard that!' : 'Nana heard that (muffled)');
     }
   }
 

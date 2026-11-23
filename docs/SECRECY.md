@@ -31,7 +31,7 @@ Players in a match are Grandma and the cousins; everybody else in the room
 | `will-rejected`, `found`, `summon-ignored` | Grandma only | `found` reveals an item's owner only when she finds it in front of her. |
 | `moment` | The cousin who earned it; Grandma only Caught Red-Handed (she saw it) and Big Cut (she did it) | Favourite Broken and Framed are held back to the reading (match.test.ts). No moment text sent mid-match says which heirloom was the Favourite: Caught Red-Handed for breaking it reads "a broken heirloom" (server-review.test.ts). |
 | `quill`, `whistle` | Cousins within `WILL.quillRange` / `HEARING_AID.whistleRange` of her | — |
-| `cane`, `specs-off`, `summon`, `lightning`, `wish`, `wish-done` | Everyone | Public slapstick and public weather; a wish is handed over in front of her. |
+| `cane`, `specs-off`, `summon`, `lightning`, `thunder`, `wish`, `wish-done` | Everyone | Public slapstick and public weather; a wish is handed over in front of her. While the thunder rolls (`thunder` in every snapshot) she hears nothing: no `crash` she did not see, no `bubble`, no tattle, nobody she could only hear in her snapshot, and cousins' clients send her no voice (thunder.test.ts). |
 | `toast` | Mostly one player | The broadcasts (a cousin dozed off, Nana's lie-down and return, a take-over, a visit begins, Nana fell over, the will is read) are things everyone sees. |
 
 ## Everything else

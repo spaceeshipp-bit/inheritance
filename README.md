@@ -98,7 +98,7 @@ To feel the game on a bad connection, add `?netsim=150,20,2` to the page address
 In: four maps chosen in the lobby (Harrowgate Manor, Sunny Pines Care Home, Pettigrew & Sons Funeral
 Parlour, and The Golden Years, a cruise ship you can be shoved off), Afternoon Tea (and Tea → Dinner →
 Storm with "full match"), Grandma's senses (sight bands, hearing bands, hearing aid, spectacles, the
-Storm's candle and lightning), the live will with its budget and caps, heirlooms, signature items,
+Storm's candle, lightning, and thunder that deafens her for a second and a half), the live will with its budget and caps, heirlooms, signature items,
 stealing and planting, shoves and ragdolls, wishes, tattling, quick chat, gestures and dances (sweet ones
 flatter, rude ones are noted if she catches you), Family Dinner round each map's table, the reading of
 the will with What Nana Saw (replays of her view beside the truth) and her reasons in the margin, a

@@ -57,6 +57,8 @@ export class GameState {
   willAvail = { budget: 0, rolling: 0 };
   dark = false;
   flash = false;
+  /** The Storm: thunder rolling (Grandma hears nothing). */
+  thunder = false;
   wish: WishInfo | null = null;
   reading: ReadingResult | null = null;
   results: FinalResult | null = null;
@@ -133,6 +135,7 @@ export class GameState {
           this.myVote = null;
           this.dark = false;
           this.flash = false;
+          this.thunder = false;
         }
         this.emit('match', m);
         break;
@@ -180,6 +183,7 @@ export class GameState {
     this.willAvail = m.willAvail;
     this.dark = m.dark;
     this.flash = m.flash;
+    this.thunder = m.thunder === true;
     const chars = new Map<string, CharSnap>();
     for (const c of m.chars) chars.set(c.id, c);
     const props = new Map<string, PropSnap>();
@@ -200,6 +204,8 @@ export class GameState {
         }
         break;
       case 'summon': this.summon = { pos: ev.pos, endsAt: ev.endsAt }; break;
+      // Straight away, not on the next snapshot: a crash in the same tick is already unheard.
+      case 'thunder': this.thunder = true; break;
       default: break;
     }
   }
@@ -209,7 +215,7 @@ export class GameState {
     if (!g) return null;
     return {
       pos: g.pos, yaw: g.yaw, aidActive: !!g.aidActive, specsActive: !!g.specsActive, specsOff: !!g.specsOff,
-      dark: this.dark && !this.flash, flash: this.flash,
+      dark: this.dark && !this.flash, flash: this.flash, thunder: this.thunder,
     };
   }
 

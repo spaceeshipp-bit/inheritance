@@ -283,7 +283,8 @@ export class Game {
       case 'shove': sfx.play('oof', ev.pos); break;
       case 'wish-done': sfx.play('ding'); break;
       case 'specs-off': sfx.play('clink', ev.pos); break;
-      case 'lightning': setTimeout(() => sfx.play('thunder'), 400 + Math.random() * 800); break;
+      // The server times the thunder (she hears nothing while it rolls), so the sound plays on its cue.
+      case 'thunder': sfx.play('thunder'); break;
       case 'summon': sfx.play('summon', ev.pos); break;
       case 'moment': sfx.play('pop', undefined, 0.6); break;
       case 'will':
@@ -370,9 +371,9 @@ export class Game {
     const lp: Vec3 = me ? me.pos : { x: 0, y: 0, z: 0 };
     const role = live && s.role ? s.role : 'lobby';
     const aid = !!me?.aidActive;
-    sfx.setListener(this.isGrandma ? lp : { x: camPos.x, y: camPos.y - 1.6, z: camPos.z }, input.yaw, role, aid);
+    sfx.setListener(this.isGrandma ? lp : { x: camPos.x, y: camPos.y - 1.6, z: camPos.z }, input.yaw, role, aid, s.thunder);
     voice.update({
-      selfRole: role, listenerPos: { x: lp.x, y: lp.y + 1.6, z: lp.z }, listenerYaw: input.yaw, aidActive: aid,
+      selfRole: role, listenerPos: { x: lp.x, y: lp.y + 1.6, z: lp.z }, listenerYaw: input.yaw, aidActive: aid, thunder: s.thunder,
       speakers: [...view.chars.values()].filter((c) => c.id !== s.selfId).map((c) => ({
         id: c.id, pos: { x: c.pos.x, y: c.pos.y + 1.6, z: c.pos.z }, whispering: c.whispering, role: c.role, aidActive: !!c.aidActive,
       })),

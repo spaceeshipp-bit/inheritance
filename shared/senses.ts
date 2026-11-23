@@ -19,6 +19,8 @@ export interface GrandmaSenseState {
   dark?: boolean;
   /** The Storm: a lightning flash is lighting the house. */
   flash?: boolean;
+  /** The Storm: thunder is rolling and she hears nothing at all. */
+  thunder?: boolean;
 }
 
 export function dist(a: Vec3, b: Vec3): number {

@@ -199,7 +199,16 @@ export const RESULTS_TIME = 15;
  * someone within candleClear m and make out shapes to candleDim m); lightning
  * lights the whole house like daylight for a moment.
  */
-export const STORM = { lightningEvery: 10, lightningJitter: 2, flashDuration: 0.8, candleClear: 2, candleDim: 3.5 } as const;
+/**
+ * The Storm. Lightning every `lightningEvery` ± `lightningJitter` s lights the
+ * house for `flashDuration`; its thunder follows `thunderDelay` s later (min,
+ * max) and for `thunderDuration` s Grandma hears nothing at all: no crash, no
+ * voice, no footsteps. A vase timed to the thunder is a vase she never heard.
+ */
+export const STORM = {
+  lightningEvery: 10, lightningJitter: 2, flashDuration: 0.8, candleClear: 2, candleDim: 3.5,
+  thunderDelay: [0.5, 1.3] as readonly [number, number], thunderDuration: 1.6,
+} as const;
 
 /** Wishes (errands). One active at a time, a new one when it is fulfilled or expires. */
 export const WISH = { duration: 45, deliverRange: 1.6, gapMin: 4, gapMax: 10 } as const;

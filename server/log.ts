@@ -262,6 +262,10 @@ export class EventLog {
         ? { kind: 'overboard', t: ev.t, actor: ev.by, victim: ev.victim, text: `${n(ev.by)} sent ${n(ev.victim)} overboard.` }
         : { kind: 'overboard', t: ev.t, actor: ev.victim, text: `${n(ev.victim)} went overboard all on their own.` }, this.events.length - 1);
     }
+    // Under Cover of Thunder: smashed while the thunder rolled, where she could not see it.
+    if (ev.kind === 'break' && ev.thunder && ev.by) {
+      this.addMoment({ kind: 'thunder', t: ev.t, actor: ev.by, text: `${n(ev.by)} smashed the ${n(ev.heirloom)} on the thunderclap. Nana never heard a thing.` }, this.events.length - 1);
+    }
     if (ev.kind === 'break' && ev.favourite) {
       this.addMoment({
         kind: 'favourite-broken', t: ev.t, actor: ev.by ?? 'nobody',

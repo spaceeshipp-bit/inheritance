@@ -101,7 +101,7 @@ export interface WishInfo {
 }
 
 /** A tagged moment (for the Reading of the Will highlight list and achievements). */
-export type MomentKind = 'love-you-nana' | 'framed' | 'caught-red-handed' | 'big-cut' | 'favourite-broken' | 'behind-her-back' | 'cheek' | 'overboard';
+export type MomentKind = 'love-you-nana' | 'framed' | 'caught-red-handed' | 'big-cut' | 'favourite-broken' | 'behind-her-back' | 'cheek' | 'overboard' | 'thunder';
 export interface Moment {
   kind: MomentKind;
   t: number;
@@ -119,7 +119,7 @@ export interface Moment {
  */
 export type LogEvent =
   | { t: number; kind: 'shove'; by: string; victim: string; pos: Vec3; seen: boolean; sharp?: boolean }
-  | { t: number; kind: 'break'; by: string | null; heirloom: string; favourite: boolean; pos: Vec3; seen: boolean; sharp?: boolean }
+  | { t: number; kind: 'break'; by: string | null; heirloom: string; favourite: boolean; pos: Vec3; seen: boolean; sharp?: boolean; thunder?: boolean }
   | { t: number; kind: 'steal'; by: string; item: string; owner: string; pos: Vec3; seen: boolean; sharp?: boolean }
   | { t: number; kind: 'plant'; by: string; item: string; owner: string; pos: Vec3; seen: boolean; sharp?: boolean }
   /** Grandma found a planted item (it was still planted, in this visit). */
@@ -246,6 +246,8 @@ export interface ReplayNana {
   aid: boolean;
   dark: boolean;
   flash: boolean;
+  /** Thunder rolling: she heard nothing (only present while true). */
+  thunder?: boolean;
 }
 
 /** A line spoken in the clip, and what Grandma heard of it (null: nothing). */

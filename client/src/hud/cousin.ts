@@ -229,9 +229,10 @@ export class CousinHud {
     this.root.append(this.leftCol, senses, this.item, this.prompts, bar, this.plant, this.shoveMark, this.arrow, cross);
   }
 
-  /** Nana heard a crash (or similar): flash the ear for a moment. */
-  nanaHeard(text = 'Nana heard that!'): void {
+  /** Nana heard a crash (or similar): flash the ear for a moment (`safe`: she did not, under the thunder). */
+  nanaHeard(text = 'Nana heard that!', safe = false): void {
     setText(this.heard.lastChild as HTMLElement, text);
+    this.heard.classList.toggle('safe', safe);
     this.heardUntil = performance.now() + 2600;
     show(this.heard, true);
     this.heard.classList.remove('flash');
@@ -254,7 +255,7 @@ export class CousinHud {
         eye = vb === 'sharp' || vb === 'soft' ? 'seen' : vb === 'heavy' ? 'blurry' : 'unseen';
         d = dist(g.pos, me.pos);
         const hb = hearingBand(d, sense.aidActive, f.whisper ? VOICE.whisperRange : Infinity);
-        ear = hb === 'clear' ? 'clear' : hb === 'silent' ? 'silent' : 'muffled';
+        ear = sense.thunder ? 'thunder' : hb === 'clear' ? 'clear' : hb === 'silent' ? 'silent' : 'muffled';
       }
     }
     if (eye !== this.lastEye) {
@@ -265,9 +266,9 @@ export class CousinHud {
     }
     if (ear !== this.lastEar) {
       this.lastEar = ear;
-      this.ear.className = `sense sense-ear ${ear}`;
+      this.ear.className = `sense sense-ear ${ear === 'thunder' ? 'silent thunder' : ear}`;
       this.earIco.innerHTML = ear === 'clear' ? ICONS.ear : ear === 'muffled' ? ICONS.earMuffled : ICONS.earOff;
-      setText(this.earText, ear === 'clear' ? 'Hears you' : ear === 'muffled' ? 'Muffled' : "Can't hear");
+      setText(this.earText, ear === 'clear' ? 'Hears you' : ear === 'muffled' ? 'Muffled' : ear === 'thunder' ? 'THUNDER: hears nothing' : "Can't hear");
     }
     if (this.heardUntil && performance.now() > this.heardUntil) { this.heardUntil = 0; show(this.heard, false); }
     setText(this.senseDist, Number.isFinite(d) ? `${d.toFixed(1)} m away${f.whisper ? ' - whispering' : ''}` : '');

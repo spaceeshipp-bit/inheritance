@@ -62,6 +62,8 @@ export interface Listener {
   d: number;
   /** Grandma's hearing aid (everyone can see it). */
   aidActive: boolean;
+  /** The Storm's thunder is rolling: Grandma hears nothing at all. */
+  thunder?: boolean;
 }
 
 /**
@@ -69,7 +71,7 @@ export interface Listener {
  * never holds more (a modified client cannot listen in past the rules).
  * - lobby: everything.
  * - Grandma: her whole hearing filter (muffled, mumbled, silent), applied
- *   here; her client plays it as it arrives.
+ *   here; her client plays it as it arrives. Under the Storm's thunder: nothing.
  * - a cousin: everything within earshot (the cousin's client applies the
  *   distance fade itself), nothing past it.
  * - someone we cannot place: nothing, except that Grandma sends to cousins she
@@ -78,7 +80,10 @@ export interface Listener {
 export function sendTarget(selfRole: ListenerRole, listener: Listener | null, whispering: boolean): VoiceTarget {
   if (selfRole === 'lobby') return LOBBY;
   if (!listener || !Number.isFinite(listener.d)) return selfRole === 'grandma' ? LOBBY : { gain: 0, lowpassHz: FULL_BAND_HZ, band: 'silent' };
-  if (listener.role === 'grandma') return voiceTarget('grandma', listener.d, whispering, listener.aidActive);
+  if (listener.role === 'grandma') {
+    if (listener.thunder) return { gain: 0, lowpassHz: FULL_BAND_HZ, band: 'silent' };
+    return voiceTarget('grandma', listener.d, whispering, listener.aidActive);
+  }
   const range = (whispering ? VOICE.whisperRange : VOICE.cousinRange) + SEND_MARGIN;
   return listener.d <= range ? LOBBY : { gain: 0, lowpassHz: FULL_BAND_HZ, band: 'silent' };
 }

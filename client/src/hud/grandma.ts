@@ -158,7 +158,7 @@ export class GrandmaHud {
     this.target.classList.toggle('none', !tId);
 
     // Status line (spectacles off, parchment, Storm).
-    const st = me?.specsOff ? 'Your spectacles! Everything is a blur.' : me?.parchmentOpen ? 'Writing... (slow)' : s.dark && !s.flash ? 'The lights are out!' : '';
+    const st = me?.specsOff ? 'Your spectacles! Everything is a blur.' : s.thunder ? 'THUNDER! You cannot hear a thing.' : me?.parchmentOpen ? 'Writing... (slow)' : s.dark && !s.flash ? 'The lights are out!' : '';
     setText(this.status, st);
     show(this.status, st !== '');
 

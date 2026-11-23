@@ -97,6 +97,8 @@ export interface SnapMsg {
   /** The Storm: power out right now, and lightning flash active. */
   dark: boolean;
   flash: boolean;
+  /** The Storm: thunder rolling (Grandma hears nothing). Only sent while true. */
+  thunder?: boolean;
 }
 
 export type GameEvent =
@@ -129,6 +131,8 @@ export type GameEvent =
   | { e: 'cane'; victim: string; pos: Vec3 }
   | { e: 'specs-off'; pos: Vec3 }
   | { e: 'lightning' }
+  /** The thunder after a lightning flash: for `duration` s Grandma hears nothing. */
+  | { e: 'thunder'; duration: number }
   | { e: 'moment'; moment: Moment }
   /**
    * A gesture or dance aimed at you (`at` is your id), or, for Grandma, one she

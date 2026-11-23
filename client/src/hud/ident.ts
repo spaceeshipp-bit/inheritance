@@ -75,4 +75,5 @@ export const MOMENT_TITLES: Record<MomentKind, string> = {
   'behind-her-back': 'Behind Her Back',
   cheek: 'The Cheek of It',
   overboard: 'Man Overboard!',
+  thunder: 'Under Cover of Thunder',
 };

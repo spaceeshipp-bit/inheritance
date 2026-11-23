@@ -262,6 +262,9 @@ The best three are marked ★ and are next once the core work above is done.
   scene, not a table.*
 - **Thunder masks crashes** in the Storm: during a thunderclap her hearing drops to silent for a
   second, so a vase timed to the thunder is unheard. *Cousins learn to use her senses against her.*
+  **Built 2026-11-23:** the server times each thunderclap (0.5–1.3 s after the flash, 1.6 s long);
+  no crash she did not see, no voice, no tattle, no footsteps; the Under Cover of Thunder moment;
+  bot cousins wait for it; HUD, captions and replays show it (thunder.test.ts).
 - **Footsteps she can read:** distinct run, walk and sneak sounds with direction, so she can play
   half the game by ear. *Gives her real evidence that cousins can learn to fool (sneak past).*
 - **Forgeable evidence:** ash footprints from the urn lead to whoever walked through; a cousin can

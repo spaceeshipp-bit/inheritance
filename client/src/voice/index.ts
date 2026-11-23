@@ -36,6 +36,8 @@ export interface VoiceUpdate {
   listenerPos: Vec3;
   listenerYaw: number;
   aidActive: boolean;
+  /** The Storm's thunder is rolling: we send Grandma nothing. */
+  thunder?: boolean;
   speakers: VoiceSpeaker[];
 }
 
@@ -232,7 +234,7 @@ class Voice implements VoiceManager {
       const s = byId.get(id);
       // What we send them: only what they may hear of us.
       const d = s ? dist(u.listenerPos, s.pos) : Infinity;
-      out?.shape(id, sendTarget(role, s?.role ? { role: s.role, d, aidActive: !!s.aidActive } : null, this.whisper));
+      out?.shape(id, sendTarget(role, s?.role ? { role: s.role, d, aidActive: !!s.aidActive, thunder: !!u.thunder } : null, this.whisper));
       // What we hear of them.
       if (role === 'lobby') {
         p.apply(voiceTarget('lobby', 0, false, false), AHEAD, null);
