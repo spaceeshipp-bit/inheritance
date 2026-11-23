@@ -88,7 +88,7 @@ Done since the handoff (each with tests; see `git log` and `docs/reviews/2026-11
 
 | Suite | What it plays | Result |
 | --- | --- | --- |
-| match | a whole match in two browsers: walk, compliment, chat, tattle, Bless/Tut, hearing aid, spectacles, summon, parchment, cane, throw, shove, steal, plant, find, frame, reading, vote, results | 76/76 |
+| match | a whole match in two browsers: walk, compliment, chat, tattle, Bless/Tut, hearing aid, spectacles, summon, parchment, cane, throw, shove, steal, plant, find, frame, reading, vote, results | 76/76 before the manor redesign; since it, 70-71 of 72-79 on an idle machine (2026-11-23): the scripted walks through the redesigned hall (to an heirloom, to a bot, to Nana to plant) miss their targets and different steps fail from run to run. Fix next: walk the nav graph's path and set the scene up in open floor. |
 | fullmatch | Tea, Dinner and the Storm with lively bots: budgets reset, the Storm dark with lightning, reading, results, lobby | 17/17 (re-run 2026-11-23 with thunder, ashes, playing dead, coffins and the Cat-apult in: 17/17) |
 | reconnect | a cousin reloads mid-visit and walks on; Grandma's tab closes, a cousin takes over with J | 16/16 |
 | voice | the voice mesh and hearing rules on real audio (4 pages, fake mics) | 65/65 |
@@ -96,13 +96,16 @@ Done since the handoff (each with tests; see `git log` and `docs/reviews/2026-11
 
 ### Still to do, in order
 
+0. Make the two-browser match suite reliable in the redesigned manor (see Last e2e run): its
+   scripted walks, not the game, are what fail. Then re-run every suite on an idle machine.
 1. Settings left: remapping beyond push-to-talk; a gamepad test (Playwright can inject one) and
    controller glyphs. (~~Mic and output device pickers~~: done 2026-11-23.)
 2. ~~The reading as theatre~~: done as the curtain call (2026-11-23).
 3. ~~The GDD's practice rounds~~: done 2026-11-23 (4-minute cousin, 3-minute Grandma, against bots,
    with a checklist the server ticks off).
 4. S21: a TURN relay for voice so players' IP addresses stay hidden (docs/STEAM.md has the plan).
-5. The art track: the owner chooses a direction from the look book (path-traced renders and the
+5. The art track (the owner, 2026-11-23: today's look is a good base; the graphics level-up comes
+   later; lightmap baking is paused until then): the owner chooses a direction from the look book (path-traced renders and the
    four looks on the real scene); then bake every map's lightmap (`tools/render/bake_lightmap.py`)
    and replace the stand-in characters and props with modelled ones (CC0 sources and licences are
    in the look book), keeping the spring-driven ragdolls and gestures.
