@@ -5,6 +5,7 @@ import type { GameState } from '../state.js';
 import { el, fmtTime, setStyle, setText } from '../util.js';
 import { botGlyph, isBot, nameOf, swatch } from './ident.js';
 import { WillList } from './willview.js';
+import { mapWords } from './mapwords.js';
 
 export const COUSIN_KEYS = 'WASD move - Shift run - C sneak - Space jump - LMB grab - RMB throw - F shove - E interact/steal - G plant - Q quick-chat - T tattle - Z gesture - X dance - Alt whisper - Enter chat';
 export const GRANDMA_KEYS = 'WASD move - E Bless - Q Tut - Scroll lock name - Tab parchment - LMB cane - RMB hearing aid - F spectacles - R summon - G play dead - C pin - V quick-chat - Z gesture - X dance - Enter chat';
@@ -70,6 +71,8 @@ export class RoleReveal {
         'Behind her back: shove, smash heirlooms, steal items and plant them to frame your cousins.',
         'Watch the Nana Senses (top right). If she sees you, she knows.',
         'Pull faces (Z) and dance (X) behind her back. To her face, it had better be heart hands.',
+        "Grandpa is in the urn. Break it, and whoever treads in him leaves a grey trail to themselves.",
+        ...(mapWords(m.options.map).tip ? [mapWords(m.options.map).tip as string] : []),
       ]) ul.appendChild(el('li', '', t));
       this.root.appendChild(ul);
       this.root.appendChild(el('div', 'reveal-keys', COUSIN_KEYS));

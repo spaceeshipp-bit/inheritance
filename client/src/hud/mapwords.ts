@@ -10,6 +10,8 @@ export interface MapWords {
   address: string;
   /** The solicitor's entrance at the Reading of the Will. */
   reading: string;
+  /** A cousin's tip on the role card: this house's own way to dispose of a relative. */
+  tip?: string;
 }
 
 const READING = 'Mr Pettigrew, the family solicitor, clears his throat and unfolds the parchment...';
@@ -23,10 +25,12 @@ const WORDS: Partial<Record<MapId, MapWords>> = {
   parlour: {
     arriving: 'Gathering at Pettigrew & Sons', address: 'presently of Pettigrew & Sons Funeral Parlour (just looking)',
     reading: 'Mr Pettigrew (the family solicitor, and, as it happens, the undertaker) clears his throat and unfolds the parchment...',
+    tip: 'Open coffins (the Deluxe on special, and Nana\'s own): shove a cousin into one and the lid slams shut.',
   },
   cruise: {
     arriving: 'All aboard The Golden Years', address: 'at sea, aboard The Golden Years',
     reading: 'Mr Pettigrew, the family solicitor, steadies himself against the swell and unfolds the parchment...',
+    tip: 'Mind the rail on the Lido Deck: a good shove sends a cousin overboard.',
   },
 };
 
