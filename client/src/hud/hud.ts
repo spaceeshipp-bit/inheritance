@@ -64,6 +64,8 @@ export class Hud {
   private roleRoot = el('div', 'role-hud');
   /** Nana playing dead: her eyelids, nearly shut, over the view. */
   private lids = el('div', 'eyelids');
+  /** Shut in a coffin (Early Burial). */
+  private coffin = el('div', 'coffin-dark');
   private overlay: Overlay | null = null;
   private overlayKey = '';
   private help = el('div', 'help-card');
@@ -93,7 +95,7 @@ export class Hud {
     this.hChip.innerHTML = '<kbd>H</kbd><span>Controls</span>';
     this.hChip.title = 'Show the controls (H)';
     this.hChip.addEventListener('click', () => this.toggleHelp());
-    hudRoot.append(this.lids, this.roleRoot, this.top.root, this.toasts.root, this.chat.root, this.lockHint, this.hChip, this.captions.root);
+    hudRoot.append(this.lids, this.coffin, this.roleRoot, this.top.root, this.toasts.root, this.chat.root, this.lockHint, this.hChip, this.captions.root);
     labels.append(this.bubbles.root, this.floats.root);
     // Wheels and the controls card sit above the phase cards (style.css), so the
     // intermission's wheels and "Press H any time" on the role card both show.
@@ -310,6 +312,10 @@ export class Hud {
       case 'collapse': this.soundCaption('thud', ev.pos, g ? 'Thud (you, hitting the carpet)' : 'Thud! Nana collapsed'); break;
       case 'risen': this.soundCaption('gasp', ev.pos, 'Gasp! Nana is up again'); break;
       case 'yowl': this.soundCaption('yowl', ev.pos, 'YOWL! (the cat)'); break;
+      case 'buried':
+        this.soundCaption('slam', ev.pos, ev.id === this.s.selfId ? 'SLAM. (The lid. You are inside.)' : `SLAM! ${this.s.name(ev.id)} is in a coffin`);
+        break;
+      case 'knock': this.soundCaption('knock', ev.pos, 'Knock knock (from inside a coffin)'); break;
       case 'thunder':
         this.captions.sound(g ? 'THUNDER (you hear nothing)' : 'THUNDER (Nana hears nothing)', 3);
         // The first time in a match, say what it is for.
@@ -488,6 +494,10 @@ export class Hud {
     const live = s.phase === 'visit' || s.phase === 'roles' || s.phase === 'intermission';
     const visit = s.phase === 'visit';
     this.lids.classList.toggle('on', visit && s.role === 'grandma' && !!f.view.self?.dead);
+    // Shut in a coffin: dark, a sliver of light round the lid, and how to pass the time.
+    const buried = visit && !!f.view.self?.buried;
+    this.coffin.classList.toggle('on', buried);
+    if (buried) setText(this.coffin, `It is very dark in here. ${f.device === 'pad' ? 'Y' : 'E'} to knock.`);
     show(this.roleRoot, visit);
     show(this.top.root, live);
     show(this.hChip, live);

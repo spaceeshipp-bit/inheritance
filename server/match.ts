@@ -10,7 +10,7 @@
 import {
   COUSIN, COUSINS, CRIME_SCENE, DISCONNECT, FULL_VISITS, GRANDMA, HEARING_AID, HEIRLOOM, INTERMISSION_TIME, MISHEARD,
   PREFERENCE_CARDS, QUICKCHAT, READING_TIME, RESULTS_TIME, ROLE_REVEAL_TIME, SENSES, SLICE_VISITS, SNAPSHOT_HZ,
-  SPECTACLES, STORM, TICK_HZ, VISITS, VOICE, VOTE_TIME, WILL, WISH, INPUT, PROTOCOL_VERSION, DINNER, ASH, PLAY_DEAD,
+  SPECTACLES, STORM, TICK_HZ, VISITS, VOICE, VOTE_TIME, WILL, WISH, INPUT, PROTOCOL_VERSION, DINNER, ASH, PLAY_DEAD, COFFIN,
 } from '../shared/constants.js';
 import { HEIRLOOM_VARIANTS, MAP_IDS, groundHeight, mapById, type MapDef, type MapId } from '../shared/map.js';
 import { createBody, forwardOf, integrateBody, wrapAngle, yawToward, type BodyShape, type MoveBody } from '../shared/movement.js';
@@ -133,6 +133,10 @@ export interface Char extends PhysChar {
   deadFrom: number;
   deadUntil: number;
   deadVisit: number;
+  /** Shut in an open coffin (its box label) until `buriedUntil`; may knock again from `knockAt`. */
+  buriedIn: string | null;
+  buriedUntil: number;
+  knockAt: number;
 }
 
 /** A footprint in Grandpa's ashes, with who left it (server only) and whether Grandma has seen it yet. */
@@ -496,6 +500,7 @@ export class Match {
       parchmentOpen: false, aidT: 0, aidCd: 0, specsT: 0, specsCd: 0, specsOff: false, caneCd: 0, summonCd: 0, quillT: 0, whistleT: 0,
       ashy: 0, ashFrom: null, ashSide: 0, ashTrod: false,
       deadFrom: -Infinity, deadUntil: -Infinity, deadVisit: -1,
+      buriedIn: null, buriedUntil: -Infinity, knockAt: -Infinity,
     };
   }
 
@@ -1235,6 +1240,7 @@ export class Match {
           this.log.add({ t: this.time, kind: 'overboard', by, victim: c.id });
         }
       }
+      if (this.phase === 'visit') this.coffinCheck(c);
     }
     this.updateProps(h);
     if (this.phase === 'visit') {
@@ -1276,6 +1282,8 @@ export class Match {
       c.knockedAt += h;
       c.deadFrom += h;
       c.deadUntil += h;
+      c.buriedUntil += h;
+      c.knockAt += h;
       c.yawHold += h;
       c.shoveBufferUntil += h;
       c.emoteCd += h;
@@ -1292,7 +1300,7 @@ export class Match {
     const inp = c.input;
     const live = this.phase === 'visit' || this.phase === 'intermission';
     // Playing dead: on the floor, eyes (nearly) shut; she can only look about and get up.
-    const upright = c.state === 'normal' && !(c.role === 'grandma' && this.time < c.deadUntil);
+    const upright = c.state === 'normal' && !(c.role === 'grandma' && this.time < c.deadUntil) && !c.buriedIn;
     if (c.emote) {
       // Moving, acting, picking something up, opening the parchment or falling over ends it.
       const p = c.pressed;
@@ -1304,6 +1312,11 @@ export class Match {
     const canMove = live && upright && c.connected;
     const canAct = this.phase === 'visit' && upright && c.connected;
     if (c.state === 'normal' && c.connected) this.faceInput(c, inp);
+    // Shut in a coffin: all you can do is knock.
+    if (c.buriedIn && c.pressed.interact && this.time >= c.knockAt) {
+      c.knockAt = this.time + COFFIN.knockGap;
+      this.knock(c.body.pos);
+    }
     c.shoveCd = Math.max(0, c.shoveCd - h);
     if (c.role === 'grandma') {
       c.aidT = Math.max(0, c.aidT - h);
@@ -1388,7 +1401,7 @@ export class Match {
     let best: Char | null = null;
     let bestD = Infinity;
     for (const o of this.chars.values()) {
-      if (o === c || o.state === 'sleeping') continue;
+      if (o === c || o.state === 'sleeping' || o.buriedIn) continue;
       if (o.role === 'grandma' && !this.options.pushGrandma) continue;
       const dx = o.body.pos.x - c.body.pos.x, dz = o.body.pos.z - c.body.pos.z;
       const d = Math.hypot(dx, dz);
@@ -2122,6 +2135,74 @@ export class Match {
     return STORM.lightningEvery + (this.rng() * 2 - 1) * STORM.lightningJitter;
   }
 
+  // ───────────── Early Burial ─────────────
+
+  /**
+   * A cousin knocked flying who lands on an open coffin (this map's `coffins`)
+   * is shut in it; when their time is up they climb out beside it.
+   */
+  private coffinCheck(c: Char): void {
+    if (c.buriedIn) {
+      if (this.time >= c.buriedUntil) this.unbury(c, true);
+      return;
+    }
+    const coffins = this.mapDef.coffins;
+    if (!coffins || c.role !== 'cousin' || c.state !== 'ragdoll') return;
+    const p = c.body.pos;
+    for (const cf of coffins) {
+      const b = this.mapDef.boxes.find((x) => x.label === cf.label);
+      if (!b) continue;
+      // Landing on it, or slammed against its side (a body's width out), both count: in you go.
+      const m = 0.4;
+      if (p.x < b.min.x - m || p.x > b.max.x + m || p.z < b.min.z - m || p.z > b.max.z + m) continue;
+      if (p.y < b.min.y - 0.2 || p.y > b.max.y + 1.6) continue;
+      const by = c.knockedBy && c.knockedBy !== c.id && this.time - c.knockedAt < 4 ? c.knockedBy : null;
+      this.dropHeld(c, false);
+      c.state = 'normal';
+      c.ragdollT = 0;
+      c.body.pos = { x: (b.min.x + b.max.x) / 2, y: b.max.y, z: (b.min.z + b.max.z) / 2 };
+      c.body.vel = { x: 0, y: 0, z: 0 };
+      c.buriedIn = cf.label;
+      c.buriedUntil = this.time + COFFIN.buried;
+      c.knockAt = this.time + 1;
+      this.log.add({ t: this.time, kind: 'buried', by, victim: c.id, coffin: cf.name });
+      this.emitAll({ e: 'buried', id: c.id, pos: v3(c.body.pos) });
+      this.emit(c.id, { e: 'toast', text: `The lid slams shut. You are in ${cf.name}. Press E to knock.` });
+      return;
+    }
+  }
+
+  /** Out of the coffin, onto the floor beside it (`said`: tell them). */
+  private unbury(c: Char, said: boolean): void {
+    const b = this.mapDef.boxes.find((x) => x.label === c.buriedIn);
+    c.buriedIn = null;
+    c.buriedUntil = -Infinity;
+    if (b) {
+      // Beside its long side, whichever side is clear.
+      const cx = (b.min.x + b.max.x) / 2, cz = (b.min.z + b.max.z) / 2;
+      const alongZ = b.max.z - b.min.z > b.max.x - b.min.x;
+      const half = alongZ ? (b.max.x - b.min.x) / 2 + 0.45 : (b.max.z - b.min.z) / 2 + 0.45;
+      const opts = alongZ ? [{ x: cx + half, z: cz }, { x: cx - half, z: cz }] : [{ x: cx, z: cz + half }, { x: cx, z: cz - half }];
+      const spot = opts.find((o) => !this.mapDef.boxes.some((x) => x.solid && x.max.y > 0.3 && o.x > x.min.x - 0.3 && o.x < x.max.x + 0.3 && o.z > x.min.z - 0.3 && o.z < x.max.z + 0.3)) ?? opts[0];
+      const y = groundHeight(spot.x, spot.z, 0.5);
+      c.body = createBody({ x: spot.x, y, z: spot.z });
+    }
+    if (said) {
+      this.emitAll({ e: 'knock', pos: v3(c.body.pos) });
+      this.emit(c.id, { e: 'toast', text: 'You climb out, a little dustier and much less trusting.' });
+    }
+  }
+
+  /** Knock knock, from inside a coffin: everyone in earshot hears it (Grandma as a voice twice as loud). */
+  private knock(pos: Vec3): void {
+    this.emitAll((to) => {
+      const o = this.chars.get(to);
+      if (!o) return null;
+      if (to === this.grandmaId) return this.grandmaHears({ x: pos.x + (o.body.pos.x - pos.x) / 2, y: pos.y + (o.body.pos.y - pos.y) / 2, z: pos.z + (o.body.pos.z - pos.z) / 2 }, false) === 'silent' ? null : { e: 'knock', pos: v3(pos) };
+      return dist(o.body.pos, pos) <= COFFIN.knockRange ? { e: 'knock', pos: v3(pos) } : null;
+    });
+  }
+
   // ───────────── playing dead ─────────────
 
   /** Drop and play dead (once a visit), or get up again (not straight away). */
@@ -2410,6 +2491,7 @@ export class Match {
       g.specsT = 0;
       if (this.playingDead) this.riseFromDead(g, false);
     }
+    for (const c of this.chars.values()) if (c.buriedIn) this.unbury(c, false);
     if (this.wish) this.endWish(true);
     this.nextWishAt = Infinity;
     this.dark = false;
@@ -2671,6 +2753,7 @@ export class Match {
     if (c.emote) { s.emote = c.emote.id; s.emoteT = r2(this.time - c.emote.at); }
     if (c.ashy > 0) s.ashy = true;
     if (c.role === 'grandma' && this.time < c.deadUntil) s.dead = true;
+    if (c.buriedIn) s.buried = c.buriedIn;
     // How far the server has got with your inputs is for your own prediction only.
     if (forId === c.id) s.ack = g ? g.base : c.ack;
     if (c.role === 'grandma') {

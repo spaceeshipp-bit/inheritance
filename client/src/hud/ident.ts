@@ -80,4 +80,5 @@ export const MOMENT_TITLES: Record<MomentKind, string> = {
   graveside: 'Dancing on Her Grave',
   mourner: 'Gone Too Soon',
   catapult: 'The Cat-apult',
+  buried: 'Early Burial',
 };

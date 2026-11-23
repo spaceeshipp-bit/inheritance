@@ -93,6 +93,11 @@ export interface MapDef {
   drops?: Volume[];
   /** Height of the ground where there is no floor box (default 0). The sea around a ship is far below. */
   voidFloor?: number;
+  /**
+   * Open coffins (their boxes' labels): a cousin shoved onto one is shut in it
+   * for COFFIN.buried seconds (Early Burial). `name` is how the moment says it.
+   */
+  coffins?: { label: string; name: string }[];
 }
 
 export const WALL = 0.3;

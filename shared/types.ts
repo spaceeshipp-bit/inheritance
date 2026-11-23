@@ -57,6 +57,8 @@ export interface CharSnap {
   leader: boolean;
   /** Grandma is playing dead (lying on the floor; everyone can see it). */
   dead?: boolean;
+  /** Shut in an open coffin (its box label): hidden under the lid. */
+  buried?: string;
   /** Grey to the ankles from Grandpa's ashes (still leaving footprints). Grandma: only on someone she can identify. */
   ashy?: boolean;
   /** A gesture or dance under way, and how far into it (s). */
@@ -105,7 +107,7 @@ export interface WishInfo {
 }
 
 /** A tagged moment (for the Reading of the Will highlight list and achievements). */
-export type MomentKind = 'love-you-nana' | 'framed' | 'caught-red-handed' | 'big-cut' | 'favourite-broken' | 'behind-her-back' | 'cheek' | 'overboard' | 'thunder' | 'grandpa' | 'graveside' | 'mourner' | 'catapult';
+export type MomentKind = 'love-you-nana' | 'framed' | 'caught-red-handed' | 'big-cut' | 'favourite-broken' | 'behind-her-back' | 'cheek' | 'overboard' | 'thunder' | 'grandpa' | 'graveside' | 'mourner' | 'catapult' | 'buried';
 export interface Moment {
   kind: MomentKind;
   t: number;
@@ -146,6 +148,8 @@ export type LogEvent =
   | { t: number; kind: 'rude'; by: string; emote: EmoteId; at: string | null; atNana: boolean; seen: boolean; sharp?: boolean }
   /** Someone went over the side (a ship's drop zone); `by`: whoever knocked them flying just before, if anyone. */
   | { t: number; kind: 'overboard'; by: string | null; victim: string }
+  /** Shoved into an open coffin and shut in (`by`: whoever knocked them flying). */
+  | { t: number; kind: 'buried'; by: string | null; victim: string; coffin: string }
   /** Mittens, thrown by `by`, knocked an heirloom flying. */
   | { t: number; kind: 'catapult'; by: string; heirloom: string }
   /** Grandma dropped to play dead (`up`: and got up again). */

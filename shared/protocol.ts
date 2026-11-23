@@ -140,6 +140,9 @@ export type GameEvent =
   | { e: 'collapse'; pos: Vec3 }
   /** Mittens, thrown (or landing): a yowl (Grandma only if she can hear it). */
   | { e: 'yowl'; pos: Vec3 }
+  /** A coffin lid slams on someone (`id`), or someone inside knocks to be let out. */
+  | { e: 'buried'; id: string; pos: Vec3 }
+  | { e: 'knock'; pos: Vec3 }
   | { e: 'risen'; pos: Vec3 }
   /**
    * Ash footprints: new ones (cousins: all; Grandma: those she has now seen).

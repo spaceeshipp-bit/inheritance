@@ -220,6 +220,10 @@ export const PARLOUR: MapDef = {
     ],
   },
   heirloomSpots: pedestalTops(BOXES),
+  coffins: [
+    { label: 'The Eternal Rest Deluxe', name: 'the Eternal Rest Deluxe (10% off)' },
+    { label: 'The reserved coffin', name: "Nana's own reserved coffin" },
+  ],
   dinner: { table: { minX: X + 7.6, maxX: X + 10.8, minZ: 4.0, maxZ: 5.2 }, door: { x: X + 9.1, z: -2 }, doorName: 'the wake-room door' },
   nav: {
     ground: GROUND,

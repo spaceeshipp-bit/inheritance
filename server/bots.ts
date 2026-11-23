@@ -322,6 +322,13 @@ export class CousinBot implements Bot {
     }
     const inp = m.blankInput(++this.seq, c.yaw);
     inp.pitch = c.pitch;
+    if (c.buriedIn) {
+      // Shut in a coffin: knock now and then, and wait.
+      inp.interact = this.erng() < 0.06;
+      this.task = null;
+      m.botInput(this.id, inp);
+      return;
+    }
     if (c.state !== 'normal' || (m.phase !== 'visit' && m.phase !== 'intermission')) {
       // Keep holding a grabbed thing through intermission; otherwise idle.
       inp.primary = !!c.holding && !c.sticky;

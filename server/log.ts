@@ -289,6 +289,12 @@ export class EventLog {
     if (ev.kind === 'break' && ev.thunder && ev.by) {
       this.addMoment({ kind: 'thunder', t: ev.t, actor: ev.by, text: `${n(ev.by)} smashed the ${n(ev.heirloom)} on the thunderclap. Nana never heard a thing.` }, this.events.length - 1);
     }
+    // Early Burial: knocked flying into an open coffin, and the lid comes down.
+    if (ev.kind === 'buried') {
+      this.addMoment(ev.by
+        ? { kind: 'buried', t: ev.t, actor: ev.by, victim: ev.victim, text: `${n(ev.by)} buried ${n(ev.victim)} alive in ${ev.coffin}.` }
+        : { kind: 'buried', t: ev.t, actor: ev.victim, text: `${n(ev.victim)} fell into ${ev.coffin}. The lid did the rest.` }, this.events.length - 1);
+    }
     // The Cat-apult: Mittens, thrown, took an heirloom with her (never which: it might be the Favourite).
     if (ev.kind === 'catapult') {
       this.addMoment({ kind: 'catapult', t: ev.t, actor: ev.by, text: `${n(ev.by)} threw Mittens. Mittens took an heirloom with her.` }, this.events.length - 1);

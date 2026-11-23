@@ -211,6 +211,13 @@ export const STORM = {
 } as const;
 
 /**
+ * Early Burial (maps with open coffins): a cousin knocked flying onto one is
+ * shut in for `buried` s, then climbs out beside it. They may knock (E) every
+ * `knockGap` s; anyone within `knockRange` m hears it.
+ */
+export const COFFIN = { buried: 6, knockGap: 0.6, knockRange: 12 } as const;
+
+/**
  * Grandma plays dead (once a visit, G): she drops where she stands for up to
  * `max` s (she can get up after `minDown`), peeking through her lashes: all
  * round her, everything within `peek` m (`peekDark` by candlelight) is sharp,

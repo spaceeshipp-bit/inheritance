@@ -276,6 +276,9 @@ The best three are marked ★ and are next once the core work above is done.
   heirloom she flies through off its pedestal (the thrower's fault: The Cat-apult), then bolts;
   each heirloom dies in character (the clock chimes, the teapot whistles, the portrait tears,
   the urn goes poof, the bust cracks) for anyone who knows which one it was.
+- **Early Burial** (new, 2026-11-23): the funeral parlour's open coffins (the Deluxe on special,
+  and Nana's own) shut on any cousin knocked flying into them for 6 s; they can only knock till
+  they climb out. *Each map gets its own way to dispose of a relative* (coffin.test.ts).
 - **Playing dead** (new, 2026-11-23): once a visit Grandma drops to the floor and peeks (sharp all
   round to 5 m, nothing beyond); she cannot move or touch the will till she gets up. Rude gestures or
   sabotage she sees meanwhile are Dancing on Her Grave, a compliment Gone Too Soon; bot cousins go to

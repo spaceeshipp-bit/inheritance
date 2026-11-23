@@ -578,3 +578,10 @@ body.band-patterns .swatch[data-pat="7"] { background-image: radial-gradient(cir
 .eyelids.on { opacity: 1; animation: lidFlutter 3.2s ease-in-out infinite; }
 @keyframes lidFlutter { 0%, 100% { transform: scaleY(1); } 48% { transform: scaleY(1); } 52% { transform: scaleY(1.25); } 56% { transform: scaleY(1); } }
 body.reduced-motion .eyelids.on { animation: none; }
+
+/* Early Burial: the inside of a coffin lid, a sliver of light round the edge. */
+.coffin-dark { position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity 0.2s; z-index: 0;
+  display: grid; place-items: end center; padding-bottom: 18vh; color: #d9c7a8; font: 600 18px/1.4 var(--font-ui, sans-serif); text-shadow: 0 1px 2px #000;
+  background: radial-gradient(ellipse 70% 30% at 50% 50%, rgba(20,10,6,0.96) 60%, rgba(20,10,6,1) 100%), #140a06;
+  box-shadow: inset 0 0 0 3px rgba(255, 220, 160, 0.25); }
+.coffin-dark.on { opacity: 1; }

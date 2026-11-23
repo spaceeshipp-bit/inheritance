@@ -96,7 +96,7 @@ To feel the game on a bad connection, add `?netsim=150,20,2` to the page address
 ## What is in, and what is not yet
 
 In: four maps chosen in the lobby (Harrowgate Manor, Sunny Pines Care Home, Pettigrew & Sons Funeral
-Parlour, and The Golden Years, a cruise ship you can be shoved off), Afternoon Tea (and Tea → Dinner →
+Parlour, whose open coffins you can be shoved into, and The Golden Years, a cruise ship you can be shoved off), Afternoon Tea (and Tea → Dinner →
 Storm with "full match"), Grandma's senses (sight bands, hearing bands, hearing aid, spectacles, the
 Storm's candle, lightning, and thunder that deafens her for a second and a half), playing dead (once a
 visit Grandma drops to the floor and peeks: whoever dances on her grave, or weeps over her, is noted),

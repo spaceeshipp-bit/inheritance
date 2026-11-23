@@ -10,6 +10,8 @@ export type SfxKind =
   | 'chime' | 'kettle' | 'rip' | 'poof' | 'crack'
   /** Mittens, airborne. */
   | 'yowl'
+  /** Knuckles on a coffin lid, from the inside; the lid slamming. */
+  | 'knock' | 'slam'
   | 'whoosh' | EmoteSound;
 
 export interface SynthCtx { ctx: AudioContext; noise: AudioBuffer; out: AudioNode; t: number; rand: () => number }
@@ -192,6 +194,25 @@ export function synth(kind: SfxKind, s: SynthCtx): number {
       const o = tone(s, 'sine', 95, 45, t + 0.03, 0.35);
       o.connect(env(ctx, t + 0.03, 0.004, 0.9, 0.3)).connect(out);
       return 0.45;
+    }
+    case 'knock': {
+      // Three muffled raps on wood.
+      for (let i = 0; i < 3; i++) {
+        const t0 = t + i * 0.16 + rand() * 0.02;
+        const o = tone(s, 'sine', 210 + rand() * 30, 140, t0, 0.12);
+        o.connect(env(ctx, t0, 0.002, 0.8, 0.1)).connect(out);
+        const n = noiseSrc(s, t0, 0.04);
+        n.connect(filter(ctx, 'bandpass', 900, 1.5)).connect(env(ctx, t0, 0.001, 0.35, 0.03)).connect(out);
+      }
+      return 0.6;
+    }
+    case 'slam': {
+      // A heavy lid coming down: a deep boom and a woody clack.
+      const o = tone(s, 'sine', 110, 40, t, 0.6);
+      o.connect(env(ctx, t, 0.003, 1.0, 0.5)).connect(out);
+      const n = noiseSrc(s, t, 0.12);
+      n.connect(filter(ctx, 'bandpass', 700, 1.2)).connect(env(ctx, t, 0.001, 0.8, 0.1)).connect(out);
+      return 0.7;
     }
     case 'yowl': {
       // A cat's indignant wail: a sawtooth through a vowel-ish band, rising then sliding down, with a wobble.

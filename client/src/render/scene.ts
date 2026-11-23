@@ -12,7 +12,7 @@ import { CameraRig } from './camera.js';
 import { CharacterModel, type Degrade } from './characters.js';
 import { applyBakedLight } from './baked.js';
 import { buildMap, type MapView } from './map.js';
-import type { MapId } from '../../../shared/map.js';
+import { mapById, type MapId } from '../../../shared/map.js';
 import { AshPrints } from './prints.js';
 import { PropViews } from './props.js';
 import { GrandmaVision, visionParams } from './vision.js';
@@ -195,6 +195,37 @@ export class GameRenderer {
   }
 
   get mapId(): MapId { return this.map.id; }
+
+  /** Early Burial: a shut lid over each open coffin with someone in it, jumping when they knock. */
+  private coffinLids(chars: Iterable<CharSnap>, time: number): void {
+    const shut = new Set<string>();
+    for (const c of chars) if (c.buried) shut.add(c.buried);
+    for (const [label, lid] of this.lids) lid.visible = shut.has(label);
+    for (const label of shut) {
+      let lid = this.lids.get(label);
+      if (!lid) {
+        const b = mapById(this.map.id).boxes.find((x) => x.label === label);
+        if (!b) continue;
+        lid = new THREE.Mesh(new THREE.BoxGeometry(b.max.x - b.min.x + 0.04, 0.08, b.max.z - b.min.z + 0.04), new THREE.MeshStandardMaterial({ color: '#4a2516', roughness: 0.45 }));
+        lid.position.set((b.min.x + b.max.x) / 2, b.max.y + 0.04, (b.min.z + b.max.z) / 2);
+        lid.userData.y = lid.position.y;
+        this.scene.add(lid);
+        this.lids.set(label, lid);
+      }
+      // A knock lifts it a fraction (and drops it), most of the time just a rattle.
+      const k = time - (this.knockAt.get(label) ?? -10);
+      lid.position.y = lid.userData.y + (k < 0.25 ? Math.sin(k * Math.PI * 4) * 0.03 : 0);
+      lid.visible = true;
+    }
+  }
+
+  /** Someone in a coffin at `pos` knocked: rattle its lid. */
+  knockAt = new Map<string, number>();
+  private lids = new Map<string, THREE.Mesh>();
+  knock(pos: Vec3, time: number): void {
+    const b = mapById(this.map.id).boxes.find((x) => this.lids.has(x.label ?? '') && pos.x > x.min.x - 1 && pos.x < x.max.x + 1 && pos.z > x.min.z - 1 && pos.z < x.max.z + 1);
+    if (b?.label) this.knockAt.set(b.label, time);
+  }
   /** Where the cinematic camera drifts (round `center`, looking at `look`). */
   get idleSpot(): { center: Vec3; look: Vec3 } { return this.map.idle; }
 
@@ -338,7 +369,8 @@ export class GameRenderer {
       const m = this.ensureModel(c);
       const mine = c.id === selfId;
       // Hide yourself in first person, or when a wall pulls the orbit camera right up to your head.
-      m.root.visible = !(mine && !this.photoCam && (isGrandma || (!f.cinematic && this.rig.boom < 1.1)));
+      // Shut in a coffin: under the lid (drawn below), not on top of it.
+      m.root.visible = !c.buried && !(mine && !this.photoCam && (isGrandma || (!f.cinematic && this.rig.boom < 1.1)));
       const ip = itemProps.get(c.id);
       const itemOnBody = !ip || (ip.heldBy === c.id && c.holding !== ip.id);
       const degrade: Degrade = isGrandma && sense && !mine ? degradeFor(visionBand(sense, c.pos)) : 'none';
@@ -361,6 +393,7 @@ export class GameRenderer {
     });
 
     this.ash.update(f.prints?.list ?? [], f.prints?.version ?? 0);
+    this.coffinLids(view.chars.values(), f.time);
 
     // Camera + render.
     const self = view.self;
