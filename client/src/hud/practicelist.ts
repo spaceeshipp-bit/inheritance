@@ -32,3 +32,16 @@ export class PracticeList {
     this.root.classList.toggle('complete', all || !next);
   }
 }
+
+const KEY = (role: PracticeRole) => `inheritance.practised.${role}`;
+
+/** Remember (in this browser) that a practice round in `role` was finished. */
+export function markPractised(role: PracticeRole): void {
+  try { localStorage.setItem(KEY(role), '1'); } catch { /* private mode */ }
+}
+
+/** Has this browser finished a practice round in `role`? */
+export function hasPractised(role: PracticeRole): boolean {
+  try { return localStorage.getItem(KEY(role)) === '1'; } catch { return false; }
+}
+

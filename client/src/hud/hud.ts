@@ -36,7 +36,7 @@ import { Toasts } from './toasts.js';
 import { TopBar } from './topbar.js';
 import { panelRects, type HudFrame, type Rect } from './types.js';
 import { Wheel, type WheelKind } from './wheel.js';
-import { PracticeList } from './practicelist.js';
+import { PracticeList, markPractised } from './practicelist.js';
 
 type Overlay = { root: HTMLElement; frame(s: GameState, now: number, t: number): void };
 
@@ -267,6 +267,7 @@ export class Hud {
         break;
       case 'practice':
         this.practice?.update(ev.done, ev.all);
+        if (ev.all && s.match?.options.practice) markPractised(s.match.options.practice);
         break;
       case 'gesture': {
         // Aimed at you, or (Grandma) something she clearly saw a cousin do.

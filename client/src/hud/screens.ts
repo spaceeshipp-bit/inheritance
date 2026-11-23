@@ -11,6 +11,7 @@ import type { NetStatus } from '../net.js';
 import type { LobbyMsg } from '../state.js';
 import { el, fmtTime, setStyle, setText, show } from '../util.js';
 import { ICONS } from './icons.js';
+import { hasPractised } from './practicelist.js';
 import { botGlyph, cleanName, isBotName } from './ident.js';
 
 export interface ScreenHandlers {
@@ -129,6 +130,7 @@ export class Screens {
   private optBots = el('input');
   private optPush = el('input');
   private optRotate = el('input');
+  private willingHint = el('div', 'hint-small', '');
   /** The map picker: one card per map, then "Surprise me". */
   private mapCards = el('div', 'map-cards');
   private mapButtons = new Map<string, HTMLButtonElement>();
@@ -255,7 +257,7 @@ export class Screens {
     left.append(el('div', 'section-title', 'The family'), this.players);
     const right = el('div', 'lobby-right');
     right.appendChild(this.check(this.willing, 'Willing to be Grandma', (v) => this.h.willing(v)));
-    right.appendChild(el('div', 'hint-small', 'Grandma is picked at random from the willing. Nobody is ever forced.'));
+    right.appendChild(this.willingHint);
     this.hostBox.append(
       el('div', 'section-title', 'Host options'),
       this.check(this.optFull, 'Full match (Tea, Dinner, The Storm)', (v) => this.h.options({ fullMatch: v })),
@@ -344,6 +346,9 @@ export class Screens {
   setSelf(id: string): void { this.selfId = id; }
 
   updateLobby(m: LobbyMsg): void {
+    setText(this.willingHint, hasPractised('grandma')
+      ? 'Grandma is picked at random from the willing. Nobody is ever forced.'
+      : 'Grandma is picked at random from the willing. Never been Nana? The Grandma practice (title screen) takes three minutes.');
     setText(this.roomCode, m.room);
     this.players.innerHTML = '';
     for (const p of m.players) {
