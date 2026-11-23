@@ -15,7 +15,9 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { OutlineEffect } from 'three/examples/jsm/effects/OutlineEffect.js';
 import { COUSINS } from '../../../shared/constants.js';
 import type { EmoteId } from '../../../shared/emotes.js';
-import { mapById, type MapId } from '../../../shared/map.js';
+import { insideMap, mapById, type MapId } from '../../../shared/map.js';
+import { lineOfSight } from '../../../shared/sight.js';
+import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
 import type { CharSnap, Vec3 } from '../../../shared/types.js';
 import { buildMap } from '../render/map.js';
 import { CharacterModel } from '../render/characters.js';
@@ -53,7 +55,7 @@ const S = def.spawns;
 const g0 = S.grandma;
 const off = (dx: number, dz: number): Vec3 => ({ x: g0.x + dx, y: 0, z: g0.z + dz });
 // A side-on tableau: Nana blows a kiss to the sweet one; around her, the rest of the family.
-const POSES: Pose[] = shot === 'dinner' ? [] : [
+const MANOR_POSES: Pose[] = [
   { id: 'nana', role: 'grandma', at: off(0.8, -1.0), face: off(2.2, -2.3), emote: 'blow-kiss', t: 1.05 },
   { id: 'agatha', role: 'cousin', at: off(2.2, -2.3), face: off(0.8, -1.0), emote: 'heart-hands', t: 1.1 },
   { id: 'barnaby', role: 'cousin', at: off(-0.4, -2.3), face: off(0.8, -1.0), emote: 'the-bird', t: 1.0 },
@@ -61,6 +63,19 @@ const POSES: Pose[] = shot === 'dinner' ? [] : [
   { id: 'dudley', role: 'cousin', at: off(-0.8, -0.5), face: off(0.8, -1.0), emote: 'coffin-measure', t: 0.9 },
   { id: 'edna', role: 'cousin', at: off(4.0, -4.9), face: off(0.8, -1.0), emote: 'grave-stomp', t: 0.35 },
 ];
+// Any other map: Nana at her spawn facing her family on their spawns, each mid-gesture.
+const centroid = (ps: Vec3[]): Vec3 => ({ x: ps.reduce((a, p) => a + p.x, 0) / ps.length, y: 0, z: ps.reduce((a, p) => a + p.z, 0) / ps.length });
+const fam = S.cousins.slice(0, 6);
+const famC = centroid(fam);
+const EMOS: EmoteId[] = ['heart-hands', 'the-bird', 'moon', 'coffin-measure', 'grave-stomp', 'raspberry'];
+const GENERIC_POSES: Pose[] = [
+  { id: 'nana', role: 'grandma', at: g0, face: famC, emote: 'cane-shake', t: 0.8 },
+  ...fam.map((p, i): Pose => ({
+    id: `c${i}`, role: 'cousin', at: p,
+    face: EMOS[i] === 'moon' ? { x: 2 * p.x - g0.x, y: 0, z: 2 * p.z - g0.z } : g0, emote: EMOS[i], t: EMOS[i] === 'grave-stomp' ? 0.35 : 1.0,
+  })),
+];
+const POSES: Pose[] = shot === 'dinner' ? [] : mapId === 'manor' ? MANOR_POSES : GENERIC_POSES;
 const models: CharacterModel[] = [];
 POSES.forEach((p, i) => {
   const cz = COUSINS[i % COUSINS.length];
@@ -101,11 +116,43 @@ if (shot === 'hall') {
   const c = { x: (t.minX + t.maxX) / 2, z: (t.minZ + t.maxZ) / 2 };
   camera.position.set(c.x + 2.8, 2.4, c.z + 2.8);
   camera.lookAt(c.x, 0.8, c.z);
-} else {
+} else if (shot === 'overview') {
+  // A cut-away from above, as tests/e2e/mapshots.ts takes it.
+  const b = def.bounds;
+  const cx = (b.min.x + b.max.x) / 2, cz = (b.min.z + b.max.z) / 2;
+  const w = b.max.x - b.min.x, d = b.max.z - b.min.z;
+  camera.position.set(cx + w * 0.1, Math.max(w, d) * 0.85, b.max.z + d * 0.45);
+  camera.lookAt(cx, 0, cz);
+  camera.fov = 50;
+} else if (mapId === 'manor') {
   // From the east side of the room, looking across at the family.
   camera.position.set(g0.x + 6.2, 2.2, g0.z + 0.2);
   camera.lookAt(g0.x + 1.2, 0.9, g0.z - 1.4);
   camera.fov = 55;
+} else {
+  // Side-on to the line between Nana and her family, from whichever side is inside the house with a clear view.
+  const mid = { x: (g0.x + famC.x) / 2, y: 0, z: (g0.z + famC.z) / 2 };
+  const dx = famC.x - g0.x, dz = famC.z - g0.z, L = Math.hypot(dx, dz) || 1;
+  const side = { x: -dz / L, z: dx / L };
+  // Score each candidate by how many of the family it can see (chest height, nothing in the way), then by distance near 5 m.
+  let best: Vec3 | null = null, bestScore = -Infinity;
+  for (const dist of [7, 6, 5, 4, 3.2]) {
+    for (const s of [1, -1]) {
+      for (const back of [0, 1.5, -1.5, 3]) {
+        for (const yy of [1.7, 2.3]) {
+          const p = { x: mid.x + side.x * s * dist + (dx / L) * back, y: yy, z: mid.z + side.z * s * dist + (dz / L) * back };
+          if (!insideMap(p, def, -0.4)) continue;
+          const seen = POSES.filter((q) => lineOfSight(p, { x: q.at.x, y: 1.2, z: q.at.z })).length;
+          const score = seen * 10 - Math.abs(dist - 5) - (yy > 2 ? 0.5 : 0);
+          if (score > bestScore) { bestScore = score; best = p; }
+        }
+      }
+    }
+  }
+  const p = best ?? { x: mid.x + side.x * 3, y: 2.0, z: mid.z + side.z * 3 };
+  camera.position.set(p.x, p.y, p.z);
+  camera.lookAt(mid.x, 0.95, mid.z);
+  camera.fov = 58;
 }
 camera.updateProjectionMatrix();
 
@@ -237,8 +284,36 @@ if (look === 'storybook') {
 }
 
 let frames = 0;
-const w = window as unknown as { __lookdev: { ready: boolean; look: string } };
-w.__lookdev = { ready: false, look };
+const w = window as unknown as { __lookdev: { ready: boolean; look: string; exportGlb: () => Promise<string>; camera: () => unknown } };
+w.__lookdev = { ready: false, look, exportGlb, camera: cameraInfo };
+
+/** The camera as the offline renderer wants it: where, looking at what, vertical field of view. */
+function cameraInfo(): { pos: number[]; look: number[]; fov: number; aspect: number } {
+  const dir = new THREE.Vector3();
+  camera.getWorldDirection(dir);
+  const look = camera.position.clone().add(dir.multiplyScalar(10));
+  return { pos: camera.position.toArray(), look: look.toArray(), fov: camera.fov, aspect: camera.aspect };
+}
+
+/**
+ * The scene as a binary glTF (base64), for rendering offline in Blender's
+ * Cycles (tests/e2e/renders/): sprites (floating hearts) are left out.
+ */
+async function exportGlb(): Promise<string> {
+  const sprites: THREE.Object3D[] = [];
+  scene.traverse((o) => { if (o instanceof THREE.Sprite || (o as THREE.Object3D).type === 'Sprite') sprites.push(o); });
+  const parents = sprites.map((o) => o.parent);
+  for (const o of sprites) o.removeFromParent();
+  try {
+    const glb = await new GLTFExporter().parseAsync(scene, { binary: true, onlyVisible: true, maxTextureSize: 2048 });
+    const bytes = new Uint8Array(glb as ArrayBuffer);
+    let bin = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    return btoa(bin);
+  } finally {
+    sprites.forEach((o, i) => parents[i]?.add(o));
+  }
+}
 // The scene is still: a few frames (for the post passes' history), then stop drawing.
 function loop(): void {
   draw();
