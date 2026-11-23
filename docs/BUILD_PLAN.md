@@ -4,11 +4,12 @@ Read this first, then `docs/ARCHITECTURE.md` (the build spec) and `docs/GDD.md` 
 This file says where the build stands, what is left, in what order, and the bar each
 piece has to clear. Update the "Status" section as you go; it is the project's memory.
 
-## Resume here (save point `save-2026-11-23`)
+## Resume here (save point, 2026-11-23)
 
 Paused on 2026-11-23 at the owner's request; the build continues the following week.
 
-- Everything is on `main` and tagged `save-2026-11-23`. CI is green on it.
+- Everything is on `main`; the save point is the commit "Save point: where the build stands, and
+  where to resume" (2026-11-23). CI was green on the work it records.
 - Unit tests: 390 pass in 45 files. Full-match e2e: 17/17. Two-browser match e2e: 70-71 of
   72-79, because its scripted walks get stuck in the redesigned hall (not the game, as far as
   the evidence goes). Fixing that is item 0 of "Still to do" below.
