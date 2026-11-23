@@ -24,8 +24,11 @@ export interface MapView {
   background: string;
   /** Where the Storm's lightning comes from (outside the windows). */
   lightningFrom: Vec3;
-  /** Optional animation (waves, flickering bulbs, a swinging lamp), every frame. */
-  tick?: (t: number, dt: number) => void;
+  /**
+   * Optional animation (waves, flickering bulbs, a swinging lamp), every frame,
+   * with the Storm's state: `dark` while the power is out, `flash` during lightning.
+   */
+  tick?: (t: number, dt: number, sky: { dark: boolean; flash: boolean }) => void;
 }
 
 /** Turns a map's definition into its look. One per map, registered in render/map.ts. */

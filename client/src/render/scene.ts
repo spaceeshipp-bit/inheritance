@@ -318,7 +318,7 @@ export class GameRenderer {
     // In the dark the tall windows still read as pale silhouettes.
     this.map.windows.emissiveIntensity = stormy ? 0.3 + 2.7 * fl : 0.9;
     this.candle.intensity = stormy ? (isGrandma ? 7 : 6) * (1 - fl) : 0;
-    this.map.tick?.(f.time, dt);
+    this.map.tick?.(f.time, dt, { dark: f.dark && !f.flash, flash: f.flash });
 
     // Characters.
     for (const [id, m] of this.models) if (!view.chars.has(id)) { m.dispose(); this.models.delete(id); }
@@ -405,7 +405,7 @@ export class GameRenderer {
     for (const l of this.lights) l.light.intensity = l.base * level;
     this.lightning.intensity = 4.5 * fl;
     this.map.windows.emissiveIntensity = stormy ? 0.3 + 2.7 * fl : 0.9;
-    this.map.tick?.(time, dt);
+    this.map.tick?.(time, dt, { dark: stormy && !lit, flash: !!n?.flash });
 
     this.rig.hideViewModel();
     if (this.targetRing) this.targetRing.visible = false;
@@ -496,7 +496,7 @@ export class GameRenderer {
     const { center: c, rx, rz, look } = this.map.idle;
     cam.position.set(c.x + Math.sin(a) * rx, c.y + Math.sin(t * 0.13) * 0.4, c.z + Math.cos(a) * rz);
     cam.lookAt(look.x, look.y, look.z);
-    this.map.tick?.(t, 1 / 60);
+    this.map.tick?.(t, 1 / 60, { dark: false, flash: false });
     this.renderer.setRenderTarget(null);
     this.renderer.render(this.scene, cam);
   }
