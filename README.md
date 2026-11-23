@@ -61,8 +61,9 @@ Press **H** in game for the full list. Gamepads follow the design doc's controll
 | Run / sneak / jump | Shift / C / Space | — |
 | Main actions | LMB grab, RMB throw (hold to charge), F shove, E interact, G hold to plant a stolen item | E Bless, Q Tut (aimed at who you look at; scroll to lock a name), LMB cane, RMB hearing aid, F spectacles, R summon, C pin, Tab the parchment (the full will) |
 | Talk | Voice (open mic; push-to-talk in settings, default B), Left Alt whisper, Q quick-chat wheel, T tattle wheel, Enter typed chat | Voice, V quick-chat wheel, Enter typed chat |
+| Gestures and dances | Z gesture wheel, X dance wheel (hold, pick, release; or the number keys) | Z gesture wheel, X dance wheel |
 
-If Grandma's connection drops, cousins see a prompt: press **J** to take over as Grandma.
+If Grandma's connection drops, cousins see a prompt: press **J** (View on a pad) to take over as Grandma.
 
 ## Testing
 
@@ -85,14 +86,19 @@ To feel the game on a bad connection, add `?netsim=150,20,2` to the page address
 
 ## What is in, and what is not yet
 
-In: the hall and kitchen, Afternoon Tea (and Tea → Dinner → Storm with "full match"), Grandma's
-senses (sight bands, hearing bands, hearing aid, spectacles, the Storm's candle and lightning), the live
-will with its budget and caps, heirlooms, signature items, stealing and planting, shoves and ragdolls,
-wishes, tattling, quick chat, the reading of the will, the family vote, moments, bots for either role,
-proximity voice with Grandma's hearing, rejoining, Grandma's lie-down and take-over, settings.
+In: four maps chosen in the lobby (Harrowgate Manor, Sunny Pines Care Home, Pettigrew & Sons Funeral
+Parlour, and The Golden Years, a cruise ship you can be shoved off), Afternoon Tea (and Tea → Dinner →
+Storm with "full match"), Grandma's senses (sight bands, hearing bands, hearing aid, spectacles, the
+Storm's candle and lightning), the live will with its budget and caps, heirlooms, signature items,
+stealing and planting, shoves and ragdolls, wishes, tattling, quick chat, gestures and dances (sweet ones
+flatter, rude ones are noted if she catches you), Family Dinner round each map's table, the reading of
+the will with What Nana Saw (replays of her view beside the truth) and her reasons in the margin, a
+curtain call, the family vote, moments, bots for either role, proximity voice with Grandma's hearing,
+rejoining, Grandma's lie-down and take-over, settings.
 
-Not yet: the "What Nana Saw" replay, onboarding tutorials, Steam features (see docs/STEAM.md), public
-quick-play, block/report/vote-kick, final art and animation (stand-ins until the owner approves a style).
+Not yet: practice rounds against bots, Steam features (see docs/STEAM.md), public quick-play,
+block/report/vote-kick, final art and animation (stand-ins until the owner approves a style; the
+dev-only page `/lookdev.html` renders candidate art directions on the real scene).
 
 ## Known deviations from the design
 

@@ -200,15 +200,22 @@ function seaTex(): THREE.CanvasTexture {
 /** White foam streaks running along u (for the wake and the bow wave). */
 function foamTex(): THREE.CanvasTexture {
   return canvasTex(256, 128, (g) => {
-    g.fillStyle = '#9fb8c8';
+    g.fillStyle = '#b8ccd8';
     g.fillRect(0, 0, 256, 128);
-    for (let i = 0; i < 60; i++) {
-      const y = (i * 29) % 128, x = (i * 83) % 256, w = 30 + (i % 6) * 14;
-      g.strokeStyle = `rgba(255,255,255,${0.5 + (i % 4) * 0.12})`;
-      g.lineWidth = 2 + (i % 4);
-      g.beginPath(); g.moveTo(x, y); g.lineTo(x + w, y + ((i % 3) - 1) * 2); g.stroke();
-      g.beginPath(); g.moveTo(x - 256, y); g.lineTo(x - 256 + w, y + ((i % 3) - 1) * 2); g.stroke();
+    g.filter = 'blur(1.5px)';
+    g.lineCap = 'round';
+    for (let i = 0; i < 90; i++) {
+      const y = (i * 29) % 128, x = (i * 83) % 256, w = 24 + (i % 7) * 12;
+      g.strokeStyle = `rgba(255,255,255,${0.35 + (i % 4) * 0.12})`;
+      g.lineWidth = 1.5 + (i % 3) * 1.5;
+      for (const dx of [0, -256]) {
+        g.beginPath();
+        g.moveTo(x + dx, y);
+        g.quadraticCurveTo(x + dx + w / 2, y + ((i % 3) - 1) * 3, x + dx + w, y + ((i % 5) - 2));
+        g.stroke();
+      }
     }
+    g.filter = 'none';
   });
 }
 
