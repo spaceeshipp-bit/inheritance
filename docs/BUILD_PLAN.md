@@ -4,7 +4,41 @@ Read this first, then `docs/ARCHITECTURE.md` (the build spec) and `docs/GDD.md` 
 This file says where the build stands, what is left, in what order, and the bar each
 piece has to clear. Update the "Status" section as you go; it is the project's memory.
 
-## Status (2026-11-11, evening)
+## Status (2026-11-23)
+
+Everything below was run in this container on this date. The browser suites must run on an
+otherwise idle machine: software WebGL makes them sensitive to load.
+
+| Check | Command | Result |
+| --- | --- | --- |
+| Typecheck | `npm run typecheck` | passes |
+| Unit and rule tests | `npm test` | 346 pass in 36 files (rules, perception and secrecy, will, inputs and prediction, netcode limits, bots, HUD logic, metrics, replays, reasons, Dinner, maps, emotes, lightmaps, the review fixes, a real server) |
+| Build | `npm run build` | passes |
+| E2E | `npm run e2e` | see "Last e2e run" below (re-run pending on an idle machine) |
+| CI | GitHub Actions | typecheck, build and unit tests on every push; e2e on pull requests and on demand |
+
+Done since 2026-11-11 (each with tests; see `git log`):
+
+- **Four maps**, picked by the host in the lobby (or "Surprise me"): Harrowgate Manor redesigned as a
+  ten-room mansion (library stacks, drawing room and conservatory, a dining room laid for the wake,
+  study, billiard room, scullery, portrait gallery), Sunny Pines Care Home, Pettigrew & Sons Funeral
+  Parlour, and The Golden Years (a cruise ship: a shove through the Lifeboat 4 gate sends a cousin
+  overboard). Maps live in `shared/maps/*` (MapDef) and `client/src/render/maps/*`; every map must pass
+  `tests/unit/maps.test.ts` (spawns, heirlooms, the dinner table, bot paths, a bots-only full match).
+- **Gestures and dances** (Z and X): eight gestures and six dances for cousins, nine for Nana, each a
+  spring-driven pose with props and a synthesised sound. Sweet ones she sees count as flattery; rude
+  ones are logged; unseen rudeness aimed at her is "Behind Her Back" (replayed at the reading), seen up
+  close is "The Cheek of It". Bots use them. `shared/emotes.ts`.
+- **The curtain call:** after the reading the family lines up and reacts (the heir shimmies, the
+  disinherited weep, Nana dances Still Alive!).
+- **Two reviews** (server/rules, client/UX): 32 of 33 findings fixed with tests, the take-over
+  reworked; the 33rd (decodable mishearings) is accepted and documented in SECRECY.md.
+- **Graphics:** a look-dev page (`/lookdev.html`) renders the real scene in candidate styles; scenes
+  export to Blender for path-traced renders (`tools/render/`); a baked-lighting pipeline lays out
+  lightmap atlases in the game and bakes them in Blender (`client/src/render/lightmap.ts`,
+  `tools/render/bake_lightmap.py`). Final art direction still waits for the owner's approval.
+
+### Earlier (2026-11-11)
 
 Everything below was run in this container on this date. The browser suites were run on an
 otherwise idle machine: software WebGL makes them sensitive to load, and an earlier run alongside
@@ -64,13 +98,14 @@ Done since the handoff (each with tests; see `git log` and `docs/reviews/2026-11
 
 1. Settings left: mic and output device pickers, remapping beyond push-to-talk; a gamepad test
    (Playwright can inject one) and controller glyphs.
-2. The reading as theatre (the third starred creative item): the cousins' characters react
-   (collapse at 0%, a smug dance at the top).
+2. ~~The reading as theatre~~: done as the curtain call (2026-11-23).
 3. The GDD's practice rounds (4-minute cousin practice, 3-minute Grandma tutorial) against bots;
    today there are role goals and one-at-a-time coach tips.
 4. S21: a TURN relay for voice so players' IP addresses stay hidden (docs/STEAM.md has the plan).
-5. The art track (below): animation code foundation and CC0 stand-ins; final style only with the
-   owner's approval.
+5. The art track: the owner chooses a direction from the look book (path-traced renders and the
+   four looks on the real scene); then bake every map's lightmap (`tools/render/bake_lightmap.py`)
+   and replace the stand-in characters and props with modelled ones (CC0 sources and licences are
+   in the look book), keeping the spring-driven ragdolls and gestures.
 
 ## Decisions from the owner
 
