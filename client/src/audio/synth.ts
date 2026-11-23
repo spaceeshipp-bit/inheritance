@@ -12,6 +12,8 @@ export type SfxKind =
   | 'yowl'
   /** Knuckles on a coffin lid, from the inside; the lid slamming. */
   | 'knock' | 'slam'
+  /** The tannoy's two-note chime before an announcement. */
+  | 'dingdong'
   | 'whoosh' | EmoteSound;
 
 export interface SynthCtx { ctx: AudioContext; noise: AudioBuffer; out: AudioNode; t: number; rand: () => number }
@@ -194,6 +196,16 @@ export function synth(kind: SfxKind, s: SynthCtx): number {
       const o = tone(s, 'sine', 95, 45, t + 0.03, 0.35);
       o.connect(env(ctx, t + 0.03, 0.004, 0.9, 0.3)).connect(out);
       return 0.45;
+    }
+    case 'dingdong': {
+      // Ding (E5), dong (C5): bell-ish sines with a soft overtone.
+      [[0, 659], [0.45, 523]].forEach(([dt, f]) => {
+        for (const [k, a] of [[1, 0.45], [2, 0.12], [3, 0.05]]) {
+          const o = tone(s, 'sine', f * k, f * k, t + dt, 1.4);
+          o.connect(env(ctx, t + dt, 0.01, a, 1.2)).connect(out);
+        }
+      });
+      return 1.9;
     }
     case 'knock': {
       // Three muffled raps on wood.

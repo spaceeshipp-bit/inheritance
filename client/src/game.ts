@@ -300,6 +300,8 @@ export class Game {
       case 'collapse': sfx.play('thud', ev.pos, 1.4); break;
       case 'yowl': sfx.play('yowl', ev.pos); break;
       case 'buried': sfx.play('slam', ev.pos); break;
+      // The tannoy is heard all over the building: played as if close by.
+      case 'dingdong': sfx.play('dingdong'); break;
       case 'knock': sfx.play('knock', ev.pos); this.d.renderer.knock(ev.pos, localSec()); break;
       case 'risen': sfx.play('gasp', ev.pos, 1.2); break;
       case 'moment': sfx.play('pop', undefined, 0.6); break;

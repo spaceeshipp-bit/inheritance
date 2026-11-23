@@ -107,7 +107,7 @@ export interface WishInfo {
 }
 
 /** A tagged moment (for the Reading of the Will highlight list and achievements). */
-export type MomentKind = 'love-you-nana' | 'framed' | 'caught-red-handed' | 'big-cut' | 'favourite-broken' | 'behind-her-back' | 'cheek' | 'overboard' | 'thunder' | 'grandpa' | 'graveside' | 'mourner' | 'catapult' | 'buried' | 'tumble';
+export type MomentKind = 'love-you-nana' | 'framed' | 'caught-red-handed' | 'big-cut' | 'favourite-broken' | 'behind-her-back' | 'cheek' | 'overboard' | 'thunder' | 'grandpa' | 'graveside' | 'mourner' | 'catapult' | 'buried' | 'tumble' | 'tannoy';
 export interface Moment {
   kind: MomentKind;
   t: number;
@@ -148,6 +148,8 @@ export type LogEvent =
   | { t: number; kind: 'rude'; by: string; emote: EmoteId; at: string | null; atNana: boolean; seen: boolean; sharp?: boolean }
   /** Someone went over the side (a ship's drop zone); `by`: whoever knocked them flying just before, if anyone. */
   | { t: number; kind: 'overboard'; by: string | null; victim: string }
+  /** An announcement over the tannoy; `seen`: Grandma could see who made it. */
+  | { t: number; kind: 'tannoy'; by: string; text: string; seen: boolean }
   /** Knocked flying by `by` and ended up `height` m lower: down the `stairs`, or over the banister. */
   | { t: number; kind: 'tumble'; by: string; victim: string; height: number; stairs: boolean }
   /** Shoved into an open coffin and shut in (`by`: whoever knocked them flying). */

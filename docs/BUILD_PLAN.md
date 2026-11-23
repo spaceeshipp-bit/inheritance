@@ -276,6 +276,9 @@ The best three are marked ★ and are next once the core work above is done.
   heirloom she flies through off its pedestal (the thrower's fault: The Cat-apult), then bolts;
   each heirloom dies in character (the clock chimes, the teapot whistles, the portrait tears,
   the urn goes poof, the bust cracks) for anyone who knows which one it was.
+- **The tannoy** (new, 2026-11-23): at the care home's reception desk, E takes the microphone and
+  your next line goes out to the whole building; Nana hears every word but knows who only if she
+  can see them. Compliments count from anywhere; accusations become anonymous framing (tannoy.test.ts).
 - **Mind the Stairs** (new, 2026-11-23): a cousin knocked flying who ends up 2.2 m lower names
   whoever did it: all the way down the stairs, or over the banister (tumble.test.ts).
 - **Early Burial** (new, 2026-11-23): the funeral parlour's open coffins (the Deluxe on special,

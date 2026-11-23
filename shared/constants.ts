@@ -211,6 +211,13 @@ export const STORM = {
 } as const;
 
 /**
+ * The tannoy (maps with one): within `range` m of it, E takes the microphone
+ * for `window` s; your next line goes out to the whole building. Then it is
+ * yours again after `cooldown` s.
+ */
+export const TANNOY = { range: 1.6, window: 10, cooldown: 25 } as const;
+
+/**
  * Early Burial (maps with open coffins): a cousin knocked flying onto one is
  * shut in for `buried` s, then climbs out beside it. They may knock (E) every
  * `knockGap` s; anyone within `knockRange` m hears it.

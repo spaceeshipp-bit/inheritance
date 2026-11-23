@@ -10,7 +10,7 @@
 import {
   COUSIN, COUSINS, CRIME_SCENE, DISCONNECT, FULL_VISITS, GRANDMA, HEARING_AID, HEIRLOOM, INTERMISSION_TIME, MISHEARD,
   PREFERENCE_CARDS, QUICKCHAT, READING_TIME, RESULTS_TIME, ROLE_REVEAL_TIME, SENSES, SLICE_VISITS, SNAPSHOT_HZ,
-  SPECTACLES, STORM, TICK_HZ, VISITS, VOICE, VOTE_TIME, WILL, WISH, INPUT, PROTOCOL_VERSION, DINNER, ASH, PLAY_DEAD, COFFIN,
+  SPECTACLES, STORM, TICK_HZ, VISITS, VOICE, VOTE_TIME, WILL, WISH, INPUT, PROTOCOL_VERSION, DINNER, ASH, PLAY_DEAD, COFFIN, TANNOY,
 } from '../shared/constants.js';
 import { HEIRLOOM_VARIANTS, MAP_IDS, groundHeight, mapById, type MapDef, type MapId } from '../shared/map.js';
 import { createBody, forwardOf, integrateBody, wrapAngle, yawToward, type BodyShape, type MoveBody } from '../shared/movement.js';
@@ -141,6 +141,9 @@ export interface Char extends PhysChar {
   tumbleOf: number;
   tumbleY: number;
   tumbleStairs: boolean;
+  /** Holding the tannoy microphone until this time; may take it again from `micAgain`. */
+  micUntil: number;
+  micAgain: number;
 }
 
 /** A footprint in Grandpa's ashes, with who left it (server only) and whether Grandma has seen it yet. */
@@ -509,6 +512,7 @@ export class Match {
       deadFrom: -Infinity, deadUntil: -Infinity, deadVisit: -1,
       buriedIn: null, buriedUntil: -Infinity, knockAt: -Infinity,
       tumbleOf: -Infinity, tumbleY: 0, tumbleStairs: false,
+      micUntil: -Infinity, micAgain: -Infinity,
     };
   }
 
@@ -934,8 +938,11 @@ export class Match {
     const lines: readonly string[] = c.role === 'grandma' ? QUICKCHAT.grandma : QUICKCHAT.cousin;
     const text = lines[line];
     if (typeof text !== 'string') return;
-    this.bubble(c, text, true, line);
-    if (c.role === 'cousin' && COMPLIMENT_LINES.includes(line)) this.maybeCompliment(c, text);
+    const announced = this.bubble(c, text, true, line);
+    if (c.role !== 'cousin' || !COMPLIMENT_LINES.includes(line)) return;
+    // Over the tannoy she hears it loud and clear from anywhere (thunder permitting).
+    if (announced) { if (!this.thunder && this.phase === 'visit') this.log.add({ t: this.time, kind: 'compliment', by: c.id, line: text }); }
+    else this.maybeCompliment(c, text);
   }
 
   handleChat(id: string, text: string): void {
@@ -1292,6 +1299,8 @@ export class Match {
       c.deadUntil += h;
       c.buriedUntil += h;
       c.knockAt += h;
+      c.micUntil += h;
+      c.micAgain += h;
       c.yawHold += h;
       c.shoveBufferUntil += h;
       c.emoteCd += h;
@@ -1664,7 +1673,24 @@ export class Match {
       this.emit(c.id, { e: 'toast', text: `You pinched ${victim.name}'s ${this.nameOf(it.id).toLowerCase()}! Hold G to plant it somewhere damning.` });
       return;
     }
+    // 6. The tannoy, if this house has one and you are at it.
+    if (this.takeMic(c)) return;
     this.hint(c, this.interactHint(c));
+  }
+
+  /** Take the tannoy microphone (TANNOY.window s to say your piece). */
+  private takeMic(c: Char): boolean {
+    const t = this.mapDef.tannoy;
+    if (!t || c.role !== 'cousin' || flatDist(c.body.pos, t.at) > TANNOY.range || Math.abs(c.body.pos.y - t.at.y) > 1.2) return false;
+    if (this.time < c.micAgain) {
+      this.hint(c, `The tannoy is warming up again (${Math.ceil(c.micAgain - this.time)} s).`);
+      return true;
+    }
+    c.micUntil = this.time + TANNOY.window;
+    c.micAgain = this.time + TANNOY.cooldown;
+    this.emitAll({ e: 'dingdong', pos: v3(t.at) });
+    this.emit(c.id, { e: 'toast', text: `Ding-dong! You have ${t.name}: quick chat or type, and the whole building hears it (Nana too).` });
+    return true;
   }
 
   /** Why an Interact press did nothing (shown to that player only, at most once a second). */
@@ -1858,6 +1884,25 @@ export class Match {
 
   // ───────────── text ─────────────
 
+  /**
+   * An announcement over the tannoy: every cousin reads it, wherever they are;
+   * Grandma hears every word clearly (thunder permitting) but knows who said
+   * it only if she can see them.
+   */
+  private announce(c: Char, text: string): void {
+    c.micUntil = -Infinity;
+    const at = this.mapDef.tannoy?.at ?? c.body.pos;
+    const seen = this.canSeeNow(c.body.pos);
+    const heard = !this.thunder && !!this.grandma?.connected;
+    this.log.add({ t: this.time, kind: 'tannoy', by: c.id, text, seen });
+    if (this.phase === 'visit') this.replay.said({ t: r2(this.time), from: c.id, said: text, heard: heard ? text : null });
+    this.emitAll((to) => {
+      if (to !== this.grandmaId) return { e: 'bubble', from: c.id, text, quick: false, whisper: false, tannoy: true };
+      if (!heard) return null;
+      return { e: 'bubble', from: seen ? c.id : '', text, quick: false, whisper: false, tannoy: true, ...(seen ? {} : { pos: v3(at) }) };
+    });
+  }
+
   /** A compliment counts only if Grandma hears it clearly (within 2 m, 6 m with the hearing aid; whispers 1.5 m). */
   private maybeCompliment(c: Char, line: string): void {
     const g = this.grandma;
@@ -1872,7 +1917,9 @@ export class Match {
    * out of her hearing, quick-chat lines misheard and typed lines scrambled
    * when muffled, and the speaker's identity only if she can see them.
    */
-  private bubble(c: Char, text: string, quick: boolean, line = -1): void {
+  /** Returns true when it went out over the tannoy instead. */
+  private bubble(c: Char, text: string, quick: boolean, line = -1): boolean {
+    if (c.role === 'cousin' && this.time < c.micUntil && this.phase === 'visit' && !this.pause) { this.announce(c, text); return true; }
     const whisper = c.whispering;
     const g = this.grandma;
     const range = whisper ? VOICE.whisperRange : VOICE.cousinRange;
@@ -1898,6 +1945,7 @@ export class Match {
       if (!o || dist(o.body.pos, c.body.pos) > range) return null;
       return plain;
     });
+    return false;
   }
 
   // ───────────── props ─────────────

@@ -98,6 +98,12 @@ export interface MapDef {
    * for COFFIN.buried seconds (Early Burial). `name` is how the moment says it.
    */
   coffins?: { label: string; name: string }[];
+  /**
+   * A public-address microphone (the care home's reception tannoy): a cousin
+   * within TANNOY.range presses E and their next line is heard all over the
+   * building, Nana included, clearly, but not who said it unless she can see them.
+   */
+  tannoy?: { at: Vec3; name: string };
 }
 
 export const WALL = 0.3;

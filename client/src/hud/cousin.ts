@@ -3,7 +3,8 @@
 // see you sabotaging), a marker on the cousin your shove would hit, shove
 // cooldown, throw charge, plant ring, and an arrow to Nana at the screen edge
 // when she is off screen.
-import { COUSIN, VOICE, WISH } from '../../../shared/constants.js';
+import { COUSIN, TANNOY, VOICE, WISH } from '../../../shared/constants.js';
+import { mapById } from '../../../shared/map.js';
 import { dist, flatDist, forward, hearingBand, visionBand } from '../../../shared/senses.js';
 import type { CharSnap, CousinInfo, PropSnap, Vec3, WishInfo } from '../../../shared/types.js';
 import { el, setStyle, setText, show } from '../util.js';
@@ -38,6 +39,8 @@ export interface PromptCtx {
   name: (id: string) => string;
   itemName: (owner: string) => string;
   propLabel: (p: PropSnap) => string;
+  /** This house's tannoy, if it has one. */
+  tannoy?: { at: Vec3 } | null;
 }
 
 const KEYS = {
@@ -143,6 +146,9 @@ export function rankPrompts(c: PromptCtx): Prompt[] {
     if (grab) {
       const wanted = wants(c.wishKind, grab);
       out.push({ key: k.grab, text: `Grab ${c.propLabel(grab)}${wanted ? ' (Nana wants it)' : ''}`, sabotage: false, score: wanted ? 88 : 55 });
+    }
+    if (c.tannoy && flatDist(me.pos, c.tannoy.at) <= TANNOY.range && Math.abs(me.pos.y - c.tannoy.at.y) < 1.2) {
+      out.push({ key: k.interact, text: 'Make an announcement (the whole building hears)', sabotage: false, score: 58 });
     }
   }
   const tgt = shoveTarget(me, others, c.pushGrandma);
@@ -295,6 +301,7 @@ export class CousinHud {
       summonLeft: summon && flatDist(me.pos, summon.pos) > 4 ? summon.endsAt - f.now : null,
       pushGrandma: !!s.match?.options.pushGrandma, pad: f.device === 'pad',
       name: (id) => cleanName(s.name(id)), itemName: (owner) => s.cousin(owner)?.itemName ?? 'item', propLabel: (p) => propName(p, s),
+      tannoy: mapById(s.match?.options.map).tannoy ?? null,
     }) : [];
     if (me && !prompts.length && !f.pointerLocked && f.device === 'kbm') prompts.push({ key: '', text: 'Click to look around', sabotage: false, score: 0 });
     this.renderPrompts(prompts, eye === 'seen');

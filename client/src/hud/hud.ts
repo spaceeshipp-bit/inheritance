@@ -236,6 +236,12 @@ export class Hud {
     const nm = (id: string) => nameOf(s, id);
     switch (ev.e) {
       case 'bubble':
+        if (ev.tannoy) {
+          // Over the tannoy: an announcement everyone gets as a banner (Grandma: whoever it was, if she saw them).
+          const who = ev.from ? nm(ev.from) : null;
+          t.push(`TANNOY${who ? ` (${who})` : ''}: “${cleanText(ev.text)}”`, 'moment', 5);
+          break;
+        }
         // Grandma: an unseen speaker comes as from '' with a rough `pos` (the bubble floats
         // there). With neither, there is nowhere to float it: an unattributed line instead.
         if (ev.from || ev.pos) this.bubbles.add(ev.from, ev.text, ev.quick, ev.whisper, ev.pos);
@@ -316,6 +322,7 @@ export class Hud {
         this.soundCaption('slam', ev.pos, ev.id === this.s.selfId ? 'SLAM. (The lid. You are inside.)' : `SLAM! ${this.s.name(ev.id)} is in a coffin`);
         break;
       case 'knock': this.soundCaption('knock', ev.pos, 'Knock knock (from inside a coffin)'); break;
+      case 'dingdong': this.captions.sound('Ding-dong (the tannoy)', 3); break;
       case 'thunder':
         this.captions.sound(g ? 'THUNDER (you hear nothing)' : 'THUNDER (Nana hears nothing)', 3);
         // The first time in a match, say what it is for.

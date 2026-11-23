@@ -21,6 +21,7 @@ const WORDS: Partial<Record<MapId, MapWords>> = {
   carehome: {
     arriving: 'Visiting hours at Sunny Pines', address: 'of Room 12, Sunny Pines Care Home',
     reading: 'Mr Pettigrew, the family solicitor, waits for the bingo to finish, clears his throat and unfolds the parchment...',
+    tip: 'The tannoy at reception (E): your next line goes out to the whole home. Nana hears every word, but not who said it.',
   },
   parlour: {
     arriving: 'Gathering at Pettigrew & Sons', address: 'presently of Pettigrew & Sons Funeral Parlour (just looking)',

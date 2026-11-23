@@ -122,7 +122,7 @@ export type GameEvent =
    * scrambled when muffled); `from` is '' when she could not see who spoke,
    * and then `pos` says roughly where it came from.
    */
-  | { e: 'bubble'; from: string; text: string; quick: boolean; whisper: boolean; pos?: Vec3 }
+  | { e: 'bubble'; from: string; text: string; quick: boolean; whisper: boolean; pos?: Vec3; tannoy?: boolean }
   | { e: 'wish'; wish: WishInfo | null }
   | { e: 'wish-done'; by: string; wish: WishInfo }
   /** Grandma found a planted item. Grandma only. */
@@ -143,6 +143,8 @@ export type GameEvent =
   /** A coffin lid slams on someone (`id`), or someone inside knocks to be let out. */
   | { e: 'buried'; id: string; pos: Vec3 }
   | { e: 'knock'; pos: Vec3 }
+  /** Ding-dong: someone has the tannoy microphone (an announcement follows). */
+  | { e: 'dingdong'; pos: Vec3 }
   | { e: 'risen'; pos: Vec3 }
   /**
    * Ash footprints: new ones (cousins: all; Grandma: those she has now seen).

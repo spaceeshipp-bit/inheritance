@@ -258,6 +258,7 @@ export const CAREHOME: MapDef = {
     ],
   },
   heirloomSpots: pedestalTops(BOXES),
+  tannoy: { at: { x: X + 10.8, y: 0, z: 3.7 }, name: 'the reception tannoy' },
   dinner: { table: { minX: X - 4, maxX: X + 1, minZ: -7.6, maxZ: -6.0 }, door: { x: X + 6, z: -7.5 }, doorName: 'the dining-hall door' },
   nav: { ground: GROUND, beat: BEAT },
   lostToast: '{name} wandered off and was returned by a nice man in a tabard.',

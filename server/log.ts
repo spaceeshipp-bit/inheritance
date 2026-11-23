@@ -289,6 +289,10 @@ export class EventLog {
     if (ev.kind === 'break' && ev.thunder && ev.by) {
       this.addMoment({ kind: 'thunder', t: ev.t, actor: ev.by, text: `${n(ev.by)} smashed the ${n(ev.heirloom)} on the thunderclap. Nana never heard a thing.` }, this.events.length - 1);
     }
+    // An announcement over the tannoy.
+    if (ev.kind === 'tannoy') {
+      this.addMoment({ kind: 'tannoy', t: ev.t, actor: ev.by, text: `${n(ev.by)}, over the tannoy: "${ev.text}"` }, this.events.length - 1);
+    }
     // Down the stairs, or over the banister.
     if (ev.kind === 'tumble') {
       this.addMoment({ kind: 'tumble', t: ev.t, actor: ev.by, victim: ev.victim, text: ev.stairs ? `${n(ev.by)} sent ${n(ev.victim)} all the way down the stairs.` : `${n(ev.by)} sent ${n(ev.victim)} over the banister.` }, this.events.length - 1);
