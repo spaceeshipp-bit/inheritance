@@ -5,6 +5,7 @@ import type { ClientMsg, GameEvent } from '../../shared/protocol.js';
 import { dist } from '../../shared/senses.js';
 import type { Vec3 } from '../../shared/types.js';
 import type { Sfx } from './audio/sfx.js';
+import type { SfxKind } from './audio/synth.js';
 import { EmoteWatch } from './hud/emotewatch.js';
 import { curtainCall, reactions, withReactions, type Reaction } from './hud/reactions.js';
 import { EMOTES } from '../../shared/emotes.js';
@@ -17,6 +18,9 @@ import type { GameRenderer } from './render/scene.js';
 import type { GameState, PhaseMsg, View } from './state.js';
 import { clamp, el, localSec, show } from './util.js';
 import type { VoiceManager } from './voice/index.js';
+
+/** The sound each heirloom makes as it goes (after the crash). */
+const HEIRLOOM_DEATH: Record<string, SfxKind | undefined> = { clock: 'chime', teapot: 'kettle', portrait: 'rip', urn: 'poof', bust: 'crack' };
 
 export interface GameDeps {
   state: GameState;
@@ -277,7 +281,13 @@ export class Game {
     hud.onEvent(ev);
     const gpos = this.lastView?.grandma?.pos;
     switch (ev.e) {
-      case 'crash': sfx.play('crash', ev.pos); break;
+      case 'crash': {
+        sfx.play('crash', ev.pos);
+        // Each heirloom's last words (only when we know which one it was).
+        const last = HEIRLOOM_DEATH[ev.heirloom.replace(/^heirloom-/, '')];
+        if (last) sfx.play(last, ev.pos);
+        break;
+      }
       case 'quill': sfx.play('quill', ev.pos, 0.8); break;
       case 'whistle': sfx.play('whistle', ev.pos, 0.6); break;
       case 'cane': sfx.play('cane', ev.pos); sfx.play('oof', ev.pos, 0.8); renderer.caneSwing(s.grandmaId, s.selfId); break;

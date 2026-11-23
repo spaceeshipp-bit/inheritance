@@ -6,6 +6,8 @@ import { emoteSynth, isEmoteSound } from './emotesynth.js';
 
 export type SfxKind =
   | 'crash' | 'step' | 'quill' | 'whistle' | 'cane' | 'oof' | 'ding' | 'thunder' | 'clink' | 'tut' | 'bless' | 'pop' | 'summon'
+  /** Heirlooms' last words, after the crash: the clock's dying chime, the teapot's whistle, the portrait tearing, Grandpa's poof, the bust's crack. */
+  | 'chime' | 'kettle' | 'rip' | 'poof' | 'crack'
   | 'whoosh' | EmoteSound;
 
 export interface SynthCtx { ctx: AudioContext; noise: AudioBuffer; out: AudioNode; t: number; rand: () => number }
@@ -128,6 +130,66 @@ export function synth(kind: SfxKind, s: SynthCtx): number {
         o2.connect(e2).connect(out);
       });
       return 1.5;
+    }
+    case 'chime': {
+      // A spring lets go (sproing), then the clock strikes three times, slower and flatter each time.
+      const sp = tone(s, 'sine', 900, 300, t, 0.5);
+      const lfo = ctx.createOscillator();
+      lfo.frequency.value = 22;
+      const lg = ctx.createGain();
+      lg.gain.value = 120;
+      lfo.connect(lg).connect(sp.frequency);
+      lfo.start(t);
+      lfo.stop(t + 0.5);
+      sp.connect(env(ctx, t, 0.005, 0.35, 0.45)).connect(out);
+      [[0.35, 523, 0.9], [0.95, 494, 1.1], [1.8, 440, 1.6]].forEach(([dt, f, dec]) => {
+        for (const [k, a] of [[1, 0.5], [2.76, 0.18], [5.4, 0.08]]) {
+          const o = tone(s, 'sine', f * k, f * k * 0.995, t + dt, dec + 0.2);
+          o.connect(env(ctx, t + dt, 0.004, a, dec)).connect(out);
+        }
+      });
+      return 3.6;
+    }
+    case 'kettle': {
+      // The teapot's last whistle, going flat as it dies.
+      const o = tone(s, 'sine', 2300, 1500, t + 0.15, 1.0);
+      const lfo = ctx.createOscillator();
+      lfo.frequency.value = 9;
+      const lg = ctx.createGain();
+      lg.gain.value = 40;
+      lfo.connect(lg).connect(o.frequency);
+      lfo.start(t + 0.15);
+      lfo.stop(t + 1.2);
+      o.connect(env(ctx, t + 0.15, 0.08, 0.22, 0.9)).connect(out);
+      const n = noiseSrc(s, t + 0.15, 0.9);
+      n.connect(filter(ctx, 'bandpass', 3000, 3)).connect(env(ctx, t + 0.15, 0.05, 0.12, 0.8)).connect(out);
+      return 1.2;
+    }
+    case 'rip': {
+      // Canvas tearing: crackling noise, a few quick bursts.
+      for (let i = 0; i < 7; i++) {
+        const t0 = t + 0.1 + i * 0.06 + rand() * 0.03;
+        const n = noiseSrc(s, t0, 0.08);
+        n.connect(filter(ctx, 'bandpass', 1400 + rand() * 1600, 1.2)).connect(env(ctx, t0, 0.002, 0.9, 0.06)).connect(out);
+      }
+      return 0.7;
+    }
+    case 'poof': {
+      // Grandpa, airborne: a soft low whoosh of ash.
+      const n = noiseSrc(s, t + 0.08, 1.0);
+      const lp = filter(ctx, 'lowpass', 700, 0.7);
+      lp.frequency.setValueAtTime(1400, t + 0.08);
+      lp.frequency.exponentialRampToValueAtTime(250, t + 0.9);
+      n.connect(lp).connect(env(ctx, t + 0.08, 0.05, 0.8, 0.85)).connect(out);
+      return 1.1;
+    }
+    case 'crack': {
+      // Plaster: a hard crack and a heavy thud.
+      const n = noiseSrc(s, t, 0.06);
+      n.connect(filter(ctx, 'highpass', 2500, 0.8)).connect(env(ctx, t, 0.001, 0.9, 0.05)).connect(out);
+      const o = tone(s, 'sine', 95, 45, t + 0.03, 0.35);
+      o.connect(env(ctx, t + 0.03, 0.004, 0.9, 0.3)).connect(out);
+      return 0.45;
     }
     case 'thunder': {
       const n = noiseSrc(s, t, 3.2);
