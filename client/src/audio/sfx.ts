@@ -10,13 +10,13 @@ import { synth, type SfxKind } from './synth.js';
 
 /** How much closer than it is a sound counts for Grandma's ears (a crash carries). */
 export const LOUDNESS: Partial<Record<SfxKind, number>> = {
-  crash: 3, chime: 3, kettle: 2.5, rip: 2, poof: 2, crack: 3, thunder: 10, whistle: 1.5, summon: 2, oof: 1.2,
+  crash: 3, yowl: 2, chime: 3, kettle: 2.5, rip: 2, poof: 2, crack: 3, thunder: 10, whistle: 1.5, summon: 2, oof: 1.2,
   // Gestures carry a little; a dance tune carries further.
   raspberry: 1.3, bleep: 1.3, oi: 1.5, jig: 1.6, waltz: 1.4, shimmy: 1.6, stomp: 2, dirge: 1.8, creak: 1.2, ragtime: 1.8, twist: 1.6, fanfare: 2,
 };
 /** Beyond this many metres cousins don't hear it at all. */
 export const RANGE: Partial<Record<SfxKind, number>> = {
-  step: 10, quill: 12, whistle: 14, oof: 16, cane: 14, clink: 8,
+  step: 10, yowl: 20, quill: 12, whistle: 14, oof: 16, cane: 14, clink: 8,
   aww: 12, sob: 12, raspberry: 14, nyah: 14, bleep: 16, tape: 10, kaching: 14, kiss: 10, tsk: 10, hmm: 10, gasp: 12, oi: 16, thud: 14,
   jig: 20, waltz: 18, shimmy: 20, stomp: 20, dirge: 22, creak: 14, ragtime: 22, twist: 20, fanfare: 24,
 };

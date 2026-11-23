@@ -289,6 +289,10 @@ export class EventLog {
     if (ev.kind === 'break' && ev.thunder && ev.by) {
       this.addMoment({ kind: 'thunder', t: ev.t, actor: ev.by, text: `${n(ev.by)} smashed the ${n(ev.heirloom)} on the thunderclap. Nana never heard a thing.` }, this.events.length - 1);
     }
+    // The Cat-apult: Mittens, thrown, took an heirloom with her (never which: it might be the Favourite).
+    if (ev.kind === 'catapult') {
+      this.addMoment({ kind: 'catapult', t: ev.t, actor: ev.by, text: `${n(ev.by)} threw Mittens. Mittens took an heirloom with her.` }, this.events.length - 1);
+    }
     // Grandpa's ashes: shoved in by a cousin (a trail that leads to the wrong person), or trodden in all by yourself.
     if (ev.kind === 'ash') {
       this.addMoment(ev.pushedBy

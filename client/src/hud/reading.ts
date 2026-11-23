@@ -22,7 +22,7 @@ export const OUTCOME_TEXT: Record<CousinOutcome, string> = {
 };
 
 /** How good a moment is for the reading: lower is better. */
-const MOMENT_RANK: Record<MomentKind, number> = { framed: 0, overboard: 0.5, 'big-cut': 1, 'love-you-nana': 2, 'behind-her-back': 3, 'favourite-broken': 4, 'caught-red-handed': 5, cheek: 6, thunder: 2.5, grandpa: 3.5, graveside: 0.25, mourner: 2.2 };
+const MOMENT_RANK: Record<MomentKind, number> = { framed: 0, overboard: 0.5, 'big-cut': 1, 'love-you-nana': 2, 'behind-her-back': 3, 'favourite-broken': 4, 'caught-red-handed': 5, cheek: 6, thunder: 2.5, grandpa: 3.5, graveside: 0.25, mourner: 2.2, catapult: 1.5 };
 
 /**
  * The (at most) `max` moments worth reading out: people before bots, then

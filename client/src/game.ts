@@ -298,6 +298,7 @@ export class Game {
       case 'thunder': sfx.play('thunder'); break;
       case 'summon': sfx.play('summon', ev.pos); break;
       case 'collapse': sfx.play('thud', ev.pos, 1.4); break;
+      case 'yowl': sfx.play('yowl', ev.pos); break;
       case 'risen': sfx.play('gasp', ev.pos, 1.2); break;
       case 'moment': sfx.play('pop', undefined, 0.6); break;
       case 'will':

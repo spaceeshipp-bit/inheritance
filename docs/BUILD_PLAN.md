@@ -272,6 +272,10 @@ The best three are marked ★ and are next once the core work above is done.
   **Built 2026-11-23:** the broken urn leaves a pile; treading in it gives grey shoes and 16 prints
   (one every 0.6 m, alternating feet); cousins see every print, Grandma only those she has looked
   at, nobody is told whose; shoving someone in earns the Grandpa's Ashes moment (ash.test.ts).
+- **Slapstick (part, 2026-11-23):** Mittens yowls when thrown and when she lands, knocks any
+  heirloom she flies through off its pedestal (the thrower's fault: The Cat-apult), then bolts;
+  each heirloom dies in character (the clock chimes, the teapot whistles, the portrait tears,
+  the urn goes poof, the bust cracks) for anyone who knows which one it was.
 - **Playing dead** (new, 2026-11-23): once a visit Grandma drops to the floor and peeks (sharp all
   round to 5 m, nothing beyond); she cannot move or touch the will till she gets up. Rude gestures or
   sabotage she sees meanwhile are Dancing on Her Grave, a compliment Gone Too Soon; bot cousins go to

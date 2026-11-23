@@ -138,6 +138,8 @@ export type GameEvent =
   | { e: 'lightning' }
   /** Nana dropped to the floor (playing dead), or sat bolt upright again. */
   | { e: 'collapse'; pos: Vec3 }
+  /** Mittens, thrown (or landing): a yowl (Grandma only if she can hear it). */
+  | { e: 'yowl'; pos: Vec3 }
   | { e: 'risen'; pos: Vec3 }
   /**
    * Ash footprints: new ones (cousins: all; Grandma: those she has now seen).

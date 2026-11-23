@@ -157,7 +157,9 @@ export interface Prop extends PhysProp {
   thrownBy: string | null;
   thrownAt: number;
   plantLog: number | null;
-  cat?: { body: MoveBody; goal: Vec3 | null; waitUntil: number; giveUpAt: number };
+  cat?: { body: MoveBody; goal: Vec3 | null; waitUntil: number; giveUpAt: number; fleeUntil?: number };
+  /** Knocked off its pedestal by a flying cat, thrown by this cousin. */
+  catBy?: string;
 }
 
 /** What Grandma perceives of a point (see Match.perceive). */
@@ -1528,6 +1530,34 @@ export class Match {
     p.thrownAt = this.time;
     p.lastBy = c.id;
     p.planted = false;
+    if (p.kind === 'cat') this.yowl(p.pos);
+  }
+
+  /** Mittens objects, loudly: everyone in earshot hears it (Grandma by her ears, as a voice twice as loud). */
+  private yowl(pos: Vec3): void {
+    this.emitAll((to) => {
+      const o = this.chars.get(to);
+      if (!o) return null;
+      if (to === this.grandmaId) return this.grandmaHears({ x: pos.x + (o.body.pos.x - pos.x) / 2, y: pos.y + (o.body.pos.y - pos.y) / 2, z: pos.z + (o.body.pos.z - pos.z) / 2 }, false) === 'silent' ? null : { e: 'yowl', pos: v3(pos) };
+      return dist(o.body.pos, pos) <= 20 ? { e: 'yowl', pos: v3(pos) } : null;
+    });
+  }
+
+  /** A flying cat knocks any heirloom she passes through off its pedestal (the thrower's fault). */
+  private catSweep(cat: Prop): void {
+    const by = cat.thrownBy;
+    if (!by) return;
+    for (const p of this.props.values()) {
+      if (p.kind !== 'heirloom' || p.broken || !p.spot || !p.resting || p.heldBy) continue;
+      if (flatDist(p.pos, cat.pos) > 0.55 || cat.pos.y < p.pos.y - 0.3 || cat.pos.y > p.pos.y + 0.8) continue;
+      const sp = Math.hypot(cat.vel.x, cat.vel.z) || 1;
+      p.vel = { x: (cat.vel.x / sp) * 3, y: 1.6, z: (cat.vel.z / sp) * 3 };
+      p.resting = false;
+      p.spot = null;
+      p.thrownBy = null;
+      p.lastBy = by;
+      p.catBy = by;
+    }
   }
 
   private doInteract(c: Char): void {
@@ -1870,6 +1900,7 @@ export class Match {
       const speed = Math.hypot(p.vel.x, p.vel.y, p.vel.z);
       const impact = stepProp(p, h);
       if (propOutside(p.pos)) { this.rescueProp(p); continue; }
+      if (p.kind === 'cat' && !p.resting) this.catSweep(p);
       if (speed > 3 && !p.resting) {
         const ignore = this.time - p.thrownAt < 0.3 ? p.thrownBy : null;
         const victim = propHitsChar(p, this.chars.values(), ignore);
@@ -1877,6 +1908,13 @@ export class Match {
       }
       if (p.kind === 'heirloom' && !p.broken && impact > HEIRLOOM.breakSpeed) this.breakHeirloom(p);
       if (p.resting) {
+        // Mittens lands (on her feet), says so, and bolts for somewhere else.
+        if (p.kind === 'cat' && p.cat && p.thrownBy) {
+          this.yowl(p.pos);
+          p.cat.goal = null;
+          p.cat.waitUntil = this.time;
+          p.cat.fleeUntil = this.time + 4;
+        }
         p.thrownBy = null;
         if (p.kind === 'cat' && p.cat) p.cat.body = createBody(p.pos);
       }
@@ -1964,6 +2002,7 @@ export class Match {
     const sawIt = this.perceive(pos, PROP_MID).visible;
     const unheard = this.thunder && !sawIt;
     const idx = this.log.add({ t: this.time, kind: 'break', by, heirloom: p.id, favourite: p.favourite, pos, seen: who.identifiable, sharp: who.sharp, ...(unheard ? { thunder: true } : {}) });
+    if (p.catBy && p.catBy === by) this.log.add({ t: this.time, kind: 'catapult', by, heirloom: p.id });
     this.addCrime('break', by, pos, idx);
     this.emitAll((to) => (to === this.grandmaId
       ? (sawIt ? { e: 'crash', pos: v3(pos), heirloom: p.id, favourite: p.favourite } : unheard ? null : { e: 'crash', pos: coarse(pos), heirloom: '', favourite: p.favourite })
@@ -2005,7 +2044,7 @@ export class Match {
       cat.waitUntil = this.time + 2 + this.rng() * 5;
       cat.body.vel.x = 0; cat.body.vel.z = 0;
     }
-    const speed = cat.goal ? 0.9 : 0;
+    const speed = cat.goal ? (this.time < (cat.fleeUntil ?? -Infinity) ? 3.2 : 0.9) : 0;
     const wish = d > 1e-6 ? { x: (dx / d) * speed, z: (dz / d) * speed } : { x: 0, z: 0 };
     integrateBody(cat.body, wish, 0, h, CAT_SHAPE, false);
     p.pos = { ...cat.body.pos };

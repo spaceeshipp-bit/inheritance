@@ -8,6 +8,8 @@ export type SfxKind =
   | 'crash' | 'step' | 'quill' | 'whistle' | 'cane' | 'oof' | 'ding' | 'thunder' | 'clink' | 'tut' | 'bless' | 'pop' | 'summon'
   /** Heirlooms' last words, after the crash: the clock's dying chime, the teapot's whistle, the portrait tearing, Grandpa's poof, the bust's crack. */
   | 'chime' | 'kettle' | 'rip' | 'poof' | 'crack'
+  /** Mittens, airborne. */
+  | 'yowl'
   | 'whoosh' | EmoteSound;
 
 export interface SynthCtx { ctx: AudioContext; noise: AudioBuffer; out: AudioNode; t: number; rand: () => number }
@@ -190,6 +192,26 @@ export function synth(kind: SfxKind, s: SynthCtx): number {
       const o = tone(s, 'sine', 95, 45, t + 0.03, 0.35);
       o.connect(env(ctx, t + 0.03, 0.004, 0.9, 0.3)).connect(out);
       return 0.45;
+    }
+    case 'yowl': {
+      // A cat's indignant wail: a sawtooth through a vowel-ish band, rising then sliding down, with a wobble.
+      const o = tone(s, 'sawtooth', 520, 380, t, 0.95);
+      o.frequency.setValueAtTime(520, t);
+      o.frequency.linearRampToValueAtTime(880, t + 0.3);
+      o.frequency.exponentialRampToValueAtTime(360, t + 0.9);
+      const lfo = ctx.createOscillator();
+      lfo.frequency.value = 11;
+      const lg = ctx.createGain();
+      lg.gain.value = 25;
+      lfo.connect(lg).connect(o.frequency);
+      lfo.start(t);
+      lfo.stop(t + 0.95);
+      const f1 = filter(ctx, 'bandpass', 1100, 4);
+      f1.frequency.setValueAtTime(800, t);
+      f1.frequency.linearRampToValueAtTime(1500, t + 0.3);
+      f1.frequency.linearRampToValueAtTime(900, t + 0.9);
+      o.connect(f1).connect(env(ctx, t, 0.06, 0.7, 0.85)).connect(out);
+      return 1;
     }
     case 'thunder': {
       const n = noiseSrc(s, t, 3.2);

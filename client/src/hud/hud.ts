@@ -309,6 +309,7 @@ export class Hud {
       case 'quill': this.soundCaption('quill', ev.pos, 'Quill scratching'); break;
       case 'collapse': this.soundCaption('thud', ev.pos, g ? 'Thud (you, hitting the carpet)' : 'Thud! Nana collapsed'); break;
       case 'risen': this.soundCaption('gasp', ev.pos, 'Gasp! Nana is up again'); break;
+      case 'yowl': this.soundCaption('yowl', ev.pos, 'YOWL! (the cat)'); break;
       case 'thunder':
         this.captions.sound(g ? 'THUNDER (you hear nothing)' : 'THUNDER (Nana hears nothing)', 3);
         // The first time in a match, say what it is for.
