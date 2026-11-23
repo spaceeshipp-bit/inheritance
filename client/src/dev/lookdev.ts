@@ -23,7 +23,9 @@ import { buildMap } from '../render/map.js';
 import { applyBakedLight } from '../render/baked.js';
 import { CharacterModel } from '../render/characters.js';
 import { HEIRLOOM_VARIANTS } from '../../../shared/map.js';
-import { makeCat, makeHeirloom, makeTeacup } from '../render/items.js';
+import { makeCat, makeHeirloom, makeShards, makeTeacup } from '../render/items.js';
+import { AshPrints } from '../render/prints.js';
+import type { AshPrint } from '../../../shared/protocol.js';
 
 type Look = 'current' | 'storybook' | 'cel' | 'gorey';
 const q = new URLSearchParams(location.search);
@@ -79,6 +81,8 @@ const GENERIC_POSES: Pose[] = [
 // 'bake': the map alone (for baking its lightmap); no family, no props.
 const POSES: Pose[] = shot === 'dinner' || shot === 'bake' ? [] : mapId === 'manor' ? MANOR_POSES : GENERIC_POSES;
 const models: CharacterModel[] = [];
+// 'ash': Grandpa's urn broken on the floor, and a trail of grey footprints leading to one of the family.
+const ASHY = mapId === 'manor' ? 'dudley' : 'c3';
 POSES.forEach((p, i) => {
   const cz = COUSINS[i % COUSINS.length];
   const m = new CharacterModel({ role: p.role, color: p.color ?? cz.color, item: p.role === 'cousin' ? cz.key : null, seed: 7 + i * 31 });
@@ -88,6 +92,7 @@ POSES.forEach((p, i) => {
     id: p.id, role: p.role, pos: p.at, yaw, pitch: 0, vel: { x: 0, y: 0, z: 0 }, state: 'normal', ragdollT: 0, holding: null,
     running: false, sneaking: false, whispering: false, charge: 0, plant: 0, leader: i === 1,
     ...(p.emote ? { emote: p.emote, emoteT: t } : {}),
+    ...(shot === 'ash' && p.id === ASHY ? { ashy: true } : {}),
   });
   // Let the springs settle into the pose over a second.
   const T = p.t ?? 1;
@@ -110,6 +115,23 @@ if (shot !== 'bake') {
   scene.add(cup);
 }
 
+if (shot === 'ash') {
+  const who = POSES.find((p) => p.id === ASHY) ?? POSES[POSES.length - 1];
+  const pile = mapId === 'manor' ? off(3.6, 0.2) : { x: who.at.x + 3, y: 0, z: who.at.z + 1 };
+  const urn = makeShards('urn', 7);
+  urn.position.set(pile.x, 0, pile.z);
+  scene.add(urn);
+  const prints: AshPrint[] = [];
+  const dx = who.at.x - pile.x, dz = who.at.z - pile.z, L = Math.hypot(dx, dz);
+  const n = Math.min(16, Math.floor(L / 0.6));
+  for (let k = 1; k <= n; k++) {
+    const f = (k * 0.6) / L;
+    const wob = Math.sin(k * 0.7) * 0.15;
+    prints.push({ x: pile.x + dx * f - (dz / L) * wob, y: 0, z: pile.z + dz * f + (dx / L) * wob, yaw: Math.atan2(-dx, -dz), side: (k % 2) as 0 | 1, t: k });
+  }
+  new AshPrints(scene).update(prints, 1);
+}
+
 // ── Shots ──
 const g = off(1.2, -1.0);
 if (shot === 'hall') {
@@ -128,6 +150,11 @@ if (shot === 'hall') {
   camera.position.set(cx + w * 0.1, Math.max(w, d) * 0.85, b.max.z + d * 0.45);
   camera.lookAt(cx, 0, cz);
   camera.fov = 50;
+} else if (shot === 'ash' && mapId === 'manor') {
+  // From above the trail, looking down it to whoever left it.
+  camera.position.set(g0.x + 4.6, 2.6, g0.z + 1.9);
+  camera.lookAt(g0.x + 1.0, 0.2, g0.z - 0.4);
+  camera.fov = 55;
 } else if (mapId === 'manor') {
   // From the east side of the room, looking across at the family.
   camera.position.set(g0.x + 6.2, 2.2, g0.z + 0.2);

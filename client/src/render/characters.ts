@@ -66,6 +66,9 @@ const UP = new THREE.Vector3(0, 1, 0);
 const greyMat = new THREE.MeshStandardMaterial({ color: '#7a7672', roughness: 1 });
 const darkMat = new THREE.MeshStandardMaterial({ color: '#3b3835', roughness: 1 });
 
+/** Grandpa, on someone's shoes. */
+const ASH_MAT = mat('#aaa59d', { rough: 1 });
+
 export class CharacterModel {
   readonly root = new THREE.Group();
   readonly scale: number;
@@ -106,6 +109,8 @@ export class CharacterModel {
   private emNow: BodyPose = { leanX: 0, leanZ: 0, bob: 0, spin: 0 };
   private rig: EmoteRig | null = null;
   private hands: THREE.Object3D[] = [];
+  /** Grey shoes from Grandpa's ashes. */
+  private ashFeet: THREE.Mesh[] = [];
   private front = new THREE.Group();
   /** Near-camera fade: current opacity and per-material transparent copies. */
   private fade = 1;
@@ -175,6 +180,10 @@ export class CharacterModel {
       const leg = this.joint(s < 0 ? 'legL' : 'legR', s * 0.12, 0, 0);
       this.part(leg, new THREE.CapsuleGeometry(0.075, g ? 0.62 : 0.68, 4, 8), trousers, 0, -0.42, 0);
       this.part(leg, new THREE.BoxGeometry(0.13, 0.08, 0.25), shoes, 0, -this.hipH + 0.04, -0.05);
+      // Grandpa's ashes on the shoes (shown while they still leave prints).
+      const ash = this.part(leg, new THREE.BoxGeometry(0.145, 0.07, 0.265), ASH_MAT, 0, -this.hipH + 0.035, -0.05);
+      ash.visible = false;
+      this.ashFeet.push(ash);
     }
     // Hips + torso.
     this.part(L, new THREE.BoxGeometry(0.38, 0.18, 0.24), trousers, 0, 0.03, 0);
@@ -340,6 +349,7 @@ export class CharacterModel {
     if (this.item) this.item.visible = f.itemOnBody && f.degrade === 'none';
     this.halo.visible = c.leader && f.degrade === 'none';
     if (this.specs) this.specs.visible = !c.specsOff;
+    for (const a of this.ashFeet) a.visible = !!c.ashy && f.degrade !== 'shapes';
     this.mouthMesh.scale.y = 1 + clamp(f.mouth, 0, 1) * 5;
 
     const ragdoll = c.state === 'ragdoll';

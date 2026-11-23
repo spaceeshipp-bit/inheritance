@@ -210,6 +210,14 @@ export const STORM = {
   thunderDelay: [0.5, 1.3] as readonly [number, number], thunderDuration: 1.6,
 } as const;
 
+/**
+ * Grandpa's ashes. The urn, broken, leaves a pile `pileRadius` m across; whoever
+ * walks (or is shoved) through it leaves `prints` grey footprints, one every
+ * `stride` m. Cousins see every print; Grandma only the ones she has laid eyes on.
+ * New prints go out every `sendEvery` s; at most `maxPrints` a visit (the oldest go).
+ */
+export const ASH = { pileRadius: 0.75, prints: 16, stride: 0.6, sendEvery: 0.25, maxPrints: 240 } as const;
+
 /** Wishes (errands). One active at a time, a new one when it is fulfilled or expires. */
 export const WISH = { duration: 45, deliverRange: 1.6, gapMin: 4, gapMax: 10 } as const;
 

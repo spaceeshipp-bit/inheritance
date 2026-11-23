@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { COUSINS, type ItemKey } from '../../../shared/constants.js';
 import { canIdentify, visionBand, type GrandmaSenseState, type VisionBand } from '../../../shared/senses.js';
 import type { CharSnap, PropSnap, ReplayNana, ReplaySeen, Role, Vec3, WishInfo } from '../../../shared/types.js';
+import type { AshPrint } from '../../../shared/protocol.js';
 import type { Quality } from '../settings.js';
 import type { View } from '../state.js';
 import { damp, hashStr } from '../util.js';
@@ -12,6 +13,7 @@ import { CharacterModel, type Degrade } from './characters.js';
 import { applyBakedLight } from './baked.js';
 import { buildMap, type MapView } from './map.js';
 import type { MapId } from '../../../shared/map.js';
+import { AshPrints } from './prints.js';
 import { PropViews } from './props.js';
 import { GrandmaVision, visionParams } from './vision.js';
 
@@ -39,6 +41,8 @@ export interface RenderFrame {
   parchment: boolean;
   /** Reading / vote / results: a slow establishing shot, no Grandma filter. */
   cinematic?: boolean;
+  /** Footprints in Grandpa's ashes this visit, and a number that changes whenever the list does. */
+  prints?: { list: readonly AshPrint[]; version: number };
 }
 
 export interface ScreenPoint { x: number; y: number; onScreen: boolean; behind: boolean }
@@ -93,6 +97,7 @@ export class GameRenderer {
   readonly rig = new CameraRig();
   private map: MapView;
   private props: PropViews;
+  private ash: AshPrints;
   private vision: GrandmaVision;
   private models = new Map<string, CharacterModel>();
   private look: MatchLook | null = null;
@@ -134,6 +139,7 @@ export class GameRenderer {
     this.scene.background = new THREE.Color('#120d0a');
     this.scene.add(this.rig.camera);
     this.props = new PropViews(this.scene);
+    this.ash = new AshPrints(this.scene);
     this.vision = new GrandmaVision(this.renderer);
 
     // Lights marked minor are switched off on the low preset (every point light
@@ -353,6 +359,8 @@ export class GameRenderer {
       time: f.time,
       dt,
     });
+
+    this.ash.update(f.prints?.list ?? [], f.prints?.version ?? 0);
 
     // Camera + render.
     const self = view.self;

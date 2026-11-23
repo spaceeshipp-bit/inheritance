@@ -340,6 +340,7 @@ export class Game {
       dark: s.dark, flash: s.flash, wishKind: s.wish?.kind ?? null, found: this.found,
       level: (id) => voice.level(id), parchment: this.parchmentOpen || s.phase !== 'visit',
       cinematic: s.phase === 'reading' || s.phase === 'vote' || s.phase === 'results',
+      prints: { list: s.prints, version: s.printsVersion },
     });
 
     // Grandma's Bless/Tut target: crosshair first, else the locked name. Only in a

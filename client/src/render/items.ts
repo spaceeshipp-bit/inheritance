@@ -202,6 +202,30 @@ export function makeShards(variant: string, seed: number): THREE.Group {
     s.scale.y = 0.5;
     g.add(s);
   }
+  if (variant === 'urn') {
+    // Grandpa: a lumpy grey heap where the urn landed, with drifts round it (the server's ASH.pileRadius).
+    const ash = mat('#7d7a76', { rough: 1 });
+    const dark = mat('#5a5754', { rough: 1 });
+    const dome = new THREE.SphereGeometry(1, 14, 7, 0, Math.PI * 2, 0, Math.PI / 2);
+    for (let i = 0; i < 6; i++) {
+      const a = r() * Math.PI * 2, d = i === 0 ? 0 : 0.08 + r() * 0.16;
+      const lump = new THREE.Mesh(dome, i % 3 === 2 ? dark : ash);
+      const rad = i === 0 ? 0.26 : 0.1 + r() * 0.1;
+      lump.scale.set(rad, rad * (i === 0 ? 0.3 : 0.45), rad * (0.8 + r() * 0.4));
+      lump.position.set(Math.cos(a) * d, 0, Math.sin(a) * d);
+      g.add(lump);
+    }
+    const flat = new THREE.CircleGeometry(1, 14);
+    for (let i = 0; i < 9; i++) {
+      const a = r() * Math.PI * 2, d = 0.25 + r() * 0.45;
+      const drift = new THREE.Mesh(flat, ash);
+      drift.rotation.set(-Math.PI / 2, 0, r() * Math.PI);
+      const rad = 0.05 + r() * 0.1;
+      drift.scale.set(rad, rad * (0.4 + r() * 0.8), 1);
+      drift.position.set(Math.cos(a) * d, 0.007, Math.sin(a) * d);
+      g.add(drift);
+    }
+  }
   return g;
 }
 

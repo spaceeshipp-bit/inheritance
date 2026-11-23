@@ -2,7 +2,7 @@
 // interpolation. Remote entities render INTERP_DELAY behind the server clock;
 // your own character renders from the latest snapshot extrapolated by its
 // velocity (smoothed), so it feels responsive without a full predictor.
-import type { GameEvent, ServerMsg, SnapMsg } from '../../shared/protocol.js';
+import type { AshPrint, GameEvent, ServerMsg, SnapMsg } from '../../shared/protocol.js';
 import type {
   CharSnap, CousinInfo, FinalResult, Phase, PropSnap, ReadingResult, Role, Vec3, VisitId, WishInfo,
 } from '../../shared/types.js';
@@ -59,6 +59,9 @@ export class GameState {
   flash = false;
   /** The Storm: thunder rolling (Grandma hears nothing). */
   thunder = false;
+  /** Footprints in Grandpa's ashes this visit (as many as we have been sent), and a count of changes to it. */
+  prints: AshPrint[] = [];
+  printsVersion = 0;
   wish: WishInfo | null = null;
   reading: ReadingResult | null = null;
   results: FinalResult | null = null;
@@ -136,6 +139,8 @@ export class GameState {
           this.dark = false;
           this.flash = false;
           this.thunder = false;
+          this.prints = [];
+          this.printsVersion++;
         }
         this.emit('match', m);
         break;
@@ -206,6 +211,12 @@ export class GameState {
       case 'summon': this.summon = { pos: ev.pos, endsAt: ev.endsAt }; break;
       // Straight away, not on the next snapshot: a crash in the same tick is already unheard.
       case 'thunder': this.thunder = true; break;
+      case 'prints':
+        if (ev.clear) this.prints = [];
+        this.prints.push(...ev.prints);
+        if (this.prints.length > 400) this.prints.splice(0, this.prints.length - 400);
+        this.printsVersion++;
+        break;
       default: break;
     }
   }

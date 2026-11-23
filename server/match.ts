@@ -10,11 +10,11 @@
 import {
   COUSIN, COUSINS, CRIME_SCENE, DISCONNECT, FULL_VISITS, GRANDMA, HEARING_AID, HEIRLOOM, INTERMISSION_TIME, MISHEARD,
   PREFERENCE_CARDS, QUICKCHAT, READING_TIME, RESULTS_TIME, ROLE_REVEAL_TIME, SENSES, SLICE_VISITS, SNAPSHOT_HZ,
-  SPECTACLES, STORM, TICK_HZ, VISITS, VOICE, VOTE_TIME, WILL, WISH, INPUT, PROTOCOL_VERSION, DINNER,
+  SPECTACLES, STORM, TICK_HZ, VISITS, VOICE, VOTE_TIME, WILL, WISH, INPUT, PROTOCOL_VERSION, DINNER, ASH,
 } from '../shared/constants.js';
 import { HEIRLOOM_VARIANTS, MAP_IDS, groundHeight, mapById, type MapDef, type MapId } from '../shared/map.js';
 import { createBody, forwardOf, integrateBody, wrapAngle, yawToward, type BodyShape, type MoveBody } from '../shared/movement.js';
-import type { GameEvent, GrandmaAction, InputMsg, ServerMsg, ClientMsg } from '../shared/protocol.js';
+import type { AshPrint, GameEvent, GrandmaAction, InputMsg, ServerMsg, ClientMsg } from '../shared/protocol.js';
 import { grandmaScore } from '../shared/scoring.js';
 import { dist, flatDist, hearingBand, scrambleText, visionBand, type GrandmaSenseState, type HearingBand, type VisionBand } from '../shared/senses.js';
 import { CHEST_HEIGHT, PROP_MID, eyeOf, lineOfSight } from '../shared/sight.js';
@@ -124,7 +124,15 @@ export interface Char extends PhysChar {
   summonCd: number;
   quillT: number;
   whistleT: number;
+  /** Grandpa's ashes: footprints still to leave, where the last one was, which foot is next, and whether they have trodden in him yet. */
+  ashy: number;
+  ashFrom: Vec3 | null;
+  ashSide: 0 | 1;
+  ashTrod: boolean;
 }
+
+/** A footprint in Grandpa's ashes, with who left it (server only) and whether Grandma has seen it yet. */
+interface Print extends AshPrint { by: string; nanaSaw: boolean; sent: boolean }
 
 export interface Prop extends PhysProp {
   yaw: number;
@@ -355,6 +363,10 @@ export class Match {
   private thunderFrom = Infinity;
   private thunderUntil = -Infinity;
   private thunderSent = true;
+  /** Grandpa's ashes: where the urn broke (piles stay all match), this visit's footprints, and when new ones next go out. */
+  ashPiles: Vec3[] = [];
+  prints: Print[] = [];
+  private nextPrintFlush = 0;
   private nextLightning = Infinity;
   private sharesAtOpen: Record<string, number> | null = null;
   private allNames: Record<string, string> = {};
@@ -476,6 +488,7 @@ export class Match {
       input: this.blankInput(), inputQueue: [], lastSeq: 0, repeats: 0, credit: 0, queueLow: Infinity, queueWindow: 0, guess: null, yawHold: 0, yawHoldFrom: 0, last: noBtns(), pressed: noBtns(), released: noBtns(), ack: 0, shoveCd: 0, emote: null, emoteCd: 0, shoveBufferUntil: -Infinity,
       cousinIndex, itemId: role === 'cousin' ? `item-${COUSINS[cousinIndex % COUSINS.length].key}` : null,
       parchmentOpen: false, aidT: 0, aidCd: 0, specsT: 0, specsCd: 0, specsOff: false, caneCd: 0, summonCd: 0, quillT: 0, whistleT: 0,
+      ashy: 0, ashFrom: null, ashSide: 0, ashTrod: false,
     };
   }
 
@@ -1215,6 +1228,7 @@ export class Match {
       if (v === 'dinner') this.updateDinner(h);
       this.updateGrandmaSystems(h);
       this.updateWish();
+      this.updateAsh();
       this.updateFound();
       this.updateSummon();
     }
@@ -1933,6 +1947,10 @@ export class Match {
     this.emitAll((to) => (to === this.grandmaId
       ? (sawIt ? { e: 'crash', pos: v3(pos), heirloom: p.id, favourite: p.favourite } : unheard ? null : { e: 'crash', pos: coarse(pos), heirloom: '', favourite: p.favourite })
       : { e: 'crash', pos: v3(pos), heirloom: p.id }));
+    if (p.variant === 'urn') {
+      this.ashPiles.push({ x: pos.x, y: groundHeight(pos.x, pos.z, pos.y + 0.3, 0.2), z: pos.z });
+      this.emitAll((to) => (to === this.grandmaId && !sawIt ? null : { e: 'toast', text: "Grandpa's urn! He's all over the floor. Mind where you tread." }));
+    }
     if (p.favourite) {
       this.freeTuts++;
       this.emit(this.grandmaId, { e: 'toast', text: 'Your favourite! You get one free Tut, outside the budget.' });
@@ -2042,6 +2060,62 @@ export class Match {
 
   private lightningGap(): number {
     return STORM.lightningEvery + (this.rng() * 2 - 1) * STORM.lightningJitter;
+  }
+
+  // ───────────── Grandpa's ashes ─────────────
+
+  /**
+   * Whoever stands in the pile gets ash on their shoes and leaves a print every
+   * ASH.stride m until it wears off. Every ASH.sendEvery s the new prints go to
+   * the cousins, and to Grandma the ones she can now see.
+   */
+  private updateAsh(): void {
+    if (this.ashPiles.length === 0) return;
+    for (const c of this.chars.values()) {
+      if (c.state === 'sleeping' || !c.body.onGround) continue;
+      const p = c.body.pos;
+      if (this.ashPiles.some((a) => flatDist(a, p) < ASH.pileRadius && Math.abs(a.y - p.y) < 0.6)) {
+        if (c.ashy === 0) c.ashFrom = { ...p };
+        c.ashy = ASH.prints;
+        if (!c.ashTrod) this.trodInAsh(c);
+      }
+      if (c.ashy <= 0 || !c.ashFrom) continue;
+      const dx = p.x - c.ashFrom.x, dz = p.z - c.ashFrom.z;
+      if (Math.hypot(dx, dz) < ASH.stride) continue;
+      this.prints.push({ x: r2(p.x), y: r2(p.y), z: r2(p.z), yaw: r2(Math.atan2(-dx, -dz)), side: c.ashSide, t: r2(this.time), by: c.id, nanaSaw: false, sent: false });
+      if (this.prints.length > ASH.maxPrints) this.prints.shift();
+      c.ashSide = c.ashSide ? 0 : 1;
+      c.ashFrom = { ...p };
+      c.ashy--;
+    }
+    if (this.time < this.nextPrintFlush) return;
+    this.nextPrintFlush = this.time + ASH.sendEvery;
+    const show = ({ x, y, z, yaw, side, t }: Print): AshPrint => ({ x, y, z, yaw, side, t });
+    const fresh = this.prints.filter((pr) => !pr.sent);
+    for (const pr of fresh) pr.sent = true;
+    const seen: AshPrint[] = [];
+    for (const pr of this.prints) {
+      if (pr.nanaSaw || !this.perceive({ x: pr.x, y: pr.y, z: pr.z }, 0.05).visible) continue;
+      pr.nanaSaw = true;
+      seen.push(show(pr));
+    }
+    this.emitAll((to) => {
+      if (to === this.grandmaId) return seen.length ? { e: 'prints', prints: seen } : null;
+      return fresh.length ? { e: 'prints', prints: fresh.map(show) } : null;
+    });
+  }
+
+  /** First time in the ashes this match: a word in their ear, and in the log (a moment if they were shoved in). */
+  private trodInAsh(c: Char): void {
+    c.ashTrod = true;
+    const pushedBy = c.state !== 'normal' && c.knockedBy && c.knockedBy !== c.id && this.time - c.knockedAt < 3 ? c.knockedBy : null;
+    if (c.role === 'grandma') {
+      this.emit(c.id, { e: 'toast', text: "You've trodden in Grandpa. He'd have laughed." });
+      return;
+    }
+    const seen = this.perceive(c.body.pos).identifiable;
+    this.log.add({ t: this.time, kind: 'ash', by: c.id, pushedBy, seen });
+    this.emit(c.id, { e: 'toast', text: pushedBy ? `${this.nameOf(pushedBy)} shoved you into Grandpa! Your shoes will leave a trail.` : "You've trodden in Grandpa! Your shoes will leave a trail." });
   }
 
   // ───────────── wishes ─────────────
@@ -2173,6 +2247,10 @@ export class Match {
     const v = this.visits[i];
     this.dark = v === 'storm';
     this.flash = false;
+    // The floors have been hoovered (the pile itself is still there).
+    if (this.prints.length) this.emitAll({ e: 'prints', prints: [], clear: true });
+    this.prints = [];
+    for (const c of this.chars.values()) { c.ashy = 0; c.ashFrom = null; }
     this.thunderFrom = Infinity;
     this.thunderUntil = -Infinity;
     this.thunderSent = true;
@@ -2485,6 +2563,7 @@ export class Match {
       charge: r2(c.charge), plant: r2(Math.min(1, c.plantT / COUSIN.plantHold)), leader: c.id === petId,
     };
     if (c.emote) { s.emote = c.emote.id; s.emoteT = r2(this.time - c.emote.at); }
+    if (c.ashy > 0) s.ashy = true;
     // How far the server has got with your inputs is for your own prediction only.
     if (forId === c.id) s.ack = g ? g.base : c.ack;
     if (c.role === 'grandma') {
@@ -2541,7 +2620,7 @@ export class Match {
       if (!per.visible && (this.thunder || per.dist > Math.max(SENSES.mumble, steps))) continue;
       const s = this.charSnap(c, this.petId, g.id);
       delete s.ack;
-      if (!per.identifiable) { s.holding = null; s.charge = 0; s.plant = 0; s.whispering = false; }
+      if (!per.identifiable) { s.holding = null; s.charge = 0; s.plant = 0; s.whispering = false; delete s.ashy; }
       // A shape she can make out may be seen dancing; someone she only hears may not.
       if (!per.visible) { delete s.emote; delete s.emoteT; }
       chars.push(s);

@@ -266,6 +266,12 @@ export class EventLog {
     if (ev.kind === 'break' && ev.thunder && ev.by) {
       this.addMoment({ kind: 'thunder', t: ev.t, actor: ev.by, text: `${n(ev.by)} smashed the ${n(ev.heirloom)} on the thunderclap. Nana never heard a thing.` }, this.events.length - 1);
     }
+    // Grandpa's ashes: shoved in by a cousin (a trail that leads to the wrong person), or trodden in all by yourself.
+    if (ev.kind === 'ash') {
+      this.addMoment(ev.pushedBy
+        ? { kind: 'grandpa', t: ev.t, actor: ev.pushedBy, victim: ev.by, text: `${n(ev.pushedBy)} shoved ${n(ev.by)} into Grandpa's ashes.` }
+        : { kind: 'grandpa', t: ev.t, actor: ev.by, text: `${n(ev.by)} trod in Grandpa and walked him all over the house.` }, this.events.length - 1);
+    }
     if (ev.kind === 'break' && ev.favourite) {
       this.addMoment({
         kind: 'favourite-broken', t: ev.t, actor: ev.by ?? 'nobody',

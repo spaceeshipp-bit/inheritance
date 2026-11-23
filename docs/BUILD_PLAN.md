@@ -269,6 +269,9 @@ The best three are marked ★ and are next once the core work above is done.
   half the game by ear. *Gives her real evidence that cousins can learn to fool (sneak past).*
 - **Forgeable evidence:** ash footprints from the urn lead to whoever walked through; a cousin can
   walk a victim through them. *A second framing tool that she sees with her own eyes.*
+  **Built 2026-11-23:** the broken urn leaves a pile; treading in it gives grey shoes and 16 prints
+  (one every 0.6 m, alternating feet); cousins see every print, Grandma only those she has looked
+  at, nobody is told whose; shoving someone in earns the Grandpa's Ashes moment (ash.test.ts).
 - **Nana's diary:** after the vote, Grandma's private suspicions (who she watched, who she trusted)
   are shown next to the truth. *Lets her enjoy her own wrongness with everyone else.*
 

@@ -101,6 +101,9 @@ export interface SnapMsg {
   thunder?: boolean;
 }
 
+/** One grey footprint: where, which way the foot pointed, which foot (0 left, 1 right), and when (match time). */
+export interface AshPrint { x: number; y: number; z: number; yaw: number; side: 0 | 1; t: number }
+
 export type GameEvent =
   /**
    * An heirloom broke. Everyone hears it. For Grandma: `favourite` is set,
@@ -131,6 +134,11 @@ export type GameEvent =
   | { e: 'cane'; victim: string; pos: Vec3 }
   | { e: 'specs-off'; pos: Vec3 }
   | { e: 'lightning' }
+  /**
+   * Ash footprints: new ones (cousins: all; Grandma: those she has now seen).
+   * `clear`: a new visit, the floors have been hoovered. Never says whose they are.
+   */
+  | { e: 'prints'; prints: AshPrint[]; clear?: boolean }
   /** The thunder after a lightning flash: for `duration` s Grandma hears nothing. */
   | { e: 'thunder'; duration: number }
   | { e: 'moment'; moment: Moment }
