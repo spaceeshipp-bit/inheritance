@@ -322,6 +322,8 @@ export class Room {
   options: MatchOptions = { fullMatch: false, fillBots: true, pushGrandma: false, map: 'manor' };
   match: Match | null = null;
   lastGrandmaId: string | null = null;
+  /** The last match's final shares (Rotate Grandma picks the lowest willing one). */
+  lastShares: Record<string, number> | null = null;
   emptySince: number | null = null;
   /** Since when the running match has had no participant connected (null: someone is). */
   idleSince: number | null = null;
@@ -546,6 +548,12 @@ export class Room {
         return;
       }
       grandmaId = practice === 'grandma' ? p.id : null;
+    } else if (this.options.rotateGrandma && this.lastShares && willing.some((h) => h.id in this.lastShares!)) {
+      // Rotate Grandma: whoever came off worst last time (and is willing) takes the shawl.
+      const ranked = willing.filter((h) => h.id in this.lastShares!).sort((a, b) => this.lastShares![a.id] - this.lastShares![b.id]);
+      const low = this.lastShares[ranked[0].id];
+      const tied = ranked.filter((h) => this.lastShares![h.id] === low);
+      grandmaId = tied[Math.floor(Math.random() * tied.length)].id;
     } else if (willing.length > 0) {
       const weights = willing.map((h) => (h.id === this.lastGrandmaId && willing.length > 1 ? 0.35 : 1));
       let r = Math.random() * weights.reduce((a, b) => a + b, 0);
@@ -616,6 +624,8 @@ export class Room {
       const roles = new Map<string, 'grandma' | 'cousin'>();
       for (const id of m.humanIds()) { const r = m.roleOf(id); if (r) roles.set(id, r); }
       this.lastMatch = { id: this.matchId, endedAt: this.mgr.now(), roles };
+      // For Rotate Grandma: the final shares, if the will was read.
+      this.lastShares = m.results ? { ...m.results.shares } : null;
     }
     this.match = null;
     this.idleSince = null;

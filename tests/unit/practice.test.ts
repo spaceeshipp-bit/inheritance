@@ -89,3 +89,29 @@ describe('the practice option', () => {
     expect(asNana.match?.practice).toMatchObject({ role: 'grandma', who: asNana.me });
   });
 });
+
+describe('Rotate Grandma', () => {
+  it('the willing cousin with the smallest share last match is the next Grandma', () => {
+    let now = 1000;
+    const mgr = new RoomManager({ now: () => now, fast: true, seed: 4 });
+    const join = (name: string, room: string) => {
+      const sent: ServerMsg[] = [];
+      const s = mgr.connect({ send: (d) => { sent.push(JSON.parse(d) as ServerMsg); }, close: () => {} }, '');
+      mgr.onRaw(s, JSON.stringify({ t: 'hello', name, room, protocol: PROTOCOL_VERSION }));
+      const w = sent.find((x) => x.t === 'welcome') as Extract<ServerMsg, { t: 'welcome' }>;
+      return { s, id: w.you, room: w.room, send: (msg: object) => mgr.onRaw(s, JSON.stringify(msg)) };
+    };
+    const host = join('Host', '');
+    const ann = join('Ann', host.room);
+    const bob = join('Bob', host.room);
+    for (const p of [host, ann, bob]) p.send({ t: 'lobby', willingGrandma: true });
+    now += 1;
+    host.send({ t: 'lobby', options: { rotateGrandma: true } });
+    const room = mgr.rooms.get(host.room)!;
+    // As if the last match left Bob with the least.
+    room.lastShares = { [host.id]: 40, [ann.id]: 35, [bob.id]: 25 };
+    now += 1;
+    host.send({ t: 'start' });
+    expect(room.match?.grandmaId).toBe(bob.id);
+  });
+});

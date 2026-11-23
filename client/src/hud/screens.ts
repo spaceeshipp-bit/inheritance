@@ -128,6 +128,7 @@ export class Screens {
   private optFull = el('input');
   private optBots = el('input');
   private optPush = el('input');
+  private optRotate = el('input');
   /** The map picker: one card per map, then "Surprise me". */
   private mapCards = el('div', 'map-cards');
   private mapButtons = new Map<string, HTMLButtonElement>();
@@ -260,6 +261,7 @@ export class Screens {
       this.check(this.optFull, 'Full match (Tea, Dinner, The Storm)', (v) => this.h.options({ fullMatch: v })),
       this.check(this.optBots, 'Fill empty seats with bots', (v) => this.h.options({ fillBots: v })),
       this.check(this.optPush, 'Cousins may shove Grandma', (v) => this.h.options({ pushGrandma: v })),
+      this.check(this.optRotate, 'Rotate Grandma (the smallest share takes the shawl)', (v) => this.h.options({ rotateGrandma: v })),
       this.startBtn, this.startNote, this.lobbyErr,
     );
     this.startBtn.addEventListener('click', () => this.h.start());
@@ -359,10 +361,11 @@ export class Screens {
     this.willing.checked = !!me?.willingGrandma;
     const host = m.hostId === this.selfId;
     const running = !!m.inProgress;
-    for (const i of [this.optFull, this.optBots, this.optPush]) i.disabled = !host || running;
+    for (const i of [this.optFull, this.optBots, this.optPush, this.optRotate]) i.disabled = !host || running;
     this.optFull.checked = m.options.fullMatch;
     this.optBots.checked = m.options.fillBots;
     this.optPush.checked = m.options.pushGrandma;
+    this.optRotate.checked = !!m.options.rotateGrandma;
     for (const [id, b] of this.mapButtons) {
       b.disabled = !host || running;
       b.classList.toggle('chosen', m.options.map === id);

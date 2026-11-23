@@ -153,6 +153,8 @@ export interface MatchOptions {
   map: MapId | 'random';
   /** A practice round (shared/practice.ts): the host plays this role against bots, with a checklist. */
   practice?: PracticeRole;
+  /** Rotate Grandma (GDD): the willing cousin with the smallest share last match is the next Grandma. */
+  rotateGrandma?: boolean;
 }
 
 export interface ReadingResult {

@@ -88,6 +88,7 @@ function parseOptions(v: unknown): Partial<MatchOptions> | undefined {
   if (typeof v.fillBots === 'boolean') out.fillBots = v.fillBots;
   if (typeof v.pushGrandma === 'boolean') out.pushGrandma = v.pushGrandma;
   if (v.map === 'random' || MAP_IDS.some((id) => id === v.map)) out.map = v.map as MatchOptions['map'];
+  if (typeof v.rotateGrandma === 'boolean') out.rotateGrandma = v.rotateGrandma;
   if (v.practice === null) out.practice = undefined;
   else if (isPracticeRole(v.practice)) out.practice = v.practice;
   return out;
