@@ -193,7 +193,8 @@ const BOXES: Box[] = [
   box('counter', -24, 0, 3.6, -23.4, 1.0, 4.2, 'Gramophone'),
 
   // ───────── Library: bookcases all round (two storeys of books), stacks, reading room ─────────
-  box('wall', -22, 0, -21, -8.3, HT.library, -20.6, 'Bookcase north'),
+  box('wall', -22, 0, -21, -18.6, HT.library, -20.6, 'Bookcase north 1'),
+  box('wall', -16.2, 0, -21, -8.3, HT.library, -20.6, 'Bookcase north 2'),
   box('wall', -22, 0, -20.6, -21.6, HT.library, -17.9, 'Bookcase west 1'),
   box('wall', -22, 0, -17.9, -21.45, HT.library, -15.4, 'Library chimney breast'),
   box('wall', -22, 0, -15.4, -21.6, HT.library, -9.4, 'Bookcase west 2'),
