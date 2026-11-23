@@ -25,6 +25,7 @@ import { CousinHud } from './cousin.js';
 import { Floats } from './floats.js';
 import { GrandmaHud } from './grandma.js';
 import { cleanText, nameOf } from './ident.js';
+import { rejectText } from './rejects.js';
 import { FullParchment } from './parchment.js';
 import { COUSIN_KEYS, GRANDMA_KEYS, Intermission, RoleReveal, VoteScreen } from './phases.js';
 import { ReadingScreen, ResultsScreen } from './reading.js';
@@ -37,15 +38,6 @@ import { panelRects, type HudFrame, type Rect } from './types.js';
 import { Wheel, type WheelKind } from './wheel.js';
 
 type Overlay = { root: HTMLElement; frame(s: GameState, now: number, t: number): void };
-
-const REJECT_TEXT: Record<string, string> = {
-  budget: "You've changed the will enough for one visit, dear.",
-  rolling: 'Slow down! Give it a moment (rolling cap).',
-  'zero-needs-parchment': 'Cutting someone off entirely needs the full parchment (Tab).',
-  'no-room': "That can't go any further.",
-  'unknown-target': 'Who?',
-  'no-op': 'Nothing to change.',
-};
 
 /** Words a cousin sees float up over a smash this close (m). */
 const CRASH_FLOAT_RANGE = 16;
@@ -84,6 +76,8 @@ export class Hud {
   private rectsAt = 0;
   private prefs: SettingsData | null = null;
   private store: Settings | null = null;
+  /** The last device the player used (rejection lines name its parchment button). */
+  private device: 'kbm' | 'pad' = 'kbm';
   onVote: (id: string) => void = () => {};
   onSurvey: (q: SurveyQuestion, a: SurveyAnswer) => void = () => {};
   onParchmentSet: (target: string, value: number) => void = () => {};
@@ -93,15 +87,22 @@ export class Hud {
     this.hChip.innerHTML = '<kbd>H</kbd><span>Controls</span>';
     this.hChip.title = 'Show the controls (H)';
     this.hChip.addEventListener('click', () => this.toggleHelp());
-    hudRoot.append(this.roleRoot, this.top.root, this.toasts.root, this.chat.root, this.lockHint, this.help, this.hChip, this.captions.root);
+    hudRoot.append(this.roleRoot, this.top.root, this.toasts.root, this.chat.root, this.lockHint, this.hChip, this.captions.root);
     labels.append(this.bubbles.root, this.floats.root);
-    overlayRoot.append(this.wheel.root);
+    // Wheels and the controls card sit above the phase cards (style.css), so the
+    // intermission's wheels and "Press H any time" on the role card both show.
+    overlayRoot.append(this.wheel.root, this.help);
     document.body.appendChild(this.net);
     show(this.help, false);
     show(this.net, false);
     this.bubbles.itemOf = (id) => s.cousin(id)?.item;
     this.settingsPanel = new SettingsPanel(() => this.store);
     this.settingsPanel.canOpenWithEscape = () => this.s.inMatch && !this.wheel.isOpen && !this.parchment?.isOpen && !this.chat.isOpen;
+    // Closing the panel takes the mouse back only where the game still wants it (not over the vote or the lobby).
+    this.settingsPanel.canRelock = () => {
+      const p = this.s.phase;
+      return this.s.inMatch && (p === 'visit' || p === 'intermission') && !this.parchment?.isOpen && !this.chat.isOpen && !this.wheel.isOpen;
+    };
   }
 
   /** Player settings: the settings panel edits them; the HUD applies the ones it owns. */
@@ -135,7 +136,7 @@ export class Hud {
     if (m.role === 'grandma') {
       this.grandmaHud = new GrandmaHud(m.cousins, m.prefCards ?? []);
       this.roleRoot.appendChild(this.grandmaHud.root);
-      this.parchment = new FullParchment(m.cousins, this.s.name(m.grandmaId));
+      this.parchment = new FullParchment(m.cousins, this.s.name(m.grandmaId), m.options.map);
       this.parchment.onSet = (t, v) => this.onParchmentSet(t, v);
       this.overlayRoot.appendChild(this.parchment.root);
     } else {
@@ -171,6 +172,7 @@ export class Hud {
     this.captions.clear();
     if (this.wheel.isOpen) this.wheel.close();
     this.chat.close();
+    show(this.help, false);
   }
 
   /** Hide every in-match element (title/lobby screens). */
@@ -189,7 +191,6 @@ export class Hud {
     if (kind === 'quick') {
       const lines = s.role === 'grandma' ? QUICKCHAT.grandma : QUICKCHAT.cousin;
       this.wheel.open('quick', 'Say...', lines.map((l) => ({ label: l })));
-      this.coach?.note('quick');
     } else {
       const others = (s.match?.cousins ?? []).filter((c) => c.id !== s.selfId);
       this.wheel.open('tattle', 'Tattle on...', others.map((c) => ({ label: nameOf(s, c.id), color: c.color })));
@@ -201,7 +202,8 @@ export class Hud {
     const kind = this.wheel.kind;
     const i = this.wheel.close();
     if (i < 0) return null;
-    if (kind === 'quick') return { kind, line: i };
+    // The first-visit tip counts a line actually said, not a wheel opened and shut.
+    if (kind === 'quick') { this.coach?.note('quick'); return { kind, line: i }; }
     if (kind === 'gesture' || kind === 'dance') {
       const d = emotesFor(this.s.role === 'grandma' ? 'grandma' : 'cousin', kind)[i];
       return d ? { kind, emote: d.id } : null;
@@ -238,7 +240,7 @@ export class Hud {
       case 'will-rejected':
         // With the full parchment open, the sheet says it in one line instead (review P7).
         if (this.parchment?.isOpen) this.parchment.rejected(ev.reason);
-        else t.push(REJECT_TEXT[ev.reason] ?? ev.reason, 'warn', 3);
+        else t.push(rejectText(ev.reason, this.device === 'pad'), 'warn', 3);
         break;
       case 'wish': if (ev.wish) t.push(g ? `You fancy: ${ev.wish.text}` : `Nana wishes: ${ev.wish.text}`, 'info', 4); break;
       case 'wish-done':
@@ -371,15 +373,21 @@ export class Hud {
     if (o) this.overlayRoot.appendChild(o.root);
   }
 
-  /** Pick the phase overlay for the current phase. */
+  /** Show the card for `key`, building it only when it is not the one already up. */
+  private wantOverlay(key: string, make: () => Overlay): void {
+    if (key !== this.overlayKey) this.setOverlay(make(), key);
+  }
+
+  /** Pick the phase overlay for the current phase (runs every frame: cards are built once, not per frame). */
   private syncOverlay(): void {
     const s = this.s;
+    const reading = s.reading, results = s.results;
     switch (s.phase) {
-      case 'roles': this.setOverlay(new RoleReveal(s), 'roles'); break;
-      case 'intermission': this.setOverlay(new Intermission(s), `int-${s.visit}`); break;
-      case 'reading': if (s.reading) this.setOverlay(new ReadingScreen(s, s.reading), 'reading'); break;
-      case 'vote': this.setOverlay(new VoteScreen(s, (id) => this.onVote(id)), 'vote'); break;
-      case 'results': if (s.results) this.setOverlay(new ResultsScreen(s, s.results, (q, a) => this.onSurvey(q, a)), 'results'); break;
+      case 'roles': this.wantOverlay('roles', () => new RoleReveal(s)); break;
+      case 'intermission': this.wantOverlay(`int-${s.visit}`, () => new Intermission(s)); break;
+      case 'reading': if (reading) this.wantOverlay('reading', () => new ReadingScreen(s, reading)); break;
+      case 'vote': this.wantOverlay('vote', () => new VoteScreen(s, (id) => this.onVote(id))); break;
+      case 'results': if (results) this.wantOverlay('results', () => new ResultsScreen(s, results, (q, a) => this.onSurvey(q, a))); break;
       default: this.setOverlay(null, ''); break;
     }
   }
@@ -442,6 +450,7 @@ export class Hud {
   frame(f: HudFrame, bubbles: BubbleFrame): void {
     const s = this.s;
     this.lastView = f.view;
+    this.device = f.device;
     this.syncOverlay();
     if (s.phase !== this.lastPhase) {
       if (s.phase === 'visit') this.visitStart = f.t;
@@ -467,10 +476,11 @@ export class Hud {
     this.top.frame(s, f.now);
     this.overlay?.frame(s, f.now, f.t);
     // A phase card owns the screen: no toasts, bubbles or floating words bleeding through it.
+    // In the intermission (people still chat and dance) the captions stay, clear of the card.
     show(this.toasts.root, !this.overlay);
     show(this.bubbles.root, !this.overlay);
     show(this.floats.root, !this.overlay);
-    show(this.captions.root, !this.overlay);
+    show(this.captions.root, !this.overlay || this.overlay instanceof Intermission);
     // With the full parchment open, notices move to the right, clear of the sheet.
     this.toasts.root.classList.toggle('side', !!this.parchment?.isOpen);
     this.toasts.frame();

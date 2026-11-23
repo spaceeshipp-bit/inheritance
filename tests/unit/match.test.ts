@@ -484,7 +484,24 @@ describe('match rules', () => {
     m.setConnected('c', false);
     expect(m.phase).toBe('visit');
     m.setConnected('d', false);
+    // Asleep cousins count as gone only after a grace (a reload must not end the match).
+    expect(m.phase).toBe('visit');
+    tick(m, Math.ceil(DISCONNECT.cousinGrace * 30) + 2);
     expect(m.phase).toBe('reading');
+  });
+
+  it('a page reload with only three cousins awake does not read the will (review finding 2)', () => {
+    const { m } = humanMatch();
+    m.setConnected('d', false); // one cousin left for good
+    tick(m, Math.ceil(DISCONNECT.cousinGrace * 30) + 2);
+    expect(m.phase).toBe('visit');
+    m.setConnected('c', false); // another reloads the page...
+    tick(m, 30);
+    expect(m.phase).toBe('visit');
+    m.setConnected('c', true); // ...and is back a second later
+    tick(m, 5 * 30);
+    expect(m.phase).toBe('visit');
+    expect(m.chars.get('c')!.state).toBe('normal');
   });
 
   it('Grandma drops: a lie-down pause, then the will is read as it stands', () => {
@@ -521,6 +538,7 @@ describe('match rules', () => {
     const { m, box } = humanMatch();
     m.setConnected('c', false);
     m.setConnected('d', false);
+    stepUntil(m, () => m.phase === 'reading', DISCONNECT.cousinGrace + 2);
     expect(m.phase).toBe('reading');
     const reading = box.of('a').find((x) => x.t === 'reading') as Extract<ServerMsg, { t: 'reading' }>;
     expect(sum(reading.result.shares)).toBe(100);

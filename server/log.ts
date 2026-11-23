@@ -90,24 +90,36 @@ export class EventLog {
    * Plants (by log index) that led Grandma to accuse their owner: the
    * accusation's crime is that plant, or it targets the owner of an item she
    * found while it was still planted (the 'found' entry links the plant), in
-   * the same visit and before the owner took it back.
+   * the same visit, and only while the owner had not got the item back since
+   * it was planted (a 'recovered' entry ends it).
    */
   framedPlants(): Map<number, { accuse: number; t: number }> {
     const out = new Map<number, { accuse: number; t: number }>();
     const evs = this.events;
+    const recoveredBetween = (item: string, owner: string, from: number, to: number): boolean => {
+      for (let i = from + 1; i < to; i++) {
+        const e = evs[i];
+        if (e.kind === 'recovered' && e.item === item && e.by === owner) return true;
+      }
+      return false;
+    };
     evs.forEach((a, ai) => {
       if (a.kind !== 'accuse') return;
       const link = (pi: number | null) => {
-        if (pi === null || out.has(pi)) return;
+        if (pi === null || pi > ai || out.has(pi)) return;
         const p = evs[pi];
         if (!p || p.kind !== 'plant' || p.owner !== a.target || p.by === a.target || p.t > a.t) return;
+        if (recoveredBetween(p.item, p.owner, pi, ai)) return;
         out.set(pi, { accuse: ai, t: a.t });
       };
       if (a.crime !== null && evs[a.crime]?.kind === 'plant') link(a.crime);
-      // The newest find of one of the target's items before this accusation.
+      // The newest find of one of the target's items before this accusation, if it was this visit.
       for (let i = ai - 1; i >= 0; i--) {
         const f = evs[i];
-        if (f.kind === 'found' && f.owner === a.target) { link(f.plant); break; }
+        if (f.kind === 'found' && f.owner === a.target) {
+          if (f.visit === a.visit) link(f.plant);
+          break;
+        }
       }
     });
     return out;
@@ -220,7 +232,8 @@ export class EventLog {
       const last = this.lastCaught.get(ev.by) ?? -Infinity;
       if (ev.t - last >= 10) {
         this.lastCaught.set(ev.by, ev.t);
-        this.addMoment({ kind: 'caught-red-handed', t: ev.t, actor: ev.by, text: `${n(ev.by)} was caught red-handed (${describe(ev)}).` }, this.events.length - 1);
+        // The actor is told this one mid-match: never say which heirloom was her Favourite (that waits for the reading).
+        this.addMoment({ kind: 'caught-red-handed', t: ev.t, actor: ev.by, text: `${n(ev.by)} was caught red-handed (${describe(ev, false)}).` }, this.events.length - 1);
       }
     }
     if (ev.kind === 'shove' && !ev.seen) {
@@ -270,10 +283,11 @@ export class EventLog {
   }
 }
 
-function describe(ev: SabotageEvent): string {
+/** An act of sabotage in a few words. `favourite`: may say the heirloom was her Favourite (only at the reading). */
+function describe(ev: SabotageEvent, favourite = true): string {
   switch (ev.kind) {
     case 'shove': return 'a shove';
-    case 'break': return ev.favourite ? 'the favourite heirloom' : 'a broken heirloom';
+    case 'break': return favourite && ev.favourite ? 'the favourite heirloom' : 'a broken heirloom';
     case 'steal': return 'a theft';
     case 'plant': return 'planting evidence';
     case 'knock-specs': return "Nana's spectacles";

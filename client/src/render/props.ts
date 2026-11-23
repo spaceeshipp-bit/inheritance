@@ -78,6 +78,17 @@ class PropView {
     this.degrade = d;
     for (const m of this.meshes) m.material = d === 'none' ? (m.userData.mat as THREE.Material) : d === 'heavy' ? greyMat : darkMat;
   }
+
+  /**
+   * Take it out of the scene and free what only it uses on the GPU: every
+   * geometry under it (each prop builds its own) and its shadow's material.
+   * The colour materials are shared (materials.ts caches them) and stay.
+   */
+  dispose(): void {
+    this.root.removeFromParent();
+    this.root.traverse((o) => { if (o instanceof THREE.Mesh) o.geometry.dispose(); });
+    (this.shadow.material as THREE.Material).dispose();
+  }
 }
 
 export class PropViews {
@@ -87,7 +98,7 @@ export class PropViews {
   constructor(private scene: THREE.Scene) {}
 
   clear(): void {
-    for (const v of this.views.values()) { v.root.removeFromParent(); this.endBurst(v); }
+    for (const v of this.views.values()) { this.endBurst(v); v.dispose(); }
     this.views.clear();
   }
 
@@ -166,7 +177,7 @@ export class PropViews {
 
   update(f: PropFrame): void {
     for (const [id, v] of this.views) {
-      if (!f.props.has(id)) { v.root.removeFromParent(); this.endBurst(v); this.views.delete(id); }
+      if (!f.props.has(id)) { this.endBurst(v); v.dispose(); this.views.delete(id); }
     }
     for (const p of f.props.values()) {
       let v = this.views.get(p.id);

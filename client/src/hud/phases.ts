@@ -6,7 +6,7 @@ import { el, fmtTime, setStyle, setText } from '../util.js';
 import { botGlyph, isBot, nameOf, swatch } from './ident.js';
 import { WillList } from './willview.js';
 
-export const COUSIN_KEYS = 'WASD move - Shift run - Ctrl/C sneak - Space jump - LMB grab - RMB throw - F shove - E interact/steal - G plant - Q quick-chat - T tattle - Z gesture - X dance - Alt whisper - Enter chat';
+export const COUSIN_KEYS = 'WASD move - Shift run - C sneak - Space jump - LMB grab - RMB throw - F shove - E interact/steal - G plant - Q quick-chat - T tattle - Z gesture - X dance - Alt whisper - Enter chat';
 export const GRANDMA_KEYS = 'WASD move - E Bless - Q Tut - Scroll lock name - Tab parchment - LMB cane - RMB hearing aid - F spectacles - R summon - C pin - V quick-chat - Z gesture - X dance - Enter chat';
 
 /** The one-line goal on each role card (review P3: no stated goal). */
@@ -141,6 +141,8 @@ export class VoteScreen {
       this.buttons.set(c.id, b);
       grid.appendChild(b);
     }
+    // Back after a drop mid-vote: the server still has our vote, so show it.
+    if (s.myVote) this.buttons.get(s.myVote)?.classList.add('chosen');
     this.root.append(grid, this.timer);
   }
 

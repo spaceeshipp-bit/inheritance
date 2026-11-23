@@ -119,12 +119,23 @@ export async function run(): Promise<Report> {
     await bob.quickChat(1, 't');
     r.check('tattle reaches Grandma', await ann.waitFor('tattle event', async () => (await ann!.rx()).log.some((x) => x.msg.e === 'tattle' && x.msg.from === bobId), 3000));
 
+    // Bob pulls a face: the gesture wheel (Z, then 1 = heart hands); Nana, close and facing him, is told.
+    await bob.quickChat(1, 'z');
+    r.check('Z opens the gesture wheel and the pick plays on the server', await bob.waitFor('emote', async () => match.chars.get(bobId)!.emote?.id === 'heart-hands', 3000));
+    r.check('...and shows in his own snapshot', await bob.waitFor('own emote', async () => (await bob!.me())?.emote === 'heart-hands', 3000));
+    await sleep(3000);
+
     // Ann answers on her own wheel (V, then 6 = "Good child.").
     await ann.quickChat(6, 'v');
     r.check('Grandma\'s quick-chat (V) reaches the cousin', await bob.waitFor('grandma bubble', async () => (await bob!.rx()).log.some((x) => x.msg.e === 'bubble' && x.msg.from === annId && x.msg.text === 'Good child.'), 3000));
 
     // ── Ann: Bless and Tut Bob (he is under her crosshair), aid, spectacles, summon ──
     await ann.faceTo(match.chars.get(bobId)!.body.pos);
+    // Facing him now, she sees his raspberry (Z, then 3) and is told who.
+    await bob.quickChat(3, 'z');
+    r.check('a raspberry she sees reaches Grandma as a gesture, with his name', await ann.waitFor('gesture event', async () => (await ann!.rx()).log.some((x) => x.msg.e === 'gesture' && x.msg.by === bobId && x.msg.emote === 'raspberry'), 3000));
+    r.check('...and the server notes the rudeness as seen', await ann.waitFor('rude', async () => match.log.events.some((e) => e.kind === 'rude' && e.by === bobId && e.seen), 3000));
+    await sleep(2500);
     r.check('Grandma takes pointer lock by clicking', await ann.lock());
     await sleep(300);
     const sharesBefore = { ...match.will.shares };

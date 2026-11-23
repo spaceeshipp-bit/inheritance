@@ -79,7 +79,7 @@ describe('the sabotage tally and moments (log.ts)', () => {
     log.add({ t: 13, kind: 'shove', by: 'a', victim: 'b', pos, seen: false });
     log.add({ t: 20, kind: 'shove', by: 'c', victim: 'b', pos, seen: true, sharp: true });
     log.add({ t: 30, kind: 'plant', by: 'a', item: 'item-phone', owner: 'b', pos, seen: false });
-    log.add({ t: 35, kind: 'accuse', target: 'b', crime: 3 });
+    log.add({ t: 35, kind: 'accuse', target: 'b', crime: 3, visit: 0 });
     log.add({ t: 40, kind: 'break', by: 'c', heirloom: 'h', favourite: true, pos, seen: false });
     log.bigCuts(50, 'g', { a: 30, b: 2 });
     const kinds = log.moments.map((m) => m.kind);
@@ -107,7 +107,7 @@ describe('the sabotage tally and moments (log.ts)', () => {
     const log = new EventLog();
     log.add({ t: 30, kind: 'plant', by: 'a', item: 'item-phone', owner: 'b', pos, seen: false }); // 0
     log.add({ t: 55, kind: 'shove', by: 'c', victim: 'b', pos, seen: false }); // 1
-    log.add({ t: 56, kind: 'accuse', target: 'b', crime: 1 }); // b accused as the shove VICTIM
+    log.add({ t: 56, kind: 'accuse', target: 'b', crime: 1, visit: 0 }); // b accused as the shove VICTIM
     expect(log.moments.some((m) => m.kind === 'framed')).toBe(false);
     expect(log.metrics()).toMatchObject({ plants: 1, plantsAccusedOwner: 0, framingAccuracy: 0 });
   });
@@ -116,7 +116,7 @@ describe('the sabotage tally and moments (log.ts)', () => {
     const log = new EventLog();
     log.add({ t: 30, kind: 'plant', by: 'a', item: 'item-phone', owner: 'b', pos, seen: false }); // 0
     log.add({ t: 40, kind: 'found', item: 'item-phone', owner: 'b', plant: 0, visit: 0 }); // 1
-    log.add({ t: 45, kind: 'accuse', target: 'b', crime: null });
+    log.add({ t: 45, kind: 'accuse', target: 'b', crime: null, visit: 0 });
     expect(log.moments.filter((m) => m.kind === 'framed')).toMatchObject([{ actor: 'a', victim: 'b' }]);
     expect(log.metrics()).toMatchObject({ plants: 1, plantsAccusedOwner: 1, framingAccuracy: 1 });
   });

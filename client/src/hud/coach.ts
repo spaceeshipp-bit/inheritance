@@ -42,8 +42,8 @@ export interface Tip {
 export const TIPS: readonly Tip[] = [
   {
     id: 'c-nana', role: 'cousin', maxShow: 22,
-    kbm: 'Nana is over there — walk up and press [Q] to compliment her',
-    pad: 'Nana is over there — walk up and press [LB] to compliment her',
+    kbm: 'Nana is over there — walk up, hold [Q] and pick a line to compliment her',
+    pad: 'Nana is over there — walk up, hold [LB] and pick a line to compliment her',
     when: () => true,
     done: (_c, n) => n.has('quick'),
   },

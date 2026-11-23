@@ -46,6 +46,7 @@ async function boot(): Promise<void> {
   const applySettings = () => {
     const s = settings.get();
     renderer.setQuality(s.quality);
+    renderer.calm = s.reducedMotion;
     input.applySettings(s);
     sfx.applySettings(s);
     voice.setPushToTalk(s.pushToTalk);
@@ -203,6 +204,14 @@ async function boot(): Promise<void> {
   const unlock = () => sfx.unlock();
   window.addEventListener('pointerdown', unlock);
   window.addEventListener('keydown', unlock);
+
+  // Mid-match, closing or reloading the tab by accident (Ctrl+W while sneaking, a
+  // stray Ctrl+R) asks first. Not under automation: the e2e suites reload on purpose.
+  window.addEventListener('beforeunload', (e) => {
+    if (!state.inMatch || navigator.webdriver) return;
+    e.preventDefault();
+    e.returnValue = '';
+  });
 
   let last = performance.now();
   const loop = (ts: number) => {

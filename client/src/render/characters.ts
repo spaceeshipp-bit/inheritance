@@ -59,6 +59,10 @@ const SKINS = ['#f1c9a5', '#d9a27a', '#b9805a', '#8d5a3a', '#f5d6c0', '#c48e66']
 const HAIRS = ['#2b1d14', '#6b3e1f', '#c9a25a', '#1a1a1a', '#8a3a1a', '#4a3a2a'];
 const SHIRTS = ['#d9d4cc', '#5a5f6a', '#3d3a36', '#7a6a58', '#a8a29a', '#4a5560'];
 
+/** Scratch vectors for holdPoint (called every frame per carried prop). */
+const HOLD_RAISED = new THREE.Vector3();
+const HOLD_CARRY = new THREE.Vector3();
+const UP = new THREE.Vector3(0, 1, 0);
 const greyMat = new THREE.MeshStandardMaterial({ color: '#7a7672', roughness: 1 });
 const darkMat = new THREE.MeshStandardMaterial({ color: '#3b3835', roughness: 1 });
 
@@ -260,8 +264,9 @@ export class CharacterModel {
   /** Where a held prop sits (world). */
   holdPoint(c: CharSnap, out: THREE.Vector3): THREE.Vector3 {
     const s = this.scale;
-    const local = c.charge > 0 ? new THREE.Vector3(0.28, 1.5, 0.08) : new THREE.Vector3(0, 0.95, -0.46);
-    local.multiplyScalar(s).applyAxisAngle(new THREE.Vector3(0, 1, 0), this.yawG.rotation.y);
+    // Every frame for whatever they carry: no new vectors.
+    const local = c.charge > 0 ? HOLD_RAISED.set(0.28, 1.5, 0.08) : HOLD_CARRY.set(0, 0.95, -0.46);
+    local.multiplyScalar(s).applyAxisAngle(UP, this.yawG.rotation.y);
     return out.copy(this.root.position).add(local);
   }
 

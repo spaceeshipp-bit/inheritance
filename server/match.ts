@@ -344,6 +344,16 @@ export class Match {
   private nextLightning = Infinity;
   private sharesAtOpen: Record<string, number> | null = null;
   private allNames: Record<string, string> = {};
+  /** When each sleeping (disconnected) cousin dozed off: gone for the too-few rule after DISCONNECT.cousinGrace. */
+  private dozedAt = new Map<string, number>();
+  /** The last tick was paused (Grandma's lie-down): resuming re-sends the moved wish deadline. */
+  private wasPaused = false;
+  /**
+   * Free Tuts spent (this visit, and when): the bar cousins see counts them like
+   * any Tut, so a Tut that costs nothing never tells them the Favourite broke.
+   */
+  private freeThisVisit = 0;
+  private freeRecent: { t: number; points: number }[] = [];
 
   constructor(cfg: MatchConfig) {
     this.cfg = cfg;
@@ -929,6 +939,17 @@ export class Match {
     this.votes.set(id, target);
   }
 
+  /**
+   * A new connection for this player (a reloaded page, or a second tab that
+   * replaced the first): its inputs count afresh from its first one.
+   */
+  restartInputs(id: string): void {
+    const c = this.chars.get(id);
+    if (!c) return;
+    c.lastSeq = 0;
+    this.resetInputs(c, 0);
+  }
+
   /** A participant's connection dropped or came back. */
   setConnected(id: string, connected: boolean): void {
     const c = this.chars.get(id);
@@ -938,9 +959,11 @@ export class Match {
     const live = this.phase === 'roles' || this.phase === 'visit' || this.phase === 'intermission';
     if (!connected) {
       if (c.role === 'cousin') {
-        this.dropHeld(c, true);
+        // Set down what they held: a dropped connection is not a crime (nothing breaks in their name).
+        this.dropHeld(c, false);
         c.state = 'sleeping';
         c.ragdollT = 0;
+        this.dozedAt.set(c.id, this.time);
         this.emitAll({ e: 'toast', text: `${c.name} dozed off.` });
         this.checkFewCousins();
       } else if (live && !this.pause) {
@@ -958,8 +981,8 @@ export class Match {
       }
     } else {
       // A new connection counts its inputs afresh (a reloaded page starts at 1).
-      c.lastSeq = 0;
-      this.resetInputs(c, 0);
+      this.dozedAt.delete(c.id);
+      this.restartInputs(id);
       if (c.state === 'sleeping') { c.state = 'normal'; c.ragdollT = 0; }
       if (c.role === 'grandma' && this.pause) {
         this.pause = null;
@@ -1077,6 +1100,7 @@ export class Match {
       // buttons pressed meanwhile do not all fire at once on resume.
       this.shiftDeadlines(h);
       for (const c of this.chars.values()) { c.pressed = noBtns(); c.released = noBtns(); this.skipInputs(c); }
+      this.wasPaused = true;
       if (this.time >= this.pause.until) {
         this.pause = null;
         this.startReading('Nana has gone to bed. The will is read as it stands.');
@@ -1084,6 +1108,13 @@ export class Match {
       this.snapshots(h);
       return;
     }
+    if (this.wasPaused) {
+      // Play resumes (she is back, or someone took over): the wish's clock moved
+      // on during the lie-down, so everyone is told its new deadline.
+      this.wasPaused = false;
+      if (this.wish && this.phase === 'visit') this.emitAll({ e: 'wish', wish: this.wish.info });
+    }
+    this.checkFewCousins();
     if (!this.cfg.botsIdle) {
       for (const b of this.bots.values()) {
         try { b.update(h); } catch (err) { console.error('[bot] error', b.id, err); }
@@ -1132,8 +1163,20 @@ export class Match {
     this.flashUntil += h;
     for (const r of this.will.recent) r.t += h;
     for (const cr of this.crimes) cr.t += h;
-    for (const c of this.chars.values()) c.knockedAt += h;
-    for (const p of this.props.values()) p.thrownAt += h;
+    for (const r of this.freeRecent) r.t += h;
+    for (const [id, t] of this.dozedAt) this.dozedAt.set(id, t + h);
+    for (const [id, t] of this.excusedUntil) this.excusedUntil.set(id, t + h);
+    for (const c of this.chars.values()) {
+      c.knockedAt += h;
+      c.yawHold += h;
+      c.shoveBufferUntil += h;
+      c.emoteCd += h;
+      if (c.emote) { c.emote.at += h; c.emote.until += h; }
+    }
+    for (const p of this.props.values()) {
+      p.thrownAt += h;
+      if (p.cat) { p.cat.waitUntil += h; p.cat.giveUpAt += h; }
+    }
   }
 
   private updateChar(c: Char, h: number): void {
@@ -1285,6 +1328,7 @@ export class Match {
       best.found = false;
       best.resting = false;
       this.followHolder(best);
+      this.log.add({ t: this.time, kind: 'recovered', by: c.id, item: best.id });
       this.emit(c.id, { e: 'toast', text: `You got your ${this.nameOf(best.id)} back.` });
       return;
     }
@@ -1382,6 +1426,9 @@ export class Match {
     if (held) {
       if (this.wish && held.id === this.wish.propId && g && flatDist(c.body.pos, g.body.pos) <= WISH.deliverRange && Math.abs(c.body.pos.y - g.body.pos.y) < 1.5) {
         this.deliverWish(c, held);
+      } else {
+        // Hands full at the dinner door: a bathroom trip can carry something.
+        this.tryExcuse(c);
       }
       return;
     }
@@ -1400,6 +1447,7 @@ export class Match {
       if (item.owner === c.id) {
         item.onBody = true;
         item.found = false;
+        this.log.add({ t: this.time, kind: 'recovered', by: c.id, item: item.id });
         this.emit(c.id, { e: 'toast', text: `You got your ${this.nameOf(item.id)} back.` });
       } else {
         item.onBody = false;
@@ -1420,11 +1468,15 @@ export class Match {
         mine.heldBy = c.id;
         mine.onBody = true;
         mine.planted = false;
+        this.log.add({ t: this.time, kind: 'recovered', by: c.id, item: mine.id });
         this.emit(c.id, { e: 'toast', text: `You snatched your ${this.nameOf(mine.id)} back from ${holder.name}.` });
         return;
       }
     }
-    // 4. Steal another cousin's signature item off their body.
+    // 4. At Dinner, by the door: excuse yourself from the table (before a
+    // steal: everyone leaves by the same door, and E there means "excuse me").
+    if (this.tryExcuse(c)) return;
+    // 5. Steal another cousin's signature item off their body.
     let victim: Char | null = null;
     let vd = Infinity;
     for (const o of this.chars.values()) {
@@ -1449,8 +1501,6 @@ export class Match {
       this.emit(c.id, { e: 'toast', text: `You pinched ${victim.name}'s ${this.nameOf(it.id).toLowerCase()}! Hold G to plant it somewhere damning.` });
       return;
     }
-    // 5. At Dinner, by the kitchen door: excuse yourself from the table.
-    if (this.tryExcuse(c)) return;
     this.hint(c, this.interactHint(c));
   }
 
@@ -1606,6 +1656,10 @@ export class Match {
       for (const id of Object.keys(shares)) if (!(id in ordered)) ordered[id] = shares[id];
       w.shares = ordered;
     }
+    if (r.ok && free) {
+      this.freeThisVisit += Math.abs(r.moved);
+      this.freeRecent.push({ t: this.time, points: Math.abs(r.moved) });
+    }
     if (r.ok && !silent) {
       if (!free) this.visitUsed[this.visitIndex] = (this.visitUsed[this.visitIndex] ?? 0) + Math.abs(r.moved);
       this.log.add({ t: this.time, kind: 'will', target, moved: r.moved, via });
@@ -1627,7 +1681,7 @@ export class Match {
         if (p.kind === 'item' && p.owner === target && p.planted && p.found) { crime = p.plantLog; accused = true; break; }
       }
     }
-    if (accused) this.log.add({ t: this.time, kind: 'accuse', target, crime });
+    if (accused) this.log.add({ t: this.time, kind: 'accuse', target, crime, visit: this.visitIndex });
   }
 
   private addCrime(kind: Crime['kind'], by: string | null, pos: Vec3, logIndex: number): void {
@@ -1731,6 +1785,7 @@ export class Match {
       p.found = false;
       p.resting = false;
       this.followHolder(p);
+      this.log.add({ t: this.time, kind: 'recovered', by: owner.id, item: p.id });
       return;
     }
     const home = p.kind === 'cat' ? this.mapDef.spawns.cat : p.kind === 'teacup' ? this.mapDef.spawns.teacup : p.spot ?? this.mapDef.spawns.cat;
@@ -1811,7 +1866,13 @@ export class Match {
     if (!cat) return;
     if (this.phase !== 'visit' && this.phase !== 'intermission') return;
     const lv = levelOf(p.pos);
-    if (lv === 'ramp') { cat.goal = null; }
+    if (lv === 'ramp') {
+      // Mittens never settles on the stairs: she walks off at the nearer end
+      // (this map's stair foot or top), whatever she was doing.
+      const ends = [this.mapDef.nav.stairFoot, this.mapDef.nav.stairTop].filter((e): e is Vec3 => !!e);
+      const end = ends.sort((a, b) => dist(a, p.pos) - dist(b, p.pos))[0];
+      if (end && (!cat.goal || flatDist(cat.goal, end) > 0.01)) { cat.goal = { ...end }; cat.giveUpAt = this.time + 12; }
+    }
     if (!cat.goal) {
       if (this.time < cat.waitUntil || lv === 'ramp') return;
       const level = lv === 'gallery' ? 'gallery' : 'ground';
@@ -2019,6 +2080,7 @@ export class Match {
     this.excuseUsed.clear();
     this.visitUsed[i] = this.visitUsed[i] ?? 0;
     resetVisitBudget(this.will);
+    this.freeThisVisit = 0;
     this.spawnAll();
     if (i > 0) this.resetVisitProps();
     const v = this.visits[i];
@@ -2046,6 +2108,7 @@ export class Match {
       if (p.kind === 'item' && p.owner && this.chars.has(p.owner)) {
         const holder = p.heldBy ? this.chars.get(p.heldBy) : undefined;
         if (holder && holder.holding === p.id) { holder.holding = null; holder.sticky = false; }
+        if (!(p.heldBy === p.owner && p.onBody)) this.log.add({ t: this.time, kind: 'recovered', by: p.owner, item: p.id });
         p.heldBy = p.owner;
         p.onBody = true;
         p.planted = false;
@@ -2133,14 +2196,21 @@ export class Match {
     this.cfg.onEnd?.(this);
   }
 
-  /** Fewer than 3 cousins awake → the will is read as it stands. */
+  /**
+   * Fewer than 3 cousins left → the will is read as it stands. A cousin who
+   * dozed off (disconnected) still counts for DISCONNECT.cousinGrace s, so a
+   * reload or a blip never ends the match; checked every tick.
+   */
   private checkFewCousins(): void {
     if (!(this.phase === 'roles' || this.phase === 'visit' || this.phase === 'intermission')) return;
-    const awake = this.cousinIds.filter((id) => {
+    const present = this.cousinIds.filter((id) => {
       const c = this.chars.get(id);
-      return !!c && c.connected && c.state !== 'sleeping';
+      if (!c) return false;
+      if (c.connected && c.state !== 'sleeping') return true;
+      const since = this.dozedAt.get(id);
+      return since !== undefined && this.time - since < DISCONNECT.cousinGrace;
     }).length;
-    if (awake < 3) this.startReading('Too few cousins are left awake. The will is read as it stands.');
+    if (present < 3) this.startReading('Too few cousins are left awake. The will is read as it stands.');
   }
 
   /**
@@ -2175,6 +2245,11 @@ export class Match {
     }
   }
 
+  /** Family Dinner: whether `id` has said "Excuse me, Nana" this visit, and until when it covers them. */
+  dinnerExcuse(id: string): { used: boolean; until: number } {
+    return { used: this.excuseUsed.has(id), until: this.excusedUntil.get(id) ?? -Infinity };
+  }
+
   /** "Excuse me, Nana": once a Dinner, by the kitchen door, a bathroom trip she does not count. */
   private tryExcuse(c: Char): boolean {
     if (this.visits[this.visitIndex] !== 'dinner' || this.excuseUsed.has(c.id)) return false;
@@ -2199,6 +2274,12 @@ export class Match {
     return null;
   }
 
+  /** How far away Grandma hears this character's footsteps (by gait; "Nana's Pet" twice as far). */
+  private footstepRange(c: Char): number {
+    const gait = c.running ? COUSIN.footstepRangeRun : c.sneaking ? COUSIN.footstepRangeSneak : COUSIN.footstepRangeWalk;
+    return gait * (c.id === this.petId ? COUSIN.leaderFootstepFactor : 1);
+  }
+
   /** One frame of What Nana Saw: the truth, and how Grandma perceived each character. */
   private replayFrame(): FullFrame {
     const g = this.grandma;
@@ -2207,7 +2288,7 @@ export class Match {
       if (c === g) seen = 'self';
       else if (g && g.state !== 'sleeping') {
         const per = this.perceive(c.body.pos);
-        const steps = c.running ? COUSIN.footstepRangeRun : c.sneaking ? COUSIN.footstepRangeSneak : COUSIN.footstepRangeWalk;
+        const steps = this.footstepRange(c);
         if (per.visible) seen = per.sharp ? 'sharp' : per.identifiable ? 'soft' : 'shape';
         else if (per.dist <= Math.max(SENSES.mumble, steps)) seen = 'heard';
       }
@@ -2362,7 +2443,7 @@ export class Match {
       if (c === g) { chars.push(this.charSnap(c, this.petId, g.id)); continue; }
       const per = this.perceive(c.body.pos);
       known.set(c.id, per);
-      const steps = (c.running ? COUSIN.footstepRangeRun : c.sneaking ? COUSIN.footstepRangeSneak : COUSIN.footstepRangeWalk) * (c.id === this.petId ? COUSIN.leaderFootstepFactor : 1);
+      const steps = this.footstepRange(c);
       if (!per.visible && per.dist > Math.max(SENSES.mumble, steps)) continue;
       const s = this.charSnap(c, this.petId, g.id);
       delete s.ack;
@@ -2385,9 +2466,22 @@ export class Match {
     return { chars, props };
   }
 
+  /**
+   * The will points Grandma can move, as `forId` is shown them. Cousins' bar
+   * counts a free Tut like any other Tut: a Tut that cost nothing would tell
+   * them her Favourite broke (SECRECY.md).
+   */
+  willAvailFor(forId: string): { budget: number; rolling: number } {
+    const g = this.grandma;
+    const w = g && forId === g.id ? this.will
+      : { ...this.will, usedThisVisit: this.will.usedThisVisit + this.freeThisVisit, recent: [...this.will.recent, ...this.freeRecent] };
+    const av = available(w, this.time);
+    return { budget: av.budget, rolling: av.rolling };
+  }
+
   /** Build this tick's snapshot for each recipient (exposed for tests). */
   snapshotFor(id: string): ServerMsg {
-    const av = available(this.will, this.time);
+    const av = this.willAvailFor(id);
     const g = this.grandma;
     const view = g && id === g.id
       ? this.grandmaSnapshot(g)

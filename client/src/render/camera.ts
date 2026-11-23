@@ -48,6 +48,10 @@ export class CameraRig {
   private losRay = new THREE.Raycaster();
   private losDir = new THREE.Vector3();
   private blockers: THREE.Object3D[] = [];
+  private vPivot = new THREE.Vector3();
+  private vFwd = new THREE.Vector3();
+  private vRight = new THREE.Vector3();
+  private vDir = new THREE.Vector3();
 
   constructor() {
     activeRig = this;
@@ -115,11 +119,12 @@ export class CameraRig {
     this.blockers = blockers;
     this.viewModel.visible = false;
     const p = clamp(pitch, -1.05, 0.75);
-    const pivot = new THREE.Vector3(pos.x, pos.y + 1.55, pos.z);
-    const f = new THREE.Vector3(-Math.sin(yaw) * Math.cos(p), Math.sin(p), -Math.cos(yaw) * Math.cos(p));
-    const right = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
-    const want = pivot.clone().addScaledVector(f, -ORBIT_DIST).addScaledVector(right, SHOULDER);
-    const dir = want.clone().sub(pivot);
+    // Every frame: scratch vectors, no garbage.
+    const pivot = this.vPivot.set(pos.x, pos.y + 1.55, pos.z);
+    const f = this.vFwd.set(-Math.sin(yaw) * Math.cos(p), Math.sin(p), -Math.cos(yaw) * Math.cos(p));
+    const right = this.vRight.set(Math.cos(yaw), 0, -Math.sin(yaw));
+    // From the pivot back along the view, and over the shoulder.
+    const dir = this.vDir.copy(f).multiplyScalar(-ORBIT_DIST).addScaledVector(right, SHOULDER);
     const len = dir.length();
     dir.normalize();
     this.ray.set(pivot, dir);
@@ -128,9 +133,8 @@ export class CameraRig {
     const target = hit ? Math.max(0.4, hit.distance - 0.3) : len;
     // Pull in instantly, ease back out.
     this.dist = target < this.dist ? target : this.dist + (target - this.dist) * damp(5, dt);
-    const cam = pivot.clone().addScaledVector(dir, this.dist);
+    const cam = this.camera.position.copy(pivot).addScaledVector(dir, this.dist);
     cam.y = Math.max(cam.y, pos.y + 0.3);
-    this.camera.position.copy(cam);
     this.camera.rotation.set(p, yaw, 0, 'YXZ');
     this.setFov(70, dt);
     this.applyShake(dt);

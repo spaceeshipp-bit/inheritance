@@ -58,7 +58,7 @@ Press **H** in game for the full list. Gamepads follow the design doc's controll
 | | Cousin | Grandma |
 | --- | --- | --- |
 | Move / look | WASD, mouse | WASD, mouse |
-| Run / sneak / jump | Shift / Ctrl (or C) / Space | — |
+| Run / sneak / jump | Shift / C / Space | — |
 | Main actions | LMB grab, RMB throw (hold to charge), F shove, E interact, G hold to plant a stolen item | E Bless, Q Tut (aimed at who you look at; scroll to lock a name), LMB cane, RMB hearing aid, F spectacles, R summon, C pin, Tab the parchment (the full will) |
 | Talk | Voice (open mic; push-to-talk in settings, default B), Left Alt whisper, Q quick-chat wheel, T tattle wheel, Enter typed chat | Voice, V quick-chat wheel, Enter typed chat |
 

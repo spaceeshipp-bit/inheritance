@@ -43,6 +43,23 @@ export const DEFAULT_SETTINGS: SettingsData = {
   bandPatterns: true,
 };
 
+/**
+ * The defaults for this player: DEFAULT_SETTINGS, with reduced motion on when
+ * the system asks for it (prefers-reduced-motion). Once the settings have
+ * been saved in this browser, the saved value wins over the system's.
+ */
+export function systemDefaults(prefersReducedMotion = osPrefersReducedMotion()): SettingsData {
+  return { ...DEFAULT_SETTINGS, reducedMotion: prefersReducedMotion };
+}
+
+function osPrefersReducedMotion(): boolean {
+  try {
+    return typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  } catch {
+    return false;
+  }
+}
+
 const KEY = 'inheritance.settings.v1';
 const QUALITIES: Quality[] = ['auto', 'low', 'medium', 'high'];
 
@@ -50,10 +67,9 @@ function clampNum(v: unknown, lo: number, hi: number, dflt: number): number {
   return typeof v === 'number' && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : dflt;
 }
 
-/** Validate anything (stored JSON, URL values) into a complete SettingsData. */
-export function sanitize(raw: unknown): SettingsData {
+/** Validate anything (stored JSON, URL values) into a complete SettingsData; gaps take `d`. */
+export function sanitize(raw: unknown, d: SettingsData = DEFAULT_SETTINGS): SettingsData {
   const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
-  const d = DEFAULT_SETTINGS;
   const bool = (k: keyof SettingsData) => (typeof r[k] === 'boolean' ? (r[k] as boolean) : (d[k] as boolean));
   return {
     quality: QUALITIES.includes(r.quality as Quality) ? (r.quality as Quality) : d.quality,
@@ -75,17 +91,20 @@ type Listener = (s: SettingsData) => void;
 
 export class Settings {
   private data: SettingsData;
+  /** This player's defaults (systemDefaults): what a missing value and "Reset to defaults" mean. */
+  readonly defaults: SettingsData;
   private listeners: Listener[] = [];
   /** URL overrides apply for this page load only and are never saved. */
   private overrides: Partial<SettingsData> = {};
 
-  constructor(search = typeof location !== 'undefined' ? location.search : '') {
+  constructor(search = typeof location !== 'undefined' ? location.search : '', defaults: SettingsData = systemDefaults()) {
+    this.defaults = defaults;
     let stored: unknown = null;
     try {
       const s = localStorage.getItem(KEY);
       if (s) stored = JSON.parse(s);
     } catch { /* storage blocked or corrupt: defaults */ }
-    this.data = sanitize(stored);
+    this.data = sanitize(stored, defaults);
     const q = new URLSearchParams(search);
     const gfx = q.get('gfx');
     if (gfx && QUALITIES.includes(gfx as Quality)) this.overrides.quality = gfx as Quality;
@@ -97,7 +116,7 @@ export class Settings {
   }
 
   set(patch: Partial<SettingsData>): void {
-    this.data = sanitize({ ...this.data, ...patch });
+    this.data = sanitize({ ...this.data, ...patch }, this.defaults);
     for (const k of Object.keys(patch) as (keyof SettingsData)[]) delete this.overrides[k];
     try { localStorage.setItem(KEY, JSON.stringify(this.data)); } catch { /* not saved: fine */ }
     const s = this.get();

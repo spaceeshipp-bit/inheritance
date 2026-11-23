@@ -20,6 +20,12 @@ export const PING_BRIGHT_MS = 7000;
 /** ...then stays as a faint marker where it happened until this age (ms). */
 export const PING_FAINT_MS = 30000;
 
+/** The keys Grandma's HUD names, on mouse and keyboard and on a controller (input.ts padAction). */
+export const GRANDMA_LABELS = {
+  kbm: { cane: 'LMB', aid: 'RMB', specs: 'F', summon: 'R', bless: 'E', tut: 'Q', parchment: 'Tab', lock: 'Scroll', pin: 'C', lockVerb: 'scroll' },
+  pad: { cane: 'RT', aid: 'LT', specs: 'Y', summon: 'B', bless: 'RB', tut: 'LB', parchment: 'View', lock: 'D-pad ←/→', pin: 'X', lockVerb: 'D-pad ←/→' },
+} as const;
+
 export class GrandmaHud {
   readonly root = el('div', 'hud-grandma');
   /** Left column: the will, then whatever the HUD stacks under it (the coach). */
@@ -33,11 +39,17 @@ export class GrandmaHud {
   private pings: Ping[] = [];
   private pingLayer = el('div', 'pings');
   private status = el('div', 'gm-status');
+  private hintRow = el('div', 'will-hint');
+  private evidenceHint = el('div', 'evidence-hint');
+  private ringKeys: Record<'cane' | 'aid' | 'specs' | 'summon', HTMLElement>;
+  private blessKey = el('b');
+  private tutKey = el('b');
+  /** The device the labels were last written for. */
+  private device: 'kbm' | 'pad' | null = null;
 
   constructor(cousins: CousinInfo[], prefCards: string[]) {
     this.will = new WillList('side-will parchment hud-panel', 'My Will', cousins, 'grandma');
-    const hintRow = el('div', 'will-hint', 'Tab: full parchment   Scroll: lock name');
-    this.will.root.appendChild(hintRow);
+    this.will.root.appendChild(this.hintRow);
     this.leftCol.appendChild(this.will.root);
 
     const right = el('div', 'gm-right hud-panel');
@@ -46,7 +58,7 @@ export class GrandmaHud {
     for (const c of prefCards) cards.appendChild(el('div', 'pref-card', c));
     this.evidence.appendChild(el('div', 'pref-title', 'Found evidence'));
     this.evidence.appendChild(this.evList);
-    this.evidence.appendChild(el('div', 'evidence-hint', 'C: pin the newest find'));
+    this.evidence.appendChild(this.evidenceHint);
     right.append(cards, this.evidence);
 
     const bar = el('div', 'actionbar gm-bar hud-panel');
@@ -59,9 +71,16 @@ export class GrandmaHud {
       return { root, arc: root.querySelectorAll('circle')[1] as SVGCircleElement, state };
     };
     this.rings = { cane: mk('LMB', 'Cane'), aid: mk('RMB', 'Hearing aid'), specs: mk('F', 'Spectacles'), summon: mk('R', 'Summon') };
+    const keyOf = (r: Ring) => r.root.querySelector('.cd-key') as HTMLElement;
+    this.ringKeys = { cane: keyOf(this.rings.cane), aid: keyOf(this.rings.aid), specs: keyOf(this.rings.specs), summon: keyOf(this.rings.summon) };
     const blessTut = el('div', 'bless-tut');
-    blessTut.innerHTML = '<span><b>E</b> Bless +5</span><span><b>Q</b> Tut -5</span>';
+    const bless = el('span');
+    bless.append(this.blessKey, document.createTextNode(' Bless +5'));
+    const tut = el('span');
+    tut.append(this.tutKey, document.createTextNode(' Tut -5'));
+    blessTut.append(bless, tut);
     bar.appendChild(blessTut);
+    this.relabel('kbm');
 
     const cross = el('div', 'crosshair gm');
     this.root.append(this.pingLayer, this.leftCol, right, bar, this.target, this.status, cross);
@@ -79,8 +98,26 @@ export class GrandmaHud {
     this.pings.push({ e, arrow, pos, born: performance.now() });
   }
 
+  /** Name the keys of the device in use (mouse and keyboard, or a controller). */
+  private relabel(device: 'kbm' | 'pad'): void {
+    if (device === this.device) return;
+    this.device = device;
+    const L = GRANDMA_LABELS[device];
+    setText(this.ringKeys.cane, L.cane);
+    setText(this.ringKeys.aid, L.aid);
+    setText(this.ringKeys.specs, L.specs);
+    setText(this.ringKeys.summon, L.summon);
+    setText(this.blessKey, L.bless);
+    setText(this.tutKey, L.tut);
+    setText(this.hintRow, `${L.parchment}: full parchment · ${L.lock}: lock name`);
+    setText(this.evidenceHint, `${L.pin}: pin the newest find`);
+    this.targetKey = '';
+  }
+
   frame(f: HudFrame, avoid: Rect[]): void {
     const s = f.state;
+    this.relabel(f.device);
+    const lockVerb = GRANDMA_LABELS[f.device].lockVerb;
     const me = f.view.self;
     this.will.frame({ shares: s.shares, changes: s.shareChange, t: f.t, locked: f.locked, aim: f.target?.via === 'aim' ? f.target.id : null }, s.willAvail);
 
@@ -111,11 +148,11 @@ export class GrandmaHud {
         const ico = el('span', `tag-ico ${via === 'aim' ? 'aim' : 'lock'}`);
         ico.innerHTML = via === 'aim' ? ICONS.aim : ICONS.lock;
         this.target.append(swatch(c?.color ?? '#888', c?.item), el('span', '', nameOf(s, tId)), ico,
-          el('span', 'via', via === 'aim' ? 'in your sights' : 'locked - scroll to change'));
+          el('span', 'via', via === 'aim' ? 'in your sights' : `locked: ${lockVerb} to change`));
       } else {
         const ico = el('span', 'tag-ico aim');
         ico.innerHTML = ICONS.aim;
-        this.target.append(ico, el('span', '', 'Aim at a cousin'), el('span', 'via', 'or scroll to lock a name'));
+        this.target.append(ico, el('span', '', 'Aim at a cousin'), el('span', 'via', `or ${lockVerb} to lock a name`));
       }
     }
     this.target.classList.toggle('none', !tId);

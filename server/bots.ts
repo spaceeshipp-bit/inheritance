@@ -15,7 +15,7 @@
 // events her client is sent (crashes, voices, shoves within earshot, tattles,
 // found evidence, wishes...) and what she can see right now (canSeeNow). She
 // never reads the secret log.
-import { BOTS, COUSIN, CRIME_SCENE, GRANDMA, HEARING_AID, QUICKCHAT, SENSES, VOICE, WILL, WISH } from '../shared/constants.js';
+import { BOTS, COUSIN, CRIME_SCENE, DINNER, GRANDMA, HEARING_AID, QUICKCHAT, SENSES, VOICE, WILL, WISH } from '../shared/constants.js';
 import type { GameEvent, InputMsg } from '../shared/protocol.js';
 import { angleFromFacing, dist, flatDist, hearingBand, visionBand } from '../shared/senses.js';
 import type { LogEvent, PropKind, Vec3 } from '../shared/types.js';
@@ -24,7 +24,7 @@ import { available } from '../shared/will.js';
 import { forwardOf, yawToward, wrapAngle } from '../shared/movement.js';
 import { EMOTES, type EmoteId } from '../shared/emotes.js';
 import type { Char, Match, Prop } from './match.js';
-import { beatPoints, findPath, freePoint, levelOf, waypoints } from './nav.js';
+import { beatPoints, findPath, freePoint, hasLOS, levelOf, waypoints } from './nav.js';
 import { roomAt } from '../shared/map.js';
 
 export interface Bot {
@@ -159,12 +159,15 @@ function besideNana(g: Char, r: number, side: number): Vec3 {
  * `target`, a yaw that slides round her when the straight line would cut
  * into it, or straight out when already inside. Null: no change needed.
  */
-function giveWay(p: Vec3, g: Vec3, target: Vec3): number | null {
-  const R = BOTS.personalSpace;
+function giveWay(p: Vec3, g: Vec3, target: Vec3, R: number = BOTS.personalSpace): number | null {
   const rx = p.x - g.x, rz = p.z - g.z;
   const d = Math.hypot(rx, rz);
   if (d > R + 3) return null;
   if (d < R) return d > 1e-6 ? yawToward(rx, rz) : null;
+  // A point to steer at inside her space (a doorway waypoint beside her chair):
+  // sliding round her would never get there. Head straight for it; keepSpace
+  // stops the bot at her edge, near enough for its path to move on.
+  if (Math.hypot(target.x - g.x, target.z - g.z) < R) return null;
   const sx = target.x - p.x, sz = target.z - p.z;
   const L = Math.hypot(sx, sz);
   if (L < 1e-6) return null;
@@ -194,7 +197,14 @@ type Task =
   | { k: 'tattle'; accused: string; until: number; side: number }
   /** Pull a face at Nana behind her back (or dance between visits). */
   | { k: 'cheek' | 'dance'; until: number; emote: EmoteId; started: boolean }
+  /** Family Dinner: "Excuse me, Nana" at the dinner door, then `next` (chosen at `at`), the trip it was for. */
+  | { k: 'excuse'; until: number; at: number; next: Task }
+  /** Family Dinner: stay put at the table, facing Nana. */
+  | { k: 'sit'; until: number }
   | { k: 'idle'; until: number };
+
+/** Dinner tasks that keep a bot at the table or take it to Nana (who sits at its head): never a trip away. */
+const DINNER_STAYS = new Set<Task['k']>(['excuse', 'wander', 'sit', 'idle', 'summoned', 'tattle', 'compliment', 'deliver', 'cheek']);
 
 /** A small seeded generator for the bots' gestures, apart from the match's (so they do not reshuffle its dice). */
 function gestureRng(id: string): () => number {
@@ -232,6 +242,15 @@ export class CousinBot implements Bot {
   /** Gestures: their own dice, and when the next face may be pulled behind Nana's back. */
   private erng: () => number;
   private nextCheekAt = 0;
+  /**
+   * Family Dinner: the trip away from the table under way (after "Excuse me,
+   * Nana", or the one unexcused wander a Dinner allows), and whether that
+   * unexcused wander is still to come.
+   */
+  private trip: 'excused' | 'unexcused' | null = null;
+  private unexcusedLeft = 1;
+  /** When the unexcused wander must be over (it is a quick one: she notices an empty chair). */
+  private unexcusedUntil = 0;
   /** Personality: how readily it misbehaves when it may, and how readily it runs errands. */
   readonly mischief: number;
   readonly helpful: number;
@@ -315,9 +334,10 @@ export class CousinBot implements Bot {
           : this.wanderTask(c, 6);
       }
     } else if (!this.task || m.time > this.task.until) {
-      this.task = this.choose(c);
+      this.task = this.dinnerGate(c, this.choose(c));
       this.walker.reset();
     }
+    if (this.atDinner()) this.dinnerKeep(c);
     this.flip = !this.flip;
     this.run(c, inp);
     this.keepSpace(c, inp);
@@ -334,6 +354,8 @@ export class CousinBot implements Bot {
     this.lastTattleAt = -Infinity;
     this.nextComplimentAt = clk.start + m.rng() * 6 * clk.pace;
     this.nextCheekAt = clk.start + clk.opening + 10 + this.erng() * 25;
+    this.trip = null;
+    this.unexcusedLeft = 1;
     this.task = null;
     this.missingSince = null;
     this.walker.reset();
@@ -387,6 +409,91 @@ export class CousinBot implements Bot {
       if (o && id !== this.id && sameFloor(o.body.pos, g.body.pos) && flatDist(o.body.pos, g.body.pos) < 2.4) n++;
     }
     return n >= 2;
+  }
+
+  // ───── Family Dinner ─────
+
+  private atDinner(): boolean {
+    return this.m.phase === 'visit' && this.m.visits[this.m.visitIndex] === 'dinner';
+  }
+
+  /** Round this map's dinner table: within DINNER.away of its edge less `slack`, on its floor (as Nana counts it). */
+  private byTable(p: Vec3, slack: number): boolean {
+    const T = this.m.mapDef.dinner.table;
+    const dx = Math.max(T.minX - p.x, 0, p.x - T.maxX), dz = Math.max(T.minZ - p.z, 0, p.z - T.maxZ);
+    return Math.hypot(dx, dz) <= DINNER.away - slack && p.y <= 1.5;
+  }
+
+  /** How close to Nana this bot will come (closer at Dinner, where she sits at the table). */
+  private personalSpace(): number {
+    return this.atDinner() ? BOTS.dinnerPersonalSpace : BOTS.personalSpace;
+  }
+
+  /**
+   * At the table: over to another seat on its side (one in plain view, so
+   * never round the head of the table past Nana), or stay put if there is
+   * none. Away from it: back to the nearest seat.
+   */
+  private seatTask(c: Char): Task {
+    const m = this.m, seats = m.mapDef.spawns.dinnerCousins, me = c.body.pos;
+    if (this.byTable(me, 0.2) || seats.length === 0) {
+      const pool = seats.filter((s) => flatDist(s, me) > 1 && hasLOS(me, s, 'ground'));
+      const seat = pick(m.rng, pool);
+      return seat ? { k: 'wander', goal: { ...seat }, until: m.time + 12 } : { k: 'sit', until: m.time + 3 + m.rng() * 5 };
+    }
+    const nearest = [...seats].sort((a, b) => flatDist(a, me) - flatDist(b, me))[0];
+    return { k: 'wander', goal: { ...nearest }, until: m.time + 15 };
+  }
+
+  /** Would this task take the bot away from the table (to something, or someone, not at it)? */
+  private leavesTable(t: Task): boolean {
+    const m = this.m;
+    switch (t.k) {
+      case 'fetch': case 'break': { const p = m.props.get(t.prop); return !p || !this.byTable(p.pos, 1); }
+      case 'shove': { const v = m.chars.get(t.target); return !v || !this.byTable(v.body.pos, 1); }
+      case 'steal': { const v = m.chars.get(t.victim); return !v || !this.byTable(v.body.pos, 1); }
+      case 'plant': case 'retrieve': return true;
+      default: return false;
+    }
+  }
+
+  /**
+   * At Family Dinner everyone stays round the table: wandering means another
+   * seat, and a trip away (an errand, a crime) starts with "Excuse me, Nana"
+   * at the dinner door; once that is spent, one more trip goes unexcused, then
+   * no more.
+   */
+  private dinnerGate(c: Char, t: Task): Task {
+    if (!this.atDinner()) return t;
+    if (t.k === 'wander') return this.seatTask(c);
+    if (!this.leavesTable(t)) return t;
+    const m = this.m, ex = m.dinnerExcuse(this.id);
+    if (m.time < ex.until - 5) { this.trip = 'excused'; return t; }
+    if (!ex.used) return { k: 'excuse', until: m.time + 15, at: m.time, next: t };
+    if (this.unexcusedLeft > 0) {
+      this.unexcusedLeft--;
+      this.trip = 'unexcused';
+      this.unexcusedUntil = m.time + BOTS.dinnerWander;
+      return t;
+    }
+    return this.seatTask(c);
+  }
+
+  /** Away from the table with no trip to cover it (or the excuse running out): back to a seat. */
+  private dinnerKeep(c: Char): void {
+    const m = this.m, t = this.task;
+    if (!t || c.state !== 'normal') return;
+    if (this.byTable(c.body.pos, 0.2)) {
+      if (this.trip && !this.leavesTable(t) && t.k !== 'excuse') this.trip = null;
+      return;
+    }
+    if (DINNER_STAYS.has(t.k)) return;
+    const covered = (this.trip === 'unexcused' && m.time < this.unexcusedUntil)
+      || (this.trip === 'excused' && m.time < m.dinnerExcuse(this.id).until - 1);
+    if (covered) return;
+    this.trip = null;
+    this.task = this.seatTask(c);
+    this.walker.reset();
   }
 
   // ───── choosing ─────
@@ -591,7 +698,7 @@ export class CousinBot implements Bot {
     const s = this.walker.steer(c, goal, this.m.time);
     let yaw = s.yaw;
     const g = this.m.grandma;
-    if (g && !s.unsticking && sameFloor(g.body.pos, c.body.pos)) yaw = giveWay(c.body.pos, g.body.pos, s.target) ?? yaw;
+    if (g && !s.unsticking && sameFloor(g.body.pos, c.body.pos)) yaw = giveWay(c.body.pos, g.body.pos, s.target, this.personalSpace()) ?? yaw;
     inp.yaw = yaw;
     inp.move = { x: 0, z: 1 };
     inp.run = run;
@@ -608,6 +715,7 @@ export class CousinBot implements Bot {
 
   /** Step back out of Nana's way after talking to her. */
   private backOff(c: Char, g: Char): Task {
+    if (this.atDinner()) return this.seatTask(c);
     const dx = c.body.pos.x - g.body.pos.x, dz = c.body.pos.z - g.body.pos.z;
     const d = Math.hypot(dx, dz) || 1;
     const goal = freePoint({ x: g.body.pos.x + (dx / d) * 2.8, y: c.body.pos.y, z: g.body.pos.z + (dz / d) * 2.8 });
@@ -619,7 +727,7 @@ export class CousinBot implements Bot {
     const g = this.m.grandma;
     if (!g || !sameFloor(g.body.pos, c.body.pos)) return;
     if (inp.shove || inp.interact || inp.plant || inp.secondary) return; // mid-action: finish it first
-    if (flatDist(c.body.pos, g.body.pos) >= BOTS.personalSpace) return;
+    if (flatDist(c.body.pos, g.body.pos) >= this.personalSpace()) return;
     inp.yaw = yawToward(g.body.pos.x - c.body.pos.x, g.body.pos.z - c.body.pos.z);
     inp.move = { x: 0, z: -1 };
     inp.run = false;
@@ -646,7 +754,38 @@ export class CousinBot implements Bot {
         break;
       case 'wander': {
         const d = this.go(c, inp, t.goal, false);
-        if (d < 0.6) this.done();
+        if (d < 0.6) {
+          // At Dinner a seat is somewhere to sit a while, facing Nana.
+          if (this.atDinner()) this.task = { k: 'sit', until: m.time + 3 + m.rng() * 5 };
+          else this.done();
+        }
+        break;
+      }
+      case 'sit':
+        inp.move = { x: 0, z: 0 };
+        if (g) this.face(inp, c, g.body.pos);
+        break;
+      case 'excuse': {
+        const ex = m.dinnerExcuse(this.id);
+        if (ex.used) {
+          // Excused (or it was spent already): off on the trip it was for, if there is time.
+          if (m.time < ex.until - 5) {
+            this.trip = 'excused';
+            const next = t.next;
+            next.until = m.time + Math.max(5, next.until - t.at);
+            this.task = next;
+            this.walker.reset();
+          } else this.done();
+          break;
+        }
+        if (!this.atDinner()) { this.done(); break; }
+        const door = m.mapDef.dinner.door;
+        const at = freePoint({ x: door.x, y: c.body.pos.y, z: door.z }, 'ground');
+        this.go(c, inp, at, false);
+        if (flatDist(c.body.pos, { x: door.x, y: 0, z: door.z }) <= DINNER.doorRange - 0.5) {
+          inp.move = { x: 0, z: 0 };
+          inp.interact = this.flip;
+        }
         break;
       }
       case 'cheek':
@@ -1377,8 +1516,31 @@ export class GrandmaBot implements Bot {
       }
     }
 
+    // Family Dinner: she keeps her place at the head of the table, turning to
+    // look at whatever she hears (cousins who leave it are pointed out to her).
+    const dinner = m.visits[m.visitIndex] === 'dinner';
+    if (dinner) {
+      this.investigate = null;
+      this.goal = null;
+      const seat = m.mapDef.spawns.dinnerGrandma;
+      if (flatDist(g.body.pos, seat) > 0.5) {
+        const s = this.walker.steer(g, seat, m.time);
+        this.turnTo(g, inp, s.yaw, dt, 5);
+        if (Math.abs(wrapAngle(inp.yaw - s.yaw)) < 0.8) inp.move = { x: 0, z: 1 };
+      } else if (this.attention && m.time < this.attention.until) {
+        const a = this.attention.pos;
+        this.turnTo(g, inp, yawToward(a.x - g.body.pos.x, a.z - g.body.pos.z), dt, 4);
+      } else {
+        this.attention = null;
+        this.turnTo(g, inp, this.lookYaw, dt, 1.2);
+        if (Math.abs(wrapAngle(g.yaw - this.lookYaw)) < 0.05) {
+          // Round the table, now and then over her shoulder.
+          const rnd = m.rng;
+          this.lookYaw = wrapAngle(m.mapDef.spawns.dinnerGrandmaYaw + (rnd() < 0.25 ? Math.PI : 0) + (rnd() - 0.5) * 2.4);
+        }
+      }
     // Investigate a crash, look toward something, or potter about the hall.
-    if (this.investigate && m.time < this.investigate.until) {
+    } else if (this.investigate && m.time < this.investigate.until) {
       const at = this.investigate.pos;
       const s = this.walker.steer(g, at, m.time);
       if (s.d > 1.6) {

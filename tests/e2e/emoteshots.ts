@@ -50,7 +50,10 @@ async function booth(role: Role, only: Set<string> | null, gfx: string): Promise
       await me.page.evaluate((id) => { (window as unknown as W).__inh.net.send({ t: 'emote', id }); }, d.id);
       // A screenshot takes the best part of a second here: shoot against the clock, not after sleeps.
       const t0 = Date.now();
-      const times = d.kind === 'dance' ? [0.9, 2.6, 4.4] : [0.55, d.secs * 0.55, d.secs - 0.35];
+      // One frame at the height of it (or --frames all for three).
+      const times = process.env.EMOTE_FRAMES === 'all'
+        ? (d.kind === 'dance' ? [0.9, 2.6, 4.4] : [0.55, d.secs * 0.55, d.secs - 0.35])
+        : [d.kind === 'dance' ? 2.2 : d.id === 'coffin-measure' ? 1.0 : Math.min(1.1, d.secs * 0.45)];
       for (let i = 0; i < times.length; i++) {
         const wait = times[i] * 1000 - (Date.now() - t0);
         if (wait < -250) continue;

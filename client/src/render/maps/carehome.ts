@@ -6,7 +6,7 @@ import * as THREE from 'three';
 import type { Box, MapDef } from '../../../../shared/map.js';
 import { CAREHOME_DOORS, CAREHOME_H, CAREHOME_X } from '../../../../shared/maps/carehome.js';
 import type { Vec3 } from '../../../../shared/types.js';
-import { boxGeo, mat, rug } from '../materials.js';
+import { mat, rug } from '../materials.js';
 import { ViewBuilder, boxMesh, pedestal, roomIn, roomWall, table, wallMaterials, wingChair, type MapView } from './kit.js';
 
 const X = CAREHOME_X;
@@ -17,7 +17,7 @@ const UPPER: Record<string, string> = {
   'Day Room': '#b9e2cb', // mint
   'Dining Hall': '#f1e5c6', // magnolia
   'Sun Lounge': '#f5ecbd', // primrose
-  "Residents' Corridor": '#d3ecd9', // pale mint
+  "Residents' Corridor": '#e6f2e4', // the palest mint
   "Nurses' Station": '#c6dde9', // hospital blue
   'Sluice Room': '#dfe8e0', // tiled
   Reception: '#f4dcc2', // peach
@@ -66,20 +66,20 @@ function cached(key: string, make: () => THREE.CanvasTexture): THREE.CanvasTextu
 
 /** The Day Room's busy institutional carpet: teal, with mauve and mustard motifs. One repeat = 1 m. */
 const carpetTex = () => cached('carpet', () => canvasTex(128, 128, (g) => {
-  g.fillStyle = '#2e6b6c';
+  g.fillStyle = '#3d7672';
   g.fillRect(0, 0, 128, 128);
   const r = rng(7);
   for (let i = 0; i < 500; i++) { g.fillStyle = r() < 0.5 ? 'rgba(20,60,60,0.5)' : 'rgba(80,140,130,0.4)'; g.fillRect(r() * 128, r() * 128, 2, 2); }
   for (const [cx, cy] of [[32, 32], [96, 96]]) {
-    g.fillStyle = '#8b5a7c';
-    g.beginPath(); g.moveTo(cx, cy - 22); g.lineTo(cx + 22, cy); g.lineTo(cx, cy + 22); g.lineTo(cx - 22, cy); g.closePath(); g.fill();
-    g.fillStyle = '#d8b04a';
+    g.fillStyle = '#7f5d76';
+    g.beginPath(); g.moveTo(cx, cy - 20); g.lineTo(cx + 20, cy); g.lineTo(cx, cy + 20); g.lineTo(cx - 20, cy); g.closePath(); g.fill();
+    g.fillStyle = '#c7a75a';
     g.beginPath(); g.arc(cx, cy, 8, 0, Math.PI * 2); g.fill();
   }
   for (const [cx, cy] of [[96, 32], [32, 96]]) {
-    g.fillStyle = '#d8b04a';
+    g.fillStyle = '#c7a75a';
     for (let k = 0; k < 4; k++) { const a = (k * Math.PI) / 2; g.beginPath(); g.arc(cx + Math.cos(a) * 9, cy + Math.sin(a) * 9, 5, 0, Math.PI * 2); g.fill(); }
-    g.fillStyle = '#8b5a7c';
+    g.fillStyle = '#7f5d76';
     g.beginPath(); g.arc(cx, cy, 4, 0, Math.PI * 2); g.fill();
   }
 }));
@@ -89,10 +89,10 @@ const linoTex = () => cached('lino', () => canvasTex(256, 256, (g) => {
   g.fillStyle = '#ffffff';
   g.fillRect(0, 0, 256, 256);
   const r = rng(11);
-  for (let i = 0; i < 2600; i++) {
-    const v = 150 + Math.floor(r() * 80);
-    g.fillStyle = r() < 0.15 ? `rgba(${v - 60},${v - 40},${v - 30},0.55)` : `rgba(${v},${v},${v},0.5)`;
-    g.fillRect(r() * 256, r() * 256, 1 + r() * 2.5, 1 + r() * 2.5);
+  for (let i = 0; i < 1800; i++) {
+    const v = 175 + Math.floor(r() * 60);
+    g.fillStyle = r() < 0.15 ? `rgba(${v - 50},${v - 30},${v - 20},0.35)` : `rgba(${v},${v},${v},0.32)`;
+    g.fillRect(r() * 256, r() * 256, 1 + r() * 1.6, 1 + r() * 1.6);
   }
   g.strokeStyle = 'rgba(0,0,0,0.07)';
   g.lineWidth = 2;
@@ -162,92 +162,221 @@ const ST = {
   exit: { bg: '#1aa35a', fg: '#ffffff', glow: 0.9 },
 } satisfies Record<string, SignStyle>;
 
-function signMaterial(lines: Line[], w: number, h: number, st: SignStyle): THREE.MeshStandardMaterial {
-  const ppm = Math.min(300, 1024 / Math.max(w, h));
-  const cw = Math.max(48, Math.round(w * ppm)), ch = Math.max(32, Math.round(h * ppm));
-  const tex = canvasTex(cw, ch, (g) => {
-    g.fillStyle = st.bg;
-    g.fillRect(0, 0, cw, ch);
-    if (st.stripe) { g.fillStyle = st.stripe; g.fillRect(0, 0, cw, ch * 0.16); }
-    if (st.border) {
-      const bw = Math.max(3, Math.min(cw, ch) * 0.035);
-      g.strokeStyle = st.border;
-      g.lineWidth = bw;
-      g.strokeRect(bw * 1.2, bw * 1.2, cw - bw * 2.4, ch - bw * 2.4);
+/** Draw one sign into a canvas rectangle (cw x ch at x0, y0). */
+function drawSign(g: CanvasRenderingContext2D, x0: number, y0: number, cw: number, ch: number, lines: Line[], st: SignStyle): void {
+  g.save();
+  g.beginPath();
+  g.rect(x0, y0, cw, ch);
+  g.clip();
+  g.translate(x0, y0);
+  g.fillStyle = st.bg;
+  g.fillRect(0, 0, cw, ch);
+  if (st.stripe) { g.fillStyle = st.stripe; g.fillRect(0, 0, cw, ch * 0.16); }
+  if (st.border) {
+    const bw = Math.max(3, Math.min(cw, ch) * 0.035);
+    g.strokeStyle = st.border;
+    g.lineWidth = bw;
+    g.strokeRect(bw * 1.2, bw * 1.2, cw - bw * 2.4, ch - bw * 2.4);
+  }
+  const items = lines.map((l) => (typeof l === 'string' ? { t: l } : l));
+  const pad = Math.min(cw, ch) * 0.09;
+  const total = items.reduce((a, l) => a + (l.s ?? 1), 0);
+  const unit = (ch - pad * 2) / (total * 1.22);
+  let y = pad + (ch - pad * 2 - total * unit * 1.22) / 2;
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  for (const l of items) {
+    const slot = unit * (l.s ?? 1) * 1.22;
+    let size = unit * (l.s ?? 1);
+    const font = (px: number) => `${l.i ? 'italic ' : ''}${l.b === false ? '' : 'bold '}${px}px ${l.f ?? st.font ?? SANS}`;
+    g.font = font(size);
+    const mw = g.measureText(l.t).width;
+    if (mw > cw - pad * 2) { size *= (cw - pad * 2) / mw; g.font = font(size); }
+    const cy = y + slot / 2;
+    g.fillStyle = l.c ?? st.fg;
+    g.fillText(l.t, cw / 2, cy);
+    if (l.strike) {
+      const tw = g.measureText(l.t).width;
+      g.strokeStyle = '#d0202a';
+      g.lineWidth = Math.max(2, size * 0.13);
+      g.beginPath(); g.moveTo(cw / 2 - tw / 2 - 4, cy + size * 0.05); g.lineTo(cw / 2 + tw / 2 + 4, cy - size * 0.05); g.stroke();
     }
-    const items = lines.map((l) => (typeof l === 'string' ? { t: l } : l));
-    const pad = Math.min(cw, ch) * 0.09;
-    const total = items.reduce((a, l) => a + (l.s ?? 1), 0);
-    const unit = (ch - pad * 2) / (total * 1.22);
-    let y = pad + (ch - pad * 2 - total * unit * 1.22) / 2;
-    g.textAlign = 'center';
-    g.textBaseline = 'middle';
-    for (const l of items) {
-      const slot = unit * (l.s ?? 1) * 1.22;
-      let size = unit * (l.s ?? 1);
-      const font = (px: number) => `${l.i ? 'italic ' : ''}${l.b === false ? '' : 'bold '}${px}px ${l.f ?? st.font ?? SANS}`;
-      g.font = font(size);
-      const mw = g.measureText(l.t).width;
-      if (mw > cw - pad * 2) { size *= (cw - pad * 2) / mw; g.font = font(size); }
-      const cy = y + slot / 2;
-      g.fillStyle = l.c ?? st.fg;
-      g.fillText(l.t, cw / 2, cy);
-      if (l.strike) {
-        const tw = g.measureText(l.t).width;
-        g.strokeStyle = '#d0202a';
-        g.lineWidth = Math.max(2, size * 0.13);
-        g.beginPath(); g.moveTo(cw / 2 - tw / 2 - 4, cy + size * 0.05); g.lineTo(cw / 2 + tw / 2 + 4, cy - size * 0.05); g.stroke();
+    y += slot;
+  }
+  g.restore();
+}
+
+/**
+ * Every sign in the building shares a texture atlas (a page or two of
+ * 2048 x 2048), so ninety laminated notices cost two draw calls, not ninety.
+ * sign meshes are made first with plain UVs; pack() draws them all and
+ * points each mesh's UVs at its own rectangle.
+ */
+class SignAtlas {
+  private reqs: { mesh: THREE.Mesh; lines: Line[]; w: number; h: number; st: SignStyle }[] = [];
+
+  mesh(lines: Line[], w: number, h: number, st: SignStyle): THREE.Mesh {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h));
+    this.reqs.push({ mesh: m, lines, w, h, st });
+    return m;
+  }
+
+  pack(): void {
+    const SIZE = 2048, GAP = 4;
+    const sized = this.reqs.map((r) => {
+      const ppm = Math.min(260, 900 / Math.max(r.w, r.h));
+      return { ...r, cw: Math.max(40, Math.round(r.w * ppm)), ch: Math.max(24, Math.round(r.h * ppm)) };
+    }).sort((a, b) => b.ch - a.ch);
+    type Page = { canvas: HTMLCanvasElement; g: CanvasRenderingContext2D; x: number; y: number; row: number; items: typeof sized; at: { x: number; y: number }[] };
+    const pages: Page[] = [];
+    const newPage = (): Page => {
+      const canvas = document.createElement('canvas');
+      canvas.width = SIZE;
+      canvas.height = SIZE;
+      const p: Page = { canvas, g: canvas.getContext('2d') as CanvasRenderingContext2D, x: 0, y: 0, row: 0, items: [], at: [] };
+      pages.push(p);
+      return p;
+    };
+    let page = newPage();
+    for (const r of sized) {
+      if (page.x + r.cw > SIZE) { page.x = 0; page.y += page.row + GAP; page.row = 0; }
+      if (page.y + r.ch > SIZE) { page = newPage(); }
+      page.items.push(r);
+      page.at.push({ x: page.x, y: page.y });
+      page.x += r.cw + GAP;
+      page.row = Math.max(page.row, r.ch);
+    }
+    for (const p of pages) {
+      const tex = new THREE.CanvasTexture(p.canvas);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.anisotropy = 4;
+      const plain = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.8, emissive: '#ffffff', emissiveMap: tex, emissiveIntensity: 0.14 });
+      const lit = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.8, emissive: '#ffffff', emissiveMap: tex, emissiveIntensity: 0.9 });
+      p.items.forEach((r, i) => {
+        const { x, y } = p.at[i];
+        drawSign(p.g, x, y, r.cw, r.ch, r.lines, r.st);
+        const u0 = (x + 0.5) / SIZE, u1 = (x + r.cw - 0.5) / SIZE;
+        const v1 = 1 - (y + 0.5) / SIZE, v0 = 1 - (y + r.ch - 0.5) / SIZE;
+        const uv = r.mesh.geometry.attributes.uv as THREE.BufferAttribute;
+        for (let k = 0; k < uv.count; k++) uv.setXY(k, u0 + uv.getX(k) * (u1 - u0), v0 + uv.getY(k) * (v1 - v0));
+        uv.needsUpdate = true;
+        r.mesh.material = (r.st.glow ?? 0) > 0.5 ? lit : plain;
+      });
+      tex.needsUpdate = true;
+    }
+  }
+}
+
+/**
+ * Most of the small props are one plain colour each. Rather than a material
+ * per colour (a draw call each once baked), they are drawn with stand-in
+ * materials from get(), and bake() points every such mesh at its swatch in
+ * one shared 16 x 16 colour palette texture.
+ */
+class Palette {
+  private slots = new Map<string, number>();
+  private markers = new Map<string, THREE.MeshStandardMaterial>();
+  private canvas = document.createElement('canvas');
+  private tex: THREE.CanvasTexture;
+  readonly material: THREE.MeshStandardMaterial;
+
+  constructor() {
+    this.canvas.width = this.canvas.height = 256;
+    this.tex = new THREE.CanvasTexture(this.canvas);
+    this.tex.colorSpace = THREE.SRGBColorSpace;
+    this.tex.magFilter = THREE.NearestFilter;
+    this.tex.minFilter = THREE.NearestFilter;
+    this.tex.generateMipmaps = false;
+    this.material = new THREE.MeshStandardMaterial({ map: this.tex, roughness: 0.65 });
+  }
+
+  /** A stand-in material for a plain colour. */
+  get(color: string): THREE.MeshStandardMaterial {
+    let m = this.markers.get(color);
+    if (!m) {
+      m = new THREE.MeshStandardMaterial({ color });
+      m.userData.palette = color;
+      this.markers.set(color, m);
+    }
+    return m;
+  }
+
+  /** Swap every stand-in under `root` for the shared palette material. */
+  bake(root: THREE.Object3D): void {
+    const g = this.canvas.getContext('2d') as CanvasRenderingContext2D;
+    root.traverse((o) => {
+      if (!(o instanceof THREE.Mesh) || Array.isArray(o.material)) return;
+      const color = (o.material as THREE.Material).userData?.palette as string | undefined;
+      if (!color) return;
+      let i = this.slots.get(color);
+      if (i === undefined) {
+        i = this.slots.size;
+        if (i >= 256) return;
+        this.slots.set(color, i);
+        g.fillStyle = color;
+        g.fillRect((i % 16) * 16, Math.floor(i / 16) * 16, 16, 16);
       }
-      y += slot;
-    }
-  }, false);
-  return new THREE.MeshStandardMaterial({ map: tex, roughness: 0.8, emissive: '#ffffff', emissiveMap: tex, emissiveIntensity: st.glow ?? 0.14 });
+      const u = ((i % 16) + 0.5) / 16, v = 1 - (Math.floor(i / 16) + 0.5) / 16;
+      const geo = (o.geometry as THREE.BufferGeometry).clone();
+      const uv = geo.attributes.uv as THREE.BufferAttribute | undefined;
+      if (!uv) return;
+      for (let k = 0; k < uv.count; k++) uv.setXY(k, u, v);
+      o.geometry = geo;
+      o.material = this.material;
+    });
+    this.tex.needsUpdate = true;
+  }
 }
 
 // ───────────────────────── the builder ─────────────────────────
 
 export function buildCarehome(def: MapDef): MapView {
   const v = new ViewBuilder(def);
+  const palette = new Palette();
+  /** A plain colour from the shared palette (small props). */
+  const P = (color: string) => palette.get(color);
 
   // ── Materials ──
   const M = {
-    white: mat('#f6f5ef', { rough: 0.6 }),
-    frame: mat('#eeeae0', { rough: 0.5 }), // painted door frames
-    pine: mat('#c99a62', { rough: 0.6 }),
-    darkPine: mat('#8a6238', { rough: 0.6 }),
-    teak: mat('#6b4126', { rough: 0.55 }),
-    piano: mat('#2c1a12', { rough: 0.35 }),
+    white: P('#f6f5ef'),
+    frame: P('#eeeae0'), // painted door frames
+    pine: P('#c99a62'),
+    darkPine: P('#8a6238'),
+    teak: P('#6b4126'),
+    piano: P('#2c1a12'),
     chrome: mat('#c9cdd2', { rough: 0.3, metal: 0.75 }),
     steel: mat('#aeb5b8', { rough: 0.35, metal: 0.6 }),
-    black: mat('#1b1b1e', { rough: 0.4 }),
-    greyPlastic: mat('#8d9196', { rough: 0.6 }),
-    cream: mat('#efe6d0', { rough: 0.7 }),
-    plinth: mat('#f2eee3', { rough: 0.55 }),
-    skirting: mat('#6d7f76', { rough: 0.5 }),
-    rail: mat('#f3efe4', { rough: 0.4 }),
-    handrail: mat('#b9895a', { rough: 0.45 }),
-    fireDoor: mat('#d6b98a', { rough: 0.55 }),
-    green: mat('#2f7a52', { rough: 0.6 }),
-    leaf: mat('#3f8f4a', { rough: 0.8 }),
-    pot: mat('#b5603c', { rough: 0.8 }),
-    soil: mat('#3a2a1e', { rough: 1 }),
-    paper: mat('#fbf9f0', { rough: 0.9 }),
-    cardboard: mat('#b48a58', { rough: 0.95 }),
-    baize: mat('#2f6b45', { rough: 1 }),
+    black: P('#1b1b1e'),
+    greyPlastic: P('#8d9196'),
+    panelFrame: P('#c4c8cc'),
+    cream: P('#efe6d0'),
+    plinth: P('#f2eee3'),
+    skirting: P('#6d7f76'),
+    rail: P('#f3efe4'),
+    handrail: P('#b9895a'),
+    fireDoor: P('#d6b98a'),
+    green: P('#2f7a52'),
+    leaf: P('#3f8f4a'),
+    pot: P('#b5603c'),
+    soil: P('#3a2a1e'),
+    paper: P('#fbf9f0'),
+    cardboard: P('#b48a58'),
+    baize: P('#2f6b45'),
     gold: mat('#d4af4a', { rough: 0.35, metal: 0.7 }),
-    redCross: mat('#c8282d', { rough: 0.6 }),
+    redCross: P('#c8282d'),
     oxygen: mat('#3d8f5a', { rough: 0.35, metal: 0.3 }),
-    oxygenTop: mat('#f2f2f2', { rough: 0.4 }),
+    oxygenTop: P('#f2f2f2'),
     tinsel: mat('#e8c04a', { rough: 0.3, metal: 0.8, emissive: '#6a4a10', emissiveIntensity: 0.4 }),
-    lamp: mat('#fff1cf', { rough: 0.6, emissive: '#ffcc80', emissiveIntensity: 1.4 }),
-    tube: mat('#f4fbff', { rough: 0.4, emissive: '#e6f3ff', emissiveIntensity: 1.5 }),
-    chintz: mat('#b85a6f', { rough: 0.9 }),
-    chintzLight: mat('#e8a7b4', { rough: 0.9 }),
-    lace: mat('#fbf8f2', { rough: 1 }),
-    water: new THREE.MeshStandardMaterial({ color: '#6fc3d8', transparent: true, opacity: 0.45, roughness: 0.1, emissive: '#1f6f8a', emissiveIntensity: 0.35 }),
+    // (Own materials, not mat()'s shared cache: the Storm's power cut dims these.)
+    lamp: new THREE.MeshStandardMaterial({ color: '#fff1cf', roughness: 0.6, emissive: '#ffbb66', emissiveIntensity: 1.5 }),
+    tube: new THREE.MeshStandardMaterial({ color: '#f4fbff', roughness: 0.4, emissive: '#e6f3ff', emissiveIntensity: 1.5 }),
+    chintz: P('#b85a6f'),
+    chintzLight: P('#e8a7b4'),
+    lace: P('#fbf8f2'),
+    water: new THREE.MeshStandardMaterial({ color: '#4fb4d4', transparent: true, opacity: 0.62, roughness: 0.1, emissive: '#2a8ab0', emissiveIntensity: 0.55 }),
     glass: new THREE.MeshStandardMaterial({ color: '#d8eef2', transparent: true, opacity: 0.22, roughness: 0.05, metalness: 0.1 }),
-    vinyl: [mat('#4f8f8a', { rough: 0.45 }), mat('#9a6a8c', { rough: 0.45 }), mat('#c9a13e', { rough: 0.45 }), mat('#6f86b8', { rough: 0.45 })],
-    tray: mat('#e0d6c4', { rough: 0.5 }),
+    vinyl: [P('#4f8f8a'), P('#9a6a8c'), P('#c9a13e'), P('#6f86b8')],
+    tray: P('#e0d6c4'),
   };
   const windows = new THREE.MeshStandardMaterial({ color: '#d9ecff', emissive: '#c4dcff', emissiveIntensity: 0.9, roughness: 0.15 });
 
@@ -267,8 +396,9 @@ export function buildCarehome(def: MapDef): MapView {
     return add(s);
   };
   /** A sign on a wall (or anything): its face points `face`; (x, y, z) is its centre. */
+  const atlas = new SignAtlas();
   const sign = (lines: Line[], x: number, y: number, z: number, face: Face, w: number, h: number, st: SignStyle, tilt = 0) => {
-    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), signMaterial(lines, w, h, st));
+    const m = atlas.mesh(lines, w, h, st);
     m.position.set(X + x, y, z);
     m.rotation.set(0, FACE_YAW[face], 0);
     m.rotateZ(tilt);
@@ -288,7 +418,7 @@ export function buildCarehome(def: MapDef): MapView {
   const tubeMats: THREE.MeshStandardMaterial[] = [M.tube];
   const panel = (x: number, z: number, along: 'x' | 'z' = 'x', m: THREE.Material = M.tube) => {
     const [w, d] = along === 'x' ? [1.2, 0.6] : [0.6, 1.2];
-    ceilingPlane(x - w / 2 - 0.04, z - d / 2 - 0.04, x + w / 2 + 0.04, z + d / 2 + 0.04, M.greyPlastic, H - 0.012, 2);
+    ceilingPlane(x - w / 2 - 0.04, z - d / 2 - 0.04, x + w / 2 + 0.04, z + d / 2 + 0.04, M.panelFrame, H - 0.012, 2);
     ceilingPlane(x - w / 2, z - d / 2, x + w / 2, z + d / 2, m, H - 0.02, 2);
   };
   /** An object grouped and turned to face along game yaw (0 = -Z). */
@@ -316,7 +446,7 @@ export function buildCarehome(def: MapDef): MapView {
     const c = { x: (b.min.x + b.max.x) / 2, y: 0.1, z: (b.min.z + b.max.z) / 2 };
     const room = roomIn(def, c);
     const top = floorMats[room] ?? floorMats["Residents' Corridor"];
-    const tile = room === 'Day Room' || room === 'Sun Lounge' ? 1 : 2;
+    const tile = room === 'Day Room' ? 0.55 : room === 'Sun Lounge' ? 1 : 2;
     v.add(boxMesh(b.min.x, b.min.y, b.min.z, b.max.x, b.max.y, b.max.z, [under, under, top, under, under, under], tile), true);
   }
 
@@ -332,7 +462,7 @@ export function buildCarehome(def: MapDef): MapView {
   };
   const wallMat = wallMaterials(UPPER, { texture: woodchipTex, rough: 0.95 });
   const lowerMat = (room: string) => room === 'Sluice Room' ? mat(LOWER[room], { map: wallTileTex(), rough: 0.3 }) : mat(LOWER[room] ?? '#777', { map: woodchipTex(), rough: 0.9 });
-  const glassFrame = mat('#f1f1ec', { rough: 0.4 });
+  const glassFrame = P('#f1f1ec');
   for (const b of def.boxes) {
     if (b.kind === 'railing') {
       // A glass panel in a wall: the pane and its white uPVC frame.
@@ -401,7 +531,7 @@ export function buildCarehome(def: MapDef): MapView {
   }
 
   // ── Ceilings: suspended tiles, fluorescent panels; the Sun Lounge has a glazed roof ──
-  const ceilTiles = mat('#ffffff', { map: ceilingTex(), rough: 0.95 });
+  const ceilTiles = new THREE.MeshStandardMaterial({ map: ceilingTex(), emissive: '#ffffff', emissiveMap: ceilingTex(), emissiveIntensity: 0.32, roughness: 0.95 });
   ceilingPlane(-8, -3.5, 6, 6, ceilTiles);
   ceilingPlane(-8, -10, 6, -3.5, ceilTiles);
   ceilingPlane(-14, 6, 8.4, 8.4, ceilTiles);
@@ -409,13 +539,13 @@ export function buildCarehome(def: MapDef): MapView {
   ceilingPlane(8.4, -10, 13, 8.4, ceilTiles);
   // The conservatory roof: white rafters over glazing.
   ceilingPlane(-14, -10, -8, 6, windows, H, 16);
-  for (let z = -10; z <= 6.01; z += 1.6) bx(-14, H - 0.12, z - 0.05, -8, H, z + 0.05, M.white);
-  for (const x of [-14, -11, -8]) bx(x - 0.06, H - 0.14, -10, x + 0.06, H, 6, M.white);
+  for (let z = -10; z <= 6.01; z += 1.6) bx(-14, H - 0.07, z - 0.04, -8, H, z + 0.04, M.white);
+  for (const x of [-14, -11, -8]) bx(x - 0.05, H - 0.09, -10, x + 0.05, H, 6, M.white);
   // A roof lantern over the Day Room (it flashes in the Storm).
   ceilingPlane(-3.2, 0.1, -0.2, 2.3, windows, H - 0.005, 8);
   for (const [x0, z0, x1, z1] of [[-3.3, 0.0, -0.1, 0.12], [-3.3, 2.28, -0.1, 2.4], [-3.3, 0.0, -3.18, 2.4], [-0.22, 0.0, -0.1, 2.4], [-1.76, 0.0, -1.64, 2.4]]) bx(x0, H - 0.1, z0, x1, H, z1, M.white);
   // Fluorescent panels (one in the corridor is on its way out: it flickers).
-  const faulty = mat('#f4fbff', { rough: 0.4, emissive: '#e6f3ff', emissiveIntensity: 1.5, map: linoTex() });
+  const faulty = new THREE.MeshStandardMaterial({ color: '#f4fbff', roughness: 0.4, emissive: '#e6f3ff', emissiveIntensity: 1.5 });
   tubeMats.push(faulty);
   for (const [x, z] of [[2.2, -1.4], [2.2, 3.6], [-5.2, -1.6], [-1.7, 4.3], [-1.7, -1.9]] as const) panel(x, z);
   for (const [x, z] of [[-5.5, -6.8], [-1.5, -6.8], [2.5, -6.8], [-1.5, -4.6], [3.6, -4.6]] as const) panel(x, z);
@@ -464,7 +594,7 @@ export function buildCarehome(def: MapDef): MapView {
   cyl(-7.3, 0.6, 2.5, 0.08, 0.32, M.gold, 10);
   cyl(-7.3, 0.9, 2.5, 0.22, 0.22, M.lamp, 14, 0.13);
   bx(-7.55, 0.6, 2.25, -7.38, 0.8, 2.3, M.gold); // a framed photo
-  bx(-7.54, 0.62, 2.26, -7.39, 0.78, 2.305, mat('#7a8fa8'));
+  bx(-7.54, 0.62, 2.26, -7.39, 0.78, 2.305, P('#7a8fa8'));
   // The standard lamp behind her.
   cyl(-7.62, 0, 0.38, 0.14, 0.05, M.gold, 12);
   cyl(-7.62, 0.05, 0.38, 0.025, 1.55, M.gold, 8);
@@ -472,7 +602,7 @@ export function buildCarehome(def: MapDef): MapView {
   // Photographs of the family over her chair (one turned to the wall).
   const photo = (x: number, y: number, z: number, col: string, w = 0.36, h = 0.46) => {
     bx(x, y - h / 2, z - w / 2, x + 0.04, y + h / 2, z + w / 2, M.gold);
-    bx(x + 0.03, y - h / 2 + 0.05, z - w / 2 + 0.05, x + 0.045, y + h / 2 - 0.05, z + w / 2 - 0.05, mat(col, { rough: 0.9 }));
+    bx(x + 0.03, y - h / 2 + 0.05, z - w / 2 + 0.05, x + 0.045, y + h / 2 - 0.05, z + w / 2 - 0.05, P(col));
   };
   photo(-7.85, 1.75, 0.2, '#6a7fa0');
   photo(-7.85, 1.65, 1.0, '#a07a6a', 0.5, 0.36);
@@ -510,11 +640,11 @@ export function buildCarehome(def: MapDef): MapView {
     bx(b.min.x - X, 0, b.min.z, b.max.x - X, 0.85, b.max.z, M.teak, true);
     bx(b.min.x - X + 0.05, 0.85, b.min.z + 0.03, b.max.x - X - 0.05, 1.5, b.max.z - 0.03, M.glass);
     bx(b.min.x - X + 0.08, 0.86, b.min.z + 0.06, b.max.x - X - 0.08, 1.36, b.max.z - 0.06, M.water);
-    bx(b.min.x - X + 0.08, 0.86, b.min.z + 0.06, b.max.x - X - 0.08, 0.92, b.max.z - 0.06, mat('#d8c39a', { rough: 1 }));
+    bx(b.min.x - X + 0.08, 0.86, b.min.z + 0.06, b.max.x - X - 0.08, 0.92, b.max.z - 0.06, P('#d8c39a'));
     bx(b.min.x - X + 0.03, 1.5, b.min.z + 0.01, b.max.x - X - 0.03, 1.56, b.max.z - 0.01, M.black);
     // A little castle and some weed.
-    bx(-3.8, 0.92, -3.25, -3.5, 1.15, -3.0, mat('#b8a88a'));
-    for (const x of [-3.85, -3.45]) bx(x - 0.05, 1.15, -3.25, x + 0.05, 1.22, -3.0, mat('#b8a88a'));
+    bx(-3.8, 0.92, -3.25, -3.5, 1.15, -3.0, P('#b8a88a'));
+    for (const x of [-3.85, -3.45]) bx(x - 0.05, 1.15, -3.25, x + 0.05, 1.22, -3.0, P('#b8a88a'));
     for (const x of [-4.2, -3.1, -2.85]) cyl(x, 0.92, -3.1, 0.03, 0.35, M.leaf, 5, 0.01);
     sign([{ t: 'LUCKY III', s: 1 }, { t: 'Please do not tap the glass.', s: 0.55, b: false }, { t: 'The others died of fright.', s: 0.55, b: false }], -3.5, 1.95, -3.33, 's', 0.9, 0.42, ST.laminate);
   }
@@ -525,7 +655,7 @@ export function buildCarehome(def: MapDef): MapView {
     bx(b.min.x - X, 0, b.min.z, b.max.x - X, 0.12, b.max.z, M.black, true);
     bx(b.min.x - X + 0.05, 0.12, b.min.z + 0.2, b.max.x - X - 0.05, 0.5, b.min.z + 0.28, M.chrome, true);
     bx(b.min.x - X + 0.05, 0.12, b.max.z - 0.28, b.max.x - X - 0.05, 0.5, b.max.z - 0.2, M.chrome, true);
-    bx(b.min.x - X, 0.5, b.min.z, b.max.x - X, H - 0.9, b.max.z, mat('#7a1f3a', { rough: 0.5 }), true);
+    bx(b.min.x - X, 0.5, b.min.z, b.max.x - X, H - 0.9, b.max.z, P('#7a1f3a'), true);
     const called = new Set([3, 7, 11, 22, 23, 31, 39, 44, 52, 66, 69, 71, 77, 85, 88, 90]);
     const tex = canvasTex(512, 400, (g) => {
       g.fillStyle = '#5a1028'; g.fillRect(0, 0, 512, 400);
@@ -562,8 +692,8 @@ export function buildCarehome(def: MapDef): MapView {
     for (let i = 0; i < 18; i++) bx(x0 + 0.1 + i * 0.075, 0.68, b.min.z + 0.37, x0 + 0.13 + i * 0.075, 0.71, b.min.z + 0.5, M.black);
     bx(x0, 0.71, b.min.z + 0.36, x1, 0.76, b.max.z, M.piano); // lid, firmly shut
     bx(x0 + 0.2, 1.3, b.min.z + 0.02, x1 - 0.2, 1.31, b.min.z + 0.34, M.lace);
-    cyl(x0 + 0.35, 1.31, b.min.z + 0.18, 0.07, 0.22, mat('#7aa0c8', { rough: 0.3 }));
-    for (const [dx, col] of [[-0.03, '#e05a6a'], [0.03, '#f0d050'], [0, '#ffffff']] as const) sph(x0 + 0.35 + dx, 1.6, b.min.z + 0.18 + dx, 0.06, mat(col));
+    cyl(x0 + 0.35, 1.31, b.min.z + 0.18, 0.07, 0.22, P('#7aa0c8'));
+    for (const [dx, col] of [[-0.03, '#e05a6a'], [0.03, '#f0d050'], [0, '#ffffff']] as const) sph(x0 + 0.35 + dx, 1.6, b.min.z + 0.18 + dx, 0.06, P(col));
     bx(x1 - 0.5, 1.31, b.min.z + 0.1, x1 - 0.28, 1.56, b.min.z + 0.13, M.gold);
     sign([{ t: 'PLEASE DO NOT PLAY', s: 1 }, { t: 'Mr Pearce is resting.', s: 0.7, b: false }, { t: '(since March)', s: 0.6, b: false }], (x0 + x1) / 2, 1.05, b.min.z + 0.365, 's', 0.7, 0.36, ST.laminate);
   }
@@ -601,39 +731,61 @@ export function buildCarehome(def: MapDef): MapView {
     sign([{ t: 'VOLUME: 100', s: 1 }, { t: 'Please do not adjust', s: 0.7, b: false }, { t: '— Mrs ______', s: 0.6, b: false }], 5.84, 2.78, 1.0, 'w', 0.9, 0.36, ST.laminate);
   }
 
+  // The coffee table in the middle of the circle: plastic fruit, the TV guide, tissues, the remote.
+  {
+    const b = one('Coffee table');
+    table(v, b, M.teak, M.teak);
+    const cx = (b.min.x + b.max.x) / 2 - X, cz = (b.min.z + b.max.z) / 2, top = b.max.y;
+    cyl(cx - 0.1, top, cz - 0.15, 0.17, 0.08, P('#e8e0d0'), 14, 0.2);
+    for (const [dx, dz, col, r] of [[-0.16, -0.18, '#e04a3a', 0.06], [-0.04, -0.1, '#f2d040', 0.055], [-0.1, -0.22, '#7ab04a', 0.05], [-0.02, -0.2, '#e8902a', 0.055]] as const) sph(cx + dx, top + 0.1, cz + dz, r, P(col));
+    bx(cx + 0.02, top, cz + 0.08, cx + 0.3, top + 0.015, cz + 0.32, P('#d8402a')); // the TV guide
+    bx(cx - 0.3, top, cz + 0.12, cx - 0.12, top + 0.1, cz + 0.28, P('#a0d0e8')); // tissues
+    bx(cx - 0.24, top + 0.1, cz + 0.18, cx - 0.18, top + 0.14, cz + 0.22, M.white);
+    bx(cx + 0.18, top, cz - 0.28, cx + 0.24, top + 0.025, cz - 0.08, M.black); // the remote, which nobody may touch
+  }
+
   // The residents' armchairs, in a semicircle round the telly: wipe-clean vinyl, antimacassars, one reserved.
   const armchair = (b: Box, k: number, extra?: (g: THREE.Group, put: (x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, m: THREE.Material) => void) => void) => {
     const cx = (b.min.x + b.max.x) / 2 - X, cz = (b.min.z + b.max.z) / 2;
     const vin = M.vinyl[k % M.vinyl.length];
     turned(cx, cz, yawTo(cx, cz, 5.6, 1.0), (g, put) => {
-      put(-0.36, 0.0, -0.3, 0.36, 0.08, 0.34, M.darkPine);
-      for (const [x, z] of [[-0.32, -0.28], [0.28, -0.28], [-0.32, 0.28], [0.28, 0.28]]) put(x, 0, z, x + 0.05, 0.1, z + 0.05, M.darkPine);
-      put(-0.3, 0.1, -0.32, 0.3, 0.46, 0.3, vin);
-      put(-0.32, 0.46, 0.18, 0.32, 1.0, 0.34, vin);
-      put(-0.36, 0.1, -0.32, -0.28, 0.66, 0.3, M.darkPine);
-      put(0.28, 0.1, -0.32, 0.36, 0.66, 0.3, M.darkPine);
-      put(-0.16, 0.78, 0.155, 0.16, 0.98, 0.18, M.lace);
+      // Tall wooden legs (a high seat is easier to get out of), vinyl seat and back, wooden arms and back frame.
+      for (const [x, z] of [[-0.33, -0.3], [0.28, -0.3], [-0.33, 0.27], [0.28, 0.27]]) put(x, 0, z, x + 0.05, 0.16, z + 0.05, M.teak);
+      put(-0.32, 0.16, -0.3, 0.32, 0.4, 0.3, vin);
+      put(-0.29, 0.4, -0.31, 0.29, 0.47, 0.22, vin);
+      put(-0.3, 0.4, 0.2, 0.3, 0.98, 0.31, vin);
+      put(-0.34, 0.16, 0.31, 0.34, 1.02, 0.35, M.teak);
+      for (const sx of [-1, 1]) {
+        put(sx > 0 ? 0.3 : -0.36, 0.16, -0.3, sx > 0 ? 0.36 : -0.3, 0.6, 0.3, vin);
+        put(sx > 0 ? 0.28 : -0.38, 0.6, -0.34, sx > 0 ? 0.38 : -0.28, 0.65, 0.33, M.teak);
+        put(sx > 0 ? 0.22 : -0.34, 0.62, 0.12, sx > 0 ? 0.34 : -0.22, 0.95, 0.3, vin); // wings
+      }
+      const roll = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.62, 10), vin);
+      roll.rotation.z = Math.PI / 2;
+      roll.position.set(0, 0.98, 0.26);
+      g.add(roll);
+      put(-0.17, 0.74, 0.185, 0.17, 0.96, 0.2, M.lace);
       extra?.(g, put);
     }, true);
   };
   const chairs = def.boxes.filter((q) => q.label?.startsWith('Armchair'));
   chairs.forEach((b, i) => armchair(b, i, b.label?.includes('reserved') ? (g, put) => {
     // Flowers on the seat, and a card.
-    put(-0.12, 0.46, -0.1, 0.12, 0.5, 0.1, mat('#f4f0e6'));
-    const card = new THREE.Mesh(new THREE.PlaneGeometry(0.4, 0.2), signMaterial([{ t: 'RESERVED', s: 1 }, { t: 'Mr Pearce', s: 0.8, b: false }], 0.4, 0.2, ST.laminate));
+    put(-0.12, 0.46, -0.1, 0.12, 0.5, 0.1, P('#f4f0e6'));
+    const card = atlas.mesh([{ t: 'RESERVED', s: 1 }, { t: 'Mr Pearce', s: 0.8, b: false }], 0.4, 0.2, ST.laminate);
     card.position.set(0, 0.64, 0.175);
     card.rotation.y = Math.PI;
     g.add(card);
     for (const [dx, dz, col] of [[-0.06, 0, '#f2f2f2'], [0.05, 0.03, '#f5e050'], [0, -0.05, '#ffffff']] as const) {
-      const s = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 6), mat(col));
+      const s = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 6), P(col));
       s.position.set(dx, 0.56, dz);
       g.add(s);
     }
   } : b.label?.includes('centre') ? (_g, put) => {
     // A cardigan over the arm, slippers in front.
-    put(-0.38, 0.5, -0.2, -0.26, 0.7, 0.25, mat('#8a6fa8', { rough: 1 }));
-    put(-0.2, 0, -0.62, -0.06, 0.06, -0.36, mat('#8a3a3a', { rough: 1 }));
-    put(0.04, 0, -0.62, 0.18, 0.06, -0.36, mat('#8a3a3a', { rough: 1 }));
+    put(-0.38, 0.5, -0.2, -0.26, 0.7, 0.25, P('#8a6fa8'));
+    put(-0.2, 0, -0.62, -0.06, 0.06, -0.36, P('#8a3a3a'));
+    put(0.04, 0, -0.62, 0.18, 0.06, -0.36, P('#8a3a3a'));
   } : undefined));
   // A zimmer frame parked by a chair.
   {
@@ -642,7 +794,40 @@ export function buildCarehome(def: MapDef): MapView {
     bx(zx, 0.8, zz - 0.02, zx + 0.5, 0.84, zz + 0.02, M.chrome);
     bx(zx - 0.02, 0.8, zz, zx + 0.02, 0.84, zz + 0.4, M.chrome);
     bx(zx + 0.48, 0.8, zz, zx + 0.52, 0.84, zz + 0.4, M.chrome);
-    for (const [dx, dz] of [[0, 0.4], [0.5, 0.4]]) sph(zx + dx, 0.03, zz + dz, 0.04, mat('#d8e04a', { rough: 0.9 })); // tennis balls
+    for (const [dx, dz] of [[0, 0.4], [0.5, 0.4]]) sph(zx + dx, 0.03, zz + dz, 0.04, P('#d8e04a')); // tennis balls
+  }
+
+  // Bunting: cheerful, compulsory.
+  {
+    const cols = ['#e8607a', '#f2c84a', '#5ab0d8', '#7ac86a', '#b07ad8'].map((c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.8, side: THREE.DoubleSide }));
+    const flagGeo = new THREE.CircleGeometry(0.1, 3);
+    const string = (x0: number, z0: number, x1: number, z1: number, y: number, sag: number) => {
+      const len = Math.hypot(x1 - x0, z1 - z0);
+      const n = Math.floor(len / 0.32);
+      const yaw = Math.atan2(-(z1 - z0), x1 - x0);
+      for (let i = 1; i < n; i++) {
+        const t = i / n;
+        const f = new THREE.Mesh(flagGeo, cols[i % cols.length]);
+        f.position.set(X + x0 + (x1 - x0) * t, y - sag * 4 * t * (1 - t) - 0.08, z0 + (z1 - z0) * t);
+        f.rotation.set(0, yaw, -Math.PI / 2);
+        add(f);
+      }
+      // The string itself: a few straight pieces.
+      const seg = 6;
+      for (let i = 0; i < seg; i++) {
+        const ta = i / seg, tb = (i + 1) / seg;
+        const pa = new THREE.Vector3(X + x0 + (x1 - x0) * ta, y - sag * 4 * ta * (1 - ta), z0 + (z1 - z0) * ta);
+        const pb = new THREE.Vector3(X + x0 + (x1 - x0) * tb, y - sag * 4 * tb * (1 - tb), z0 + (z1 - z0) * tb);
+        const m = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, pa.distanceTo(pb), 4), M.white);
+        m.position.copy(pa).add(pb).multiplyScalar(0.5);
+        m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), pb.clone().sub(pa).normalize());
+        add(m);
+      }
+    };
+    string(-7.8, -2.9, 5.8, -2.9, 2.95, 0.2);
+    string(-7.8, 5.4, 5.8, 5.4, 2.95, 0.2);
+    string(-7.8, -9.6, 5.8, -9.6, 2.95, 0.2);
+    string(-11.0, -9.9, -11.0, 5.8, 2.9, 0.25);
   }
 
   // Day Room walls: the banner, a noticeboard, sanitiser.
@@ -650,10 +835,10 @@ export function buildCarehome(def: MapDef): MapView {
     // "HAPPY 100th DORIS!" — one end has come unstuck.
     sign([{ t: 'HAPPY 100th DORIS!', s: 1, c: '#c8286a' }], -3.4, 2.62, -3.33, 's', 2.4, 0.34, { bg: '#fff3a8', fg: '#c8286a' });
     sign([{ t: 'x', s: 1, c: '#fff3a8' }], -1.95, 2.42, -3.32, 's', 0.6, 0.3, { bg: '#fff3a8', fg: '#fff3a8' }, -0.55);
-    cyl(-4.7, 2.45, -3.25, 0.12, 0.3, mat('#e04a6a', { rough: 0.3 }), 10); // a balloon, deflating
+    cyl(-4.7, 2.45, -3.25, 0.12, 0.3, P('#e04a6a'), 10); // a balloon, deflating
     cyl(-4.7, 2.2, -3.25, 0.004, 0.25, M.white, 4);
     // Resident of the Month.
-    bx(-6.9, 1.2, 5.8, -5.3, 2.2, 5.85, mat('#b0865a', { rough: 0.9 }));
+    bx(-6.9, 1.2, 5.8, -5.3, 2.2, 5.85, P('#b0865a'));
     sign([{ t: 'RESIDENT OF THE MONTH', s: 0.8 }, { t: 'Mr A. Pearce', s: 1, f: HAND }, { t: '(posthumous)', s: 0.6, b: false }], -6.1, 1.7, 5.79, 'n', 1.4, 0.8, ST.white);
     // Sunny Pines' values.
     sign([{ t: 'SUNNY PINES', s: 0.9, c: '#24704a' }, { t: 'Our Values', s: 0.6, b: false }, { t: 'Dignity · Respect · Probate', s: 0.7 }], 3.1, 2.52, 5.83, 'n', 1.6, 0.5, { bg: '#f6fbf4', fg: '#2a2a2a', border: '#24704a', font: SERIF });
@@ -675,7 +860,7 @@ export function buildCarehome(def: MapDef): MapView {
     const b = one('Family Dinner table');
     const { min: a, max: c } = b;
     // A long table under a wipe-clean cloth.
-    const cloth = mat('#f4f1ea', { rough: 0.9 });
+    const cloth = P('#f4f1ea');
     add(boxMesh(a.x - 0.08, c.y - 0.03, a.z - 0.08, c.x + 0.08, c.y + 0.005, c.z + 0.08, cloth), true);
     add(boxMesh(a.x - 0.08, c.y - 0.26, a.z - 0.09, c.x + 0.08, c.y - 0.03, a.z - 0.08, cloth));
     add(boxMesh(a.x - 0.08, c.y - 0.26, c.z + 0.08, c.x + 0.08, c.y - 0.03, c.z + 0.09, cloth));
@@ -689,15 +874,15 @@ export function buildCarehome(def: MapDef): MapView {
       const dx = Math.max(a.x, Math.min(c.x, s.x)) - s.x, dz = Math.max(a.z, Math.min(c.z, s.z)) - s.z;
       const len = Math.hypot(dx, dz) || 1;
       const px = s.x + (dx / len) * (len + 0.25), pz = s.z + (dz / len) * (len + 0.25);
-      add(boxMesh(px - 0.17, c.y + 0.005, pz - 0.13, px + 0.17, c.y + 0.012, pz + 0.13, mat('#9ac0d8', { rough: 0.6 })));
-      const beaker = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.035, 0.11, 10), mat('#f2a0b8', { rough: 0.4 }));
+      add(boxMesh(px - 0.17, c.y + 0.005, pz - 0.13, px + 0.17, c.y + 0.012, pz + 0.13, P('#9ac0d8')));
+      const beaker = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.035, 0.11, 10), P('#f2a0b8'));
       beaker.position.set(px + 0.13, c.y + 0.06, pz - 0.06);
       add(beaker);
       // A dining chair, tucked in.
       const cx = s.x + (dx / len) * (len - 0.15), cz = s.z + (dz / len) * (len - 0.15);
       const yaw = Math.atan2(-dx, -dz);
       turned(cx - X, cz, yaw, (_g, put) => {
-        put(-0.22, 0.42, -0.22, 0.22, 0.48, 0.2, mat('#3f7a6a', { rough: 0.5 }));
+        put(-0.22, 0.42, -0.22, 0.22, 0.48, 0.2, P('#3f7a6a'));
         for (const [x, z] of [[-0.21, -0.21], [0.17, -0.21], [-0.21, 0.17], [0.17, 0.17]]) put(x, 0, z, x + 0.04, 0.42, z + 0.04, M.pine);
         put(-0.22, 0.48, 0.17, 0.22, 0.95, 0.21, M.pine);
       });
@@ -706,15 +891,36 @@ export function buildCarehome(def: MapDef): MapView {
     const mid = { x: (a.x + c.x) / 2 - X, z: (a.z + c.z) / 2 };
     cyl(mid.x - 1.3, c.y, mid.z, 0.025, 0.09, M.white, 8);
     cyl(mid.x - 1.22, c.y, mid.z, 0.025, 0.09, M.black, 8);
-    cyl(mid.x + 0.6, c.y, mid.z, 0.16, 0.18, mat('#e8303a', { rough: 0.2 }), 12, 0.11);
-    cyl(mid.x - 0.4, c.y, mid.z, 0.06, 0.2, mat('#d8e8f0', { rough: 0.2 }), 10);
-    for (const [dx, col] of [[-0.05, '#ffd34a'], [0.05, '#f06a8a'], [0, '#9ad06a']] as const) sph(mid.x - 0.4 + dx, c.y + 0.27, mid.z + dx, 0.05, mat(col));
+    cyl(mid.x + 0.6, c.y, mid.z, 0.16, 0.18, P('#e8303a'), 12, 0.11);
+    cyl(mid.x - 0.4, c.y, mid.z, 0.06, 0.2, P('#d8e8f0'), 10);
+    for (const [dx, col] of [[-0.05, '#ffd34a'], [0.05, '#f06a8a'], [0, '#9ad06a']] as const) sph(mid.x - 0.4 + dx, c.y + 0.27, mid.z + dx, 0.05, P(col));
     sign([{ t: 'FAMILY TABLE', s: 1 }, { t: 'Thursdays only', s: 0.7, b: false }], mid.x - 1.8, c.y + 0.1, mid.z, 's', 0.36, 0.18, { bg: '#ffffff', fg: '#2a5a4a', border: '#2a5a4a' });
   }
+  // Table 2, for residents (visitors sit at the FAMILY TABLE, Thursdays only).
+  {
+    const b = one('Table 2 (residents)');
+    const { min: a, max: c } = b;
+    table(v, b, P('#f2ecdc'), M.darkPine);
+    const cx = (a.x + c.x) / 2 - X, cz = (a.z + c.z) / 2;
+    for (const [dx, dz] of [[0, -1], [0, 1], [1, 0]]) {
+      const px = cx + dx * ((c.x - a.x) / 2 + 0.15), pz = cz + dz * ((c.z - a.z) / 2 + 0.15);
+      turned(px, pz, yawTo(px, pz, cx, cz), (_g, put) => {
+        put(-0.22, 0.42, -0.22, 0.22, 0.48, 0.2, P('#3f7a6a'));
+        for (const [x, z] of [[-0.21, -0.21], [0.17, -0.21], [-0.21, 0.17], [0.17, 0.17]]) put(x, 0, z, x + 0.04, 0.42, z + 0.04, M.pine);
+        put(-0.22, 0.48, 0.17, 0.22, 0.95, 0.21, M.pine);
+      });
+    }
+    sign([{ t: 'TABLE 2', s: 1 }, { t: 'Residents only', s: 0.7, b: false }], cx, c.y + 0.1, cz, 's', 0.36, 0.18, { bg: '#ffffff', fg: '#2a5a4a', border: '#2a5a4a' });
+    cyl(cx + 0.45, c.y, cz - 0.2, 0.05, 0.16, P('#d8e8f0'), 10);
+    sph(cx + 0.45, c.y + 0.22, cz - 0.2, 0.06, P('#f5e050'));
+    // A beaker of cold tea someone never came back for.
+    cyl(cx - 0.4, c.y, cz + 0.2, 0.04, 0.11, P('#f2a0b8'), 10);
+  }
+
   // The serving hatch: steel ledge, roller shutter half up, a dark kitchen beyond.
   {
     const b = one('Serving hatch ledge');
-    bx(b.min.x - X, 0, b.min.z, b.max.x - X, 0.95, b.max.z, mat('#5f8f6e', { rough: 0.6 }), true);
+    bx(b.min.x - X, 0, b.min.z, b.max.x - X, 0.95, b.max.z, P('#5f8f6e'), true);
     bx(b.min.x - X - 0.05, 0.95, b.min.z, b.max.x - X + 0.05, 1.0, b.max.z + 0.05, M.steel, true);
     bx(b.min.x - X, 1.0, -9.99, b.max.x - X, 1.75, -9.96, mat('#2a2622', { rough: 1, emissive: '#3a2c1a', emissiveIntensity: 0.3 }));
     for (let y = 1.75; y < 2.25; y += 0.06) bx(b.min.x - X, y, -9.99, b.max.x - X, y + 0.05, -9.93, M.steel);
@@ -741,7 +947,7 @@ export function buildCarehome(def: MapDef): MapView {
     for (const y of [1.25, 1.6]) {
       bx(b.min.x - X + 0.2, y - 0.03, b.min.z, b.max.x - X - 0.1, y, b.max.z, M.teak);
       for (let i = 0; i < 4; i++) {
-        const p = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.02, 14), mat(['#f2f2f2', '#d8e6f2', '#f2e2d0', '#e6f0e0'][(i + (y > 1.4 ? 1 : 0)) % 4], { rough: 0.3 }));
+        const p = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.02, 14), P(['#f2f2f2', '#d8e6f2', '#f2e2d0', '#e6f0e0'][(i + (y > 1.4 ? 1 : 0)) % 4]));
         p.rotation.z = Math.PI / 2;
         p.position.set(X + b.min.x - X + 0.24, y + 0.14, b.min.z + 0.22 + i * 0.38);
         add(p);
@@ -759,7 +965,7 @@ export function buildCarehome(def: MapDef): MapView {
     }
     for (const y of [0.25, 0.55, 0.96]) bx(x0, y, b.min.z, x1, y + 0.04, b.max.z, M.steel, true);
     for (const y of [0.29, 0.59]) bx(x0 + 0.05, y, b.min.z + 0.04, x1 - 0.05, y + 0.03, b.max.z - 0.04, M.tray);
-    cyl(x0 + 0.25, 1.0, b.min.z + 0.3, 0.1, 0.08, mat('#e8e0c8', { rough: 0.5 }), 10);
+    cyl(x0 + 0.25, 1.0, b.min.z + 0.3, 0.1, 0.08, P('#e8e0c8'), 10);
   }
   sign([{ t: 'PLEASE DO NOT', s: 0.9 }, { t: 'FEED THE RESIDENTS', s: 1 }, { t: 'between meals', s: 0.6, b: false }], -5.0, 1.75, -3.67, 'n', 1.2, 0.55, ST.pine);
   sign([{ t: 'ALLERGIES', s: 1, c: '#b23a3a' }, { t: 'Nuts · Gluten · Shellfish', s: 0.7, b: false }, { t: "Mrs Oduya's son", s: 0.7, b: false }], 5.83, 1.6, -5.8, 'w', 0.9, 0.55, ST.laminate);
@@ -793,13 +999,13 @@ export function buildCarehome(def: MapDef): MapView {
     jg.position.set((b.min.x + b.max.x) / 2, b.max.y + 0.004, (b.min.z + b.max.z) / 2);
     add(jg);
     // The box lid, propped up.
-    bx(b.min.x - X + 0.05, b.max.y, b.max.z - 0.12, b.min.x - X + 0.5, b.max.y + 0.3, b.max.z - 0.08, mat('#3a6a9a'));
+    bx(b.min.x - X + 0.05, b.max.y, b.max.z - 0.12, b.min.x - X + 0.5, b.max.y + 0.3, b.max.z - 0.08, P('#3a6a9a'));
     // Folding chairs.
     for (const [dx, dz] of [[0, -1.0], [0, 1.0], [-1.0, 0]]) {
       const cx = (b.min.x + b.max.x) / 2 - X + dx * 0.95, cz = (b.min.z + b.max.z) / 2 + dz * 0.95;
       turned(cx, cz, yawTo(cx, cz, (b.min.x + b.max.x) / 2 - X, (b.min.z + b.max.z) / 2), (_g, put) => {
-        put(-0.2, 0.42, -0.2, 0.2, 0.46, 0.2, mat('#d8742a', { rough: 0.5 }));
-        put(-0.2, 0.46, 0.17, 0.2, 0.85, 0.2, mat('#d8742a', { rough: 0.5 }));
+        put(-0.2, 0.42, -0.2, 0.2, 0.46, 0.2, P('#d8742a'));
+        put(-0.2, 0.46, 0.17, 0.2, 0.85, 0.2, P('#d8742a'));
         for (const [x, z] of [[-0.19, -0.19], [0.16, -0.19], [-0.19, 0.16], [0.16, 0.16]]) put(x, 0, z, x + 0.03, 0.42, z + 0.03, M.chrome);
       });
     }
@@ -829,17 +1035,17 @@ export function buildCarehome(def: MapDef): MapView {
     for (let i = 0; i < 5; i++) {
       const ang = (i / 5) * Math.PI * 2 + 0.3;
       const x = cx + Math.cos(ang) * 1.45, z = cz + Math.sin(ang) * 1.3;
-      const m = new THREE.Mesh(new THREE.PlaneGeometry(0.7, 1.1), mat(['#7a4ab0', '#2aa0a0', '#e05a8a'][i % 3], { rough: 1 }));
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(0.7, 1.1), P(['#7a4ab0', '#2aa0a0', '#e05a8a'][i % 3]));
       m.rotation.set(-Math.PI / 2, 0, -ang);
       m.position.set(X + x, 0.006, z);
       add(m);
       turned(x, z, yawTo(x, z, cx, cz), (_g, put) => {
-        put(-0.22, 0.42, -0.22, 0.22, 0.47, 0.2, mat('#3a8ac8', { rough: 0.45 }));
-        put(-0.22, 0.47, 0.16, 0.22, 0.88, 0.2, mat('#3a8ac8', { rough: 0.45 }));
+        put(-0.22, 0.42, -0.22, 0.22, 0.47, 0.2, P('#3a8ac8'));
+        put(-0.22, 0.47, 0.16, 0.22, 0.88, 0.2, P('#3a8ac8'));
         for (const [px, pz] of [[-0.2, -0.2], [0.17, -0.2], [-0.2, 0.17], [0.17, 0.17]]) put(px, 0, pz, px + 0.03, 0.42, pz + 0.03, M.chrome);
       });
     }
-    for (const [x, z, col] of [[-10.2, 4.6, '#f0d050'], [-10.0, 4.75, '#e05a6a'], [-10.25, 4.85, '#5ab0e0']] as const) sph(x, 0.1, z, 0.1, mat(col, { rough: 0.9 }));
+    for (const [x, z, col] of [[-10.2, 4.6, '#f0d050'], [-10.0, 4.75, '#e05a6a'], [-10.25, 4.85, '#5ab0e0']] as const) sph(x, 0.1, z, 0.1, P(col));
     sign([{ t: 'CHAIR YOGA', s: 1, c: '#7a4ab0' }, { t: 'with Bev · 3pm', s: 0.7, b: false }, { t: 'Standing poses are NOT permitted', s: 0.55 }], -9.9, 1.9, 5.83, 'n', 1.0, 0.55, ST.laminate);
   }
   // Potted palms, wicker chairs by the windows, an empty birdcage.
@@ -861,12 +1067,12 @@ export function buildCarehome(def: MapDef): MapView {
   }
   for (const z of [-7.0, -3.4]) {
     turned(-13.4, z, -Math.PI / 2 - 0.3, (_g, put) => {
-      const wk = mat('#c8a46a', { rough: 1 });
+      const wk = P('#c8a46a');
       put(-0.32, 0, -0.3, 0.32, 0.42, 0.3, wk);
       put(-0.34, 0.42, 0.18, 0.34, 1.05, 0.32, wk);
       put(-0.36, 0.42, -0.3, -0.26, 0.65, 0.3, wk);
       put(0.26, 0.42, -0.3, 0.36, 0.65, 0.3, wk);
-      put(-0.28, 0.42, -0.28, 0.28, 0.5, 0.2, mat('#e8d0a0'));
+      put(-0.28, 0.42, -0.28, 0.28, 0.5, 0.2, P('#e8d0a0'));
     });
   }
   {
@@ -882,7 +1088,7 @@ export function buildCarehome(def: MapDef): MapView {
 
   // ═════════════════ The Residents' Corridor ═════════════════
   // Way-finding stripe down the middle: follow the green line to Reception.
-  const stripe = mat('#3a9a62', { rough: 0.5 });
+  const stripe = P('#3a9a62');
   bx(-13.5, 0.003, 7.15, 7.25, 0.008, 7.25, stripe);
   bx(7.15, 0.003, -9.5, 7.25, 0.008, 7.25, stripe);
   bx(7.25, 0.003, 5.1, 11.5, 0.008, 5.2, stripe);
@@ -899,21 +1105,21 @@ export function buildCarehome(def: MapDef): MapView {
   residents.forEach(([x, , lines], i) => {
     const z = 8.4;
     bx(x - 0.55, 0, z - 0.05, x + 0.55, 2.2, z, M.frame);
-    bx(x - 0.48, 0, z - 0.07, x + 0.48, 2.12, z - 0.04, mat(doorCols[i % doorCols.length], { rough: 0.5 }));
+    bx(x - 0.48, 0, z - 0.07, x + 0.48, 2.12, z - 0.04, P(doorCols[i % doorCols.length]));
     bx(x + 0.3, 1.0, z - 0.11, x + 0.4, 1.04, z - 0.07, M.chrome);
     sign(lines, x, 1.62, z - 0.075, 'n', 0.42, 0.34, { bg: '#ffffff', fg: '#222222', border: '#888888' });
     // The memory box beside the door.
     bx(x + 0.62, 1.2, z - 0.1, x + 0.98, 1.6, z, M.pine);
-    bx(x + 0.66, 1.24, z - 0.102, x + 0.94, 1.56, z - 0.098, mat(['#d8c0a0', '#a0b8d0', '#c8d8a0'][i % 3], { rough: 0.9 }));
+    bx(x + 0.66, 1.24, z - 0.102, x + 0.94, 1.56, z - 0.098, P(['#d8c0a0', '#a0b8d0', '#c8d8a0'][i % 3]));
   });
   {
     // Room 2's wreath: a dark green ring with a bow.
-    const w = new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.06, 8, 18), mat('#1f5a32', { rough: 0.9 }));
+    const w = new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.06, 8, 18), P('#1f5a32'));
     w.position.set(X - 10.6, 1.15, 8.3);
     add(w);
-    sph(-10.6, 0.95, 8.29, 0.06, mat('#3a2a5a'));
+    sph(-10.6, 0.95, 8.29, 0.06, P('#3a2a5a'));
     // Room 5's "Welcome!" balloon, on a string from the handle.
-    sph(0.7 + 0.35, 2.4, 8.1, 0.18, mat('#e0405a', { rough: 0.25 }), 1, 1.15, 1);
+    sph(0.7 + 0.35, 2.4, 8.1, 0.18, P('#e0405a'), 1, 1.15, 1);
     cyl(0.7 + 0.35, 1.02, 8.1, 0.004, 1.2, M.white, 4);
   }
   // Lost Property: dentures, a hearing aid, a will.
@@ -921,14 +1127,14 @@ export function buildCarehome(def: MapDef): MapView {
     const b = one('Lost Property table');
     table(v, b, M.pine, M.pine);
     bx(-8.95, 0.85, 7.9, -8.25, 1.15, 8.22, M.cardboard);
-    sph(-8.7, 1.17, 8.05, 0.07, mat('#f4f0e8', { rough: 0.3 }), 1.2, 0.5, 1); // dentures
-    sph(-8.7, 1.19, 8.05, 0.05, mat('#e07a8a', { rough: 0.4 }), 1.1, 0.4, 0.9);
-    sph(-8.45, 1.17, 8.1, 0.035, mat('#d8b890', { rough: 0.4 }), 1, 1.3, 1); // hearing aid
+    sph(-8.7, 1.17, 8.05, 0.07, P('#f4f0e8'), 1.2, 0.5, 1); // dentures
+    sph(-8.7, 1.19, 8.05, 0.05, P('#e07a8a'), 1.1, 0.4, 0.9);
+    sph(-8.45, 1.17, 8.1, 0.035, P('#d8b890'), 1, 1.3, 1); // hearing aid
     bx(-8.95, 1.15, 7.95, -8.75, 1.17, 8.2, M.paper); // a will
     sign([{ t: 'LOST PROPERTY', s: 1 }, { t: 'Teeth · Ears · One (1) Will', s: 0.6, b: false }], -8.6, 1.32, 7.88, 'n', 0.62, 0.22, ST.laminate);
   }
   // The birthday board, with the names crossed off.
-  bx(2.3, 1.2, 8.37, 3.6, 2.2, 8.4, mat('#b0865a', { rough: 0.9 }));
+  bx(2.3, 1.2, 8.37, 3.6, 2.2, 8.4, P('#b0865a'));
   sign([
     { t: 'HAPPY BIRTHDAY!', s: 1, c: '#c8286a' }, { t: 'Doris · 100', s: 0.75, strike: true }, { t: 'Arthur · 94', s: 0.75, strike: true },
     { t: 'Mr Pearce · 91', s: 0.75, strike: true }, { t: 'Mrs ______ · 88', s: 0.75 },
@@ -944,7 +1150,7 @@ export function buildCarehome(def: MapDef): MapView {
     for (const y of [0.3, 0.9]) bx(x0, y, b.min.z, x1, y + 0.05, b.max.z, M.teak, true);
     cyl(x0 + 0.3, 0.95, b.min.z + 0.27, 0.18, 0.4, M.steel, 12, 0.16); // the urn
     for (let i = 0; i < 3; i++) cyl(x0 + 0.62 + i * 0.12, 0.95, b.min.z + 0.15 + (i % 2) * 0.2, 0.04, 0.09, M.white, 8);
-    sph(x0 + 0.75, 0.99, b.min.z + 0.4, 0.07, mat('#d8a04a'), 1, 0.4, 1); // a plate of biscuits (rich tea)
+    sph(x0 + 0.75, 0.99, b.min.z + 0.4, 0.07, P('#d8a04a'), 1, 0.4, 1); // a plate of biscuits (rich tea)
   }
   // Corridor signs.
   sign([{ t: 'DAYS SINCE', s: 0.8 }, { t: 'LAST INCIDENT', s: 0.8 }, { t: '0', s: 2.2, c: '#c8282d', f: HAND }], -6.0, 1.75, 6.17, 's', 0.7, 0.8, ST.white);
@@ -952,16 +1158,16 @@ export function buildCarehome(def: MapDef): MapView {
   sign([{ t: 'FIRE ASSEMBLY POINT', s: 0.8 }, { t: 'The car park', s: 0.6, b: false }, { t: '(slowly)', s: 0.6, b: false }], -13.98, 1.75, 7.2, 'e', 0.8, 0.45, ST.pine);
   sign([{ t: 'FIRE DOOR', s: 1 }, { t: 'KEEP SHUT', s: 1 }], -2.95, 2.0, 6.17, 's', 0.36, 0.24, ST.nhs);
   // The corridor's north end: the fire exit and a vending machine that is out of order.
-  bx(6.6, 0, -9.99, 7.9, 2.2, -9.95, mat('#d8dcd8', { rough: 0.4 }));
+  bx(6.6, 0, -9.99, 7.9, 2.2, -9.95, P('#d8dcd8'));
   bx(6.7, 0.1, -9.96, 7.8, 2.1, -9.93, windows);
-  bx(6.7, 1.0, -9.94, 7.8, 1.06, -9.9, mat('#c8282d'));
+  bx(6.7, 1.0, -9.94, 7.8, 1.06, -9.9, P('#c8282d'));
   sign([{ t: 'FIRE EXIT →', s: 1 }], 7.25, 2.4, -9.9, 's', 0.7, 0.22, ST.exit);
   sign([{ t: 'ALARMED', s: 1 }, { t: "(it isn't)", s: 0.7, b: false }], 7.25, 1.55, -9.92, 's', 0.4, 0.2, ST.warn);
   {
     const b = one('Vending machine (out of order)');
-    bx(b.min.x - X, 0, b.min.z, b.max.x - X, 1.6, b.max.z, mat('#2a5aa8', { rough: 0.4 }), true);
+    bx(b.min.x - X, 0, b.min.z, b.max.x - X, 1.6, b.max.z, P('#2a5aa8'), true);
     bx(b.min.x - X + 0.1, 0.6, b.max.z, b.max.x - X - 0.35, 1.5, b.max.z + 0.01, M.glass);
-    for (let r = 0; r < 3; r++) for (let c = 0; c < 4; c++) bx(b.min.x - X + 0.14 + c * 0.17, 0.66 + r * 0.28, b.max.z - 0.05, b.min.x - X + 0.26 + c * 0.17, 0.84 + r * 0.28, b.max.z - 0.01, mat(['#e8c04a', '#e05a6a', '#f2f2f2', '#6ab04a'][(r + c) % 4]));
+    for (let r = 0; r < 3; r++) for (let c = 0; c < 4; c++) bx(b.min.x - X + 0.14 + c * 0.17, 0.66 + r * 0.28, b.max.z - 0.05, b.min.x - X + 0.26 + c * 0.17, 0.84 + r * 0.28, b.max.z - 0.01, P(['#e8c04a', '#e05a6a', '#f2f2f2', '#6ab04a'][(r + c) % 4]));
     sign([{ t: 'OUT OF ORDER', s: 1 }, { t: 'since 2014', s: 0.6, b: false }], (b.min.x + b.max.x) / 2 - X - 0.1, 1.2, b.max.z + 0.02, 's', 0.6, 0.3, { bg: '#ffffff', fg: '#c8282d', font: HAND }, 0.12);
   }
   // Staff-only signs on the meds-room and sluice doors.
@@ -983,8 +1189,8 @@ export function buildCarehome(def: MapDef): MapView {
       wheel.position.set(X + wx, 0.3, wz + dz);
       add(wheel);
     }
-    bx(wx - 0.2, 0.45, wz - 0.25, wx + 0.2, 0.5, wz + 0.25, mat('#2a4a8a'), true);
-    bx(wx - 0.3, 0.5, wz - 0.25, wx - 0.26, 0.95, wz + 0.25, mat('#2a4a8a'), true);
+    bx(wx - 0.2, 0.45, wz - 0.25, wx + 0.2, 0.5, wz + 0.25, P('#2a4a8a'), true);
+    bx(wx - 0.3, 0.5, wz - 0.25, wx - 0.26, 0.95, wz + 0.25, P('#2a4a8a'), true);
     for (const dz of [-0.27, 0.27]) bx(wx - 0.3, 0.9, wz + dz - 0.015, wx - 0.1, 0.93, wz + dz + 0.015, M.chrome);
     bx(wx + 0.15, 0.08, wz - 0.18, wx + 0.3, 0.1, wz + 0.18, M.chrome);
   }
@@ -992,25 +1198,25 @@ export function buildCarehome(def: MapDef): MapView {
   // ═════════════════ The Nurses' Station ═════════════════
   {
     const b = one("Nurses' desk");
-    bx(b.min.x - X, 0, b.min.z, b.max.x - X, 0.96, b.max.z, mat('#dcd6c8', { rough: 0.5 }), true);
-    bx(b.min.x - X, 0.96, b.min.z, b.max.x - X + 0.04, 1.0, b.max.z, mat('#b8a888', { rough: 0.5 }), true);
+    bx(b.min.x - X, 0, b.min.z, b.max.x - X, 0.96, b.max.z, P('#dcd6c8'), true);
+    bx(b.min.x - X, 0.96, b.min.z, b.max.x - X + 0.04, 1.0, b.max.z, P('#b8a888'), true);
     // A beige computer, a phone, the sign-in book, a mug.
-    bx(8.6, 1.0, -8.9, 9.0, 1.35, -8.45, mat('#d8d0b8', { rough: 0.6 }));
+    bx(8.6, 1.0, -8.9, 9.0, 1.35, -8.45, P('#d8d0b8'));
     bx(8.99, 1.06, -8.85, 9.0, 1.3, -8.5, mat('#3a5a6a', { emissive: '#2a6a7a', emissiveIntensity: 0.6 }));
     bx(9.0, 1.0, -8.0, 9.1, 1.08, -7.75, M.black);
     bx(8.65, 1.0, -7.5, 9.0, 1.03, -7.1, M.paper);
-    cyl(8.85, 1.0, -6.85, 0.045, 0.1, mat('#e8e0f0'), 10);
+    cyl(8.85, 1.0, -6.85, 0.045, 0.1, P('#e8e0f0'), 10);
   }
   {
     const b = one('Medication cabinet');
     bx(b.min.x - X, 0, b.min.z, b.max.x - X, 2.0, b.max.z, M.white, true);
-    for (let i = 0; i < 3; i++) bx(b.min.x - X + 0.04 + i * 0.64, 0.05, b.max.z, b.min.x - X + 0.62 + i * 0.64, 1.95, b.max.z + 0.01, mat('#f2f4f2', { rough: 0.4 }));
+    for (let i = 0; i < 3; i++) bx(b.min.x - X + 0.04 + i * 0.64, 0.05, b.max.z, b.min.x - X + 0.62 + i * 0.64, 1.95, b.max.z + 0.01, P('#f2f4f2'));
     // The fourth door ajar (the key still in it), the shelves of pills behind it.
-    bx(11.96, 0.05, b.max.z - 0.4, 12.54, 1.95, b.max.z - 0.38, mat('#dfe6e2', { rough: 0.8 }));
-    bx(12.5, 0.05, b.max.z + 0.01, 12.55, 1.95, b.max.z + 0.55, mat('#f2f4f2', { rough: 0.4 }));
+    bx(11.96, 0.05, b.max.z - 0.4, 12.54, 1.95, b.max.z - 0.38, P('#dfe6e2'));
+    bx(12.5, 0.05, b.max.z + 0.01, 12.55, 1.95, b.max.z + 0.55, P('#f2f4f2'));
     for (const y of [0.4, 0.8, 1.2, 1.6]) {
       bx(11.96, y - 0.02, b.min.z + 0.05, 12.54, y, b.max.z - 0.02, M.white);
-      for (let i = 0; i < 5; i++) bx(11.98 + i * 0.11, y, b.max.z - 0.2, 12.06 + i * 0.11, y + 0.14, b.max.z - 0.06, mat(['#f2f2f2', '#e0a0a0', '#a0c0e0', '#f0e0a0'][(i + Math.round(y * 10)) % 4]));
+      for (let i = 0; i < 5; i++) bx(11.98 + i * 0.11, y, b.max.z - 0.2, 12.06 + i * 0.11, y + 0.14, b.max.z - 0.06, P(['#f2f2f2', '#e0a0a0', '#a0c0e0', '#f0e0a0'][(i + Math.round(y * 10)) % 4]));
     }
     bx(11.86, 1.0, b.max.z + 0.01, 11.9, 1.06, b.max.z + 0.06, M.gold);
     bx(11.0, 1.4, b.max.z + 0.012, 11.4, 1.8, b.max.z + 0.013, M.redCross);
@@ -1018,16 +1224,16 @@ export function buildCarehome(def: MapDef): MapView {
   }
   {
     const b = one('Drugs trolley');
-    bx(b.min.x - X, 0.1, b.min.z, b.max.x - X, 0.96, b.max.z, mat('#3a7ac0', { rough: 0.4 }), true);
+    bx(b.min.x - X, 0.1, b.min.z, b.max.x - X, 0.96, b.max.z, P('#3a7ac0'), true);
     bx(b.min.x - X - 0.02, 0.96, b.min.z - 0.02, b.max.x - X + 0.02, 1.0, b.max.z + 0.02, M.white, true);
     for (const [x, z] of [[b.min.x - X + 0.06, b.min.z + 0.06], [b.max.x - X - 0.06, b.min.z + 0.06], [b.min.x - X + 0.06, b.max.z - 0.06], [b.max.x - X - 0.06, b.max.z - 0.06]]) sph(x, 0.05, z, 0.05, M.black);
-    for (let i = 0; i < 4; i++) bx(b.min.x - X + 0.05, 0.2 + i * 0.18, b.max.z, b.max.x - X - 0.05, 0.34 + i * 0.18, b.max.z + 0.01, mat('#5a9ad8', { rough: 0.4 }));
+    for (let i = 0; i < 4; i++) bx(b.min.x - X + 0.05, 0.2 + i * 0.18, b.max.z, b.max.x - X - 0.05, 0.34 + i * 0.18, b.max.z + 0.01, P('#5a9ad8'));
     // The chain that is supposed to fix it to the wall, hanging loose.
     for (let i = 0; i < 6; i++) bx(b.max.x - X + 0.01, 0.62 - i * 0.09, b.min.z + 0.3, b.max.x - X + 0.04, 0.68 - i * 0.09, b.min.z + 0.33, M.chrome);
     sign([{ t: 'DRUGS TROLLEY', s: 1 }, { t: 'MUST BE CHAINED TO WALL', s: 0.6 }], (b.min.x + b.max.x) / 2 - X, 0.55, b.min.z - 0.005, 'n', 0.7, 0.24, ST.warn);
   }
   // The staff noticeboard.
-  bx(12.96, 1.1, -9.2, 13.0, 2.1, -7.6, mat('#b0865a', { rough: 0.9 }));
+  bx(12.96, 1.1, -9.2, 13.0, 2.1, -7.6, P('#b0865a'));
   sign([{ t: 'DAYS SINCE LAST INCIDENT', s: 0.6 }, { t: '0', s: 2, c: '#c8282d', f: HAND }, { t: '(it was the remote again)', s: 0.5, b: false }], 12.95, 1.6, -8.4, 'w', 0.8, 0.8, ST.white);
   sign([{ t: 'DO NOT GIVE', s: 0.9 }, { t: 'MRS ______', s: 0.9 }, { t: 'THE REMOTE', s: 0.9 }], 12.97, 1.75, -6.7, 'w', 0.55, 0.45, { bg: '#ffef8a', fg: '#222222', font: HAND });
   // A confiscated hip flask and a vape at the plinth's foot.
@@ -1044,7 +1250,7 @@ export function buildCarehome(def: MapDef): MapView {
       door.rotation.z = Math.PI / 2;
       door.position.set(b.min.x - 0.01, 0.42, (z0 + z1) / 2);
       add(door);
-      const glass = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.17, 0.035, 18), mat('#4a6a8a', { rough: 0.1 }));
+      const glass = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.17, 0.035, 18), P('#4a6a8a'));
       glass.rotation.z = Math.PI / 2;
       glass.position.set(b.min.x - 0.015, 0.42, (z0 + z1) / 2);
       add(glass);
@@ -1063,7 +1269,7 @@ export function buildCarehome(def: MapDef): MapView {
     const x0 = b.min.x - X, x1 = b.max.x - X;
     for (const [x, z] of [[x0, b.min.z], [x1 - 0.04, b.min.z], [x0, b.max.z - 0.04], [x1 - 0.04, b.max.z - 0.04]]) bx(x, 0, z, x + 0.04, 1.9, z + 0.04, M.chrome, true);
     for (const y of [0.1, 0.55, 1.0, 1.45, 1.86]) bx(x0, y, b.min.z, x1, y + 0.03, b.max.z, M.steel, true);
-    const packs = [mat('#7ab0e0', { rough: 0.8 }), mat('#f2f2f2', { rough: 0.8 }), mat('#a0d0a0', { rough: 0.8 })];
+    const packs = [P('#7ab0e0'), P('#f2f2f2'), P('#a0d0a0')];
     for (const y of [0.13, 0.58, 1.03, 1.48]) for (let i = 0; i < 4; i++) bx(x0 + 0.03, y, b.min.z + 0.08 + i * 0.53, x1 - 0.03, y + 0.36, b.min.z + 0.5 + i * 0.53, packs[(i + Math.round(y * 3)) % 3], true);
     sign(['ABSORBENT PRODUCTS'], x0 - 0.005, 1.7, (b.min.z + b.max.z) / 2, 'w', 1.0, 0.14, ST.laminate);
     sign(['ABSORBENT PRODUCTS'], x1 + 0.005, 1.7, (b.min.z + b.max.z) / 2, 'e', 1.0, 0.14, ST.laminate);
@@ -1071,10 +1277,10 @@ export function buildCarehome(def: MapDef): MapView {
   {
     const b = one('Laundry cart');
     const x0 = b.min.x - X, x1 = b.max.x - X;
-    bx(x0, 0.1, b.min.z, x1, 0.75, b.max.z, mat('#4a6a9a', { rough: 0.95 }), true);
+    bx(x0, 0.1, b.min.z, x1, 0.75, b.max.z, P('#4a6a9a'), true);
     for (const [x, z] of [[x0, b.min.z], [x1 - 0.03, b.min.z], [x0, b.max.z - 0.03], [x1 - 0.03, b.max.z - 0.03]]) bx(x, 0.05, z, x + 0.03, 0.9, z + 0.03, M.chrome, true);
-    sph(x0 + 0.25, 0.78, b.min.z + 0.3, 0.2, mat('#8a6fa8', { rough: 1 }), 1, 0.5, 1);
-    sph(x1 - 0.25, 0.8, b.min.z + 0.3, 0.18, mat('#c86a5a', { rough: 1 }), 1, 0.5, 1);
+    sph(x0 + 0.25, 0.78, b.min.z + 0.3, 0.2, P('#8a6fa8'), 1, 0.5, 1);
+    sph(x1 - 0.25, 0.8, b.min.z + 0.3, 0.18, P('#c86a5a'), 1, 0.5, 1);
   }
   sign([{ t: 'STAFF ONLY', s: 1 }, { t: 'This means you, Arthur', s: 0.55, b: false }], 9.5, 1.9, -2.83, 's', 0.7, 0.3, ST.red);
 
@@ -1082,14 +1288,14 @@ export function buildCarehome(def: MapDef): MapView {
   {
     const b = one('Reception desk');
     bx(b.min.x - X, 0, b.min.z, b.max.x - X, 1.05, b.max.z, M.pine, true);
-    bx(b.min.x - X - 0.03, 1.05, b.min.z, b.max.x - X + 0.03, 1.1, b.max.z + 0.04, mat('#e8dcc4', { rough: 0.4 }), true);
+    bx(b.min.x - X - 0.03, 1.05, b.min.z, b.max.x - X + 0.03, 1.1, b.max.z + 0.04, P('#e8dcc4'), true);
     sign([{ t: 'RECEPTION', s: 1 }], (b.min.x + b.max.x) / 2 - X, 0.7, b.max.z + 0.005, 's', 1.4, 0.3, ST.pine);
     // The visitors' book, a bell, mints, a pen on a chain.
     bx(10.3, 1.1, 2.85, 10.8, 1.13, 3.2, M.paper);
-    bx(10.3, 1.12, 2.85, 10.55, 1.135, 3.2, mat('#1f3a6a'));
+    bx(10.3, 1.12, 2.85, 10.55, 1.135, 3.2, P('#1f3a6a'));
     cyl(11.3, 1.1, 2.95, 0.06, 0.04, M.chrome, 12);
     sph(11.3, 1.15, 2.95, 0.04, M.chrome);
-    cyl(11.0, 1.1, 3.05, 0.09, 0.05, mat('#d8e8f0', { rough: 0.2 }), 12);
+    cyl(11.0, 1.1, 3.05, 0.09, 0.05, P('#d8e8f0'), 12);
     sign([{ t: 'VISITING HOURS', s: 1 }, { t: 'until someone inherits', s: 0.75, b: false }], 10.8, 1.75, 2.57, 's', 1.2, 0.42, ST.nhs);
     sign([{ t: 'Please sign in:', s: 0.8 }, { t: 'Name · Relation · Expected share', s: 0.6, b: false }], 10.55, 1.25, 3.2, 's', 0.5, 0.14, ST.laminate, 0);
   }
@@ -1117,8 +1323,8 @@ export function buildCarehome(def: MapDef): MapView {
     const star = new THREE.Mesh(new THREE.OctahedronGeometry(0.1), mat('#ffe060', { emissive: '#ffc020', emissiveIntensity: 1.2 }));
     star.position.set(X + cx, 1.9, cz);
     add(star);
-    for (let i = 0; i < 7; i++) sph(cx + Math.cos(i * 1.7) * 0.25, 0.3 + (i % 3) * 0.45, cz + Math.sin(i * 1.7) * 0.25, 0.04, mat(['#e0405a', '#4a8ae0', '#f0d050'][i % 3], { rough: 0.2 }));
-    sign([{ t: "SEASON'S BREATHINGS", s: 1 }], cx - 0.1, 2.3, 2.565, 's', 1.0, 0.2, { bg: '#c8282d', fg: '#fff3c0', font: SERIF });
+    for (let i = 0; i < 7; i++) sph(cx + Math.cos(i * 1.7) * 0.25, 0.3 + (i % 3) * 0.45, cz + Math.sin(i * 1.7) * 0.25, 0.04, P(['#e0405a', '#4a8ae0', '#f0d050'][i % 3]));
+    sign([{ t: "SEASON'S BREATHINGS", s: 1 }], cx - 0.25, 2.35, 2.565, 's', 1.5, 0.3, { bg: '#c8282d', fg: '#fff3c0', font: SERIF, border: '#e8c04a' });
   }
   // The front door: glazed, with a keypad.
   bx(12.9, 0, 4.4, 13.0, 2.4, 6.6, M.frame);
@@ -1130,9 +1336,9 @@ export function buildCarehome(def: MapDef): MapView {
   sign([{ t: 'SUNNY PINES', s: 1, c: '#24704a' }, { t: 'Every day a bonus!', s: 0.6, b: false, i: true }], 12.98, 2.65, 5.5, 'w', 1.6, 0.45, { bg: '#f6fbf4', fg: '#2a2a2a', font: SERIF, border: '#24704a' });
   {
     // WELCOME mat.
-    const m = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 1.4), signMaterial([{ t: 'WELCOME', s: 1 }], 1.0, 1.4, { bg: '#7a5a3a', fg: '#e8d0a0' }));
+    const m = atlas.mesh([{ t: 'WELCOME', s: 1 }], 1.4, 1.0, { bg: '#7a5a3a', fg: '#e8d0a0' });
     m.rotation.set(-Math.PI / 2, 0, Math.PI / 2);
-    m.position.set(X + 12.3, 0.006, 5.5);
+    m.position.set(X + 12.2, 0.006, 5.5);
     add(m);
   }
   // Leaflets by the door.
@@ -1142,20 +1348,28 @@ export function buildCarehome(def: MapDef): MapView {
   const scooterCols = ['#c8282d', '#2a6ac0', '#2f8a4a'];
   def.boxes.filter((q) => q.label?.startsWith('Mobility scooter')).forEach((b, i) => {
     const x0 = b.min.x - X, x1 = b.max.x - X;
-    const body = mat(scooterCols[i % 3], { rough: 0.35 });
-    bx(x0 + 0.04, 0.12, b.min.z, x1 - 0.04, 0.3, b.max.z, body, true);
-    for (const z of [b.min.z + 0.15, b.max.z - 0.15]) for (const x of [x0 + 0.04, x1 - 0.04]) {
-      const w = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.08, 12), M.black);
+    const body = P(scooterCols[i % 3]);
+    const seatM = P('#5a5f66');
+    const xm = (x0 + x1) / 2, z0 = b.min.z, z1 = b.max.z;
+    // Low deck, a rounded front cowl in the scooter's colour, wheels.
+    bx(x0 + 0.06, 0.1, z0 + 0.05, x1 - 0.06, 0.24, z1 - 0.2, body, true);
+    bx(x0 + 0.03, 0.1, z1 - 0.5, x1 - 0.03, 0.55, z1 - 0.05, body, true);
+    sph(xm, 0.36, z1 - 0.22, 0.24, body, 1.25, 1.0, 0.8);
+    for (const z of [z0 + 0.18, z1 - 0.18]) for (const x of [x0 + 0.04, x1 - 0.04]) {
+      const w = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.07, 12), M.black);
       w.rotation.z = Math.PI / 2;
-      w.position.set(X + x, 0.12, z);
+      w.position.set(X + x, 0.11, z);
       add(w);
     }
-    bx((x0 + x1) / 2 - 0.05, 0.3, b.min.z + 0.3, (x0 + x1) / 2 + 0.05, 0.55, b.min.z + 0.4, M.black);
-    bx(x0 + 0.06, 0.55, b.min.z + 0.15, x1 - 0.06, 0.65, b.min.z + 0.6, M.black, true); // seat
-    bx(x0 + 0.06, 0.65, b.min.z + 0.08, x1 - 0.06, 1.2, b.min.z + 0.18, M.black, true); // back
-    bx((x0 + x1) / 2 - 0.04, 0.3, b.max.z - 0.35, (x0 + x1) / 2 + 0.04, 1.0, b.max.z - 0.27, M.chrome, true); // tiller
-    bx(x0 + 0.08, 0.85, b.max.z - 0.28, x1 - 0.08, 1.05, b.max.z - 0.05, M.chrome, true); // basket
-    bx(x0 + 0.1, 0.12, b.max.z - 0.02, x1 - 0.1, 0.3, b.max.z, body, true);
+    bx(xm - 0.04, 0.24, z0 + 0.32, xm + 0.04, 0.5, z0 + 0.4, M.chrome); // seat post
+    bx(x0 + 0.05, 0.5, z0 + 0.12, x1 - 0.05, 0.62, z0 + 0.6, seatM, true); // seat
+    bx(x0 + 0.07, 0.62, z0 + 0.06, x1 - 0.07, 0.98, z0 + 0.16, seatM, true); // back
+    for (const x of [x0 + 0.03, x1 - 0.07]) bx(x, 0.72, z0 + 0.14, x + 0.04, 0.76, z0 + 0.55, M.black); // arms
+    bx(xm - 0.03, 0.5, z1 - 0.46, xm + 0.03, 0.98, z1 - 0.4, M.chrome); // tiller
+    bx(x0 + 0.06, 0.95, z1 - 0.48, x1 - 0.06, 0.99, z1 - 0.42, M.black); // handlebar
+    bx(x0 + 0.1, 0.72, z1 - 0.38, x1 - 0.1, 0.9, z1 - 0.12, M.chrome, true); // basket
+    sph(xm, 0.42, z1 + 0.0, 0.05, mat('#fff4c0', { emissive: '#ffe080', emissiveIntensity: 0.8 })); // headlamp
+    bx(x0 + 0.12, 0.78, z1 - 0.34, x1 - 0.12, 0.92, z1 - 0.16, P(['#e8d8b0', '#c86a5a', '#8ab0d8'][i % 3])); // shopping
   });
   sign([{ t: 'MOBILITY SCOOTER PARKING', s: 0.8 }, { t: 'Max 4 mph · No racing', s: 0.7 }, { t: '(this means you, Mr Okafor)', s: 0.55, b: false }], 10.6, 1.7, 8.38, 'n', 1.5, 0.5, ST.nhs);
   {
@@ -1165,17 +1379,20 @@ export function buildCarehome(def: MapDef): MapView {
   }
 
   // ── Lights: cool fluorescents everywhere, the warm lamp in Nana's corner, the telly's blue glow ──
-  const fluo = '#e8f3ff';
-  const ref = v.point(X + 2.0, 2.7, 1.4, fluo, 26, 14); // Day Room (east)
+  const fluo = '#d9ebff';
+  const ref = v.point(X + 1.6, 2.7, 1.4, fluo, 26, 14); // Day Room (east)
   const REF_BASE = 26;
-  v.point(X - 6.6, 1.6, 1.4, '#ffbd73', 9, 7); // Nana's lamps
-  v.point(X - 1.2, 2.7, -6.8, '#eef6ff', 26, 13); // Dining Hall
+  v.point(X - 6.6, 1.5, 1.4, '#ffaa55', 16, 6.5); // Nana's lamps
+  v.point(X - 1.2, 2.7, -6.8, fluo, 26, 13); // Dining Hall
   v.point(X - 11, 2.6, -2.5, '#fff1d0', 24, 14); // Sun Lounge (daylight through the roof)
-  v.point(X - 4, 2.7, 7.2, fluo, 16, 12); // corridor (south)
-  v.point(X + 8.6, 2.7, 3.2, fluo, 18, 12); // corridor (east) and reception
-  v.point(X + 10.7, 2.7, -4.0, '#e2f0ff', 14, 9, true); // nurses' station and sluice
+  v.point(X - 8.5, 2.7, 6.9, fluo, 17, 11); // corridor (south, west end)
+  v.point(X + 1.5, 2.7, 6.9, fluo, 17, 11, true); // corridor (south, east end)
+  v.point(X + 9.0, 2.7, -4.2, fluo, 20, 12); // corridor (east), nurses' station and sluice
+  v.point(X + 9.4, 2.7, 4.6, fluo, 18, 11, true); // reception
   const tvLight = v.point(X + 4.8, 1.7, 1.0, '#8fb6ff', 5, 6, true); // the telly
 
+  atlas.pack();
+  palette.bake(v.group);
   const view = v.finish({
     windows,
     idle: { center: { x: X - 1.5, y: 2.3, z: 2.0 }, rx: 2.6, rz: 1.6, look: { x: X - 6.0, y: 1.1, z: 1.2 } },
@@ -1211,6 +1428,9 @@ export function buildCarehome(def: MapDef): MapView {
     const level = Math.min(1, ref.intensity / REF_BASE);
     const on = level > 0.5;
     for (const m of tubeMats) m.emissiveIntensity = on ? 1.5 : 0.05;
+    ceilTiles.emissiveIntensity = on ? 0.32 : 0.0;
+    M.lamp.emissiveIntensity = on ? 1.5 : 0.08;
+    M.water.emissiveIntensity = on ? 0.55 : 0.05;
     if (on) faulty.emissiveIntensity = Math.sin(t * 23) + Math.sin(t * 7.3) > 1.2 ? 0.15 : 1.5;
     tvMat.emissiveIntensity = on ? 0.85 + 0.15 * Math.sin(t * 9) * Math.sin(t * 2.3) : 0.02;
     tvLight.intensity *= on ? 0.8 + 0.2 * Math.sin(t * 9) * Math.sin(t * 2.3) : 0;

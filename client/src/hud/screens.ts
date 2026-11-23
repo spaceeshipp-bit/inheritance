@@ -4,13 +4,14 @@
 // in it (joined mid-match, replaced, back too late): its phase, time left and
 // the live will. The title shows connection progress and "open in another tab".
 import { MAPS, MAP_IDS, type MapId } from '../../../shared/map.js';
-import { MIN_PLAYERS, VISITS } from '../../../shared/constants.js';
+import { MAX_PLAYERS, MIN_PLAYERS, VISITS } from '../../../shared/constants.js';
 import type { MatchInProgress } from '../../../shared/protocol.js';
 import type { MatchOptions } from '../../../shared/types.js';
 import type { NetStatus } from '../net.js';
 import type { LobbyMsg } from '../state.js';
 import { el, fmtTime, setStyle, setText, show } from '../util.js';
 import { ICONS } from './icons.js';
+import { botGlyph, cleanName, isBotName } from './ident.js';
 
 export interface ScreenHandlers {
   join(name: string, room: string): void;
@@ -43,6 +44,63 @@ export function describeInProgress(ip: MatchInProgress, left: number): string {
   return `${what}. You'll join the next one.`;
 }
 
+/**
+ * The line under the host's Start button, and whether Start would be refused.
+ * Mirrors the server's start rules (server/room.ts `start`): connected humans
+ * only; Grandma from the willing, else a bot if bots may fill seats, except
+ * with a full house (MAX_PLAYERS humans), where nobody can be left out for her.
+ */
+export function lobbyStartNote(m: Pick<LobbyMsg, 'players' | 'hostId' | 'options' | 'inProgress'>, selfId: string): { text: string; blocked: boolean } {
+  const host = m.hostId === selfId;
+  const hostName = cleanName(m.players.find((p) => p.isHost)?.name ?? '');
+  if (m.inProgress) {
+    return { text: host ? 'You can start the next match when this one ends.' : `${hostName || 'The host'} can start the next match when this one ends.`, blocked: true };
+  }
+  if (!host) return { text: `Waiting for ${hostName || 'the host'} to start.`, blocked: false };
+  const humans = m.players.filter((p) => !p.isBot && p.connected);
+  const willing = humans.some((p) => p.willingGrandma);
+  if (!willing && humans.length >= MAX_PLAYERS) {
+    return { text: `With ${MAX_PLAYERS} of you there is no seat for a bot Grandma: someone must tick "Willing to be Grandma".`, blocked: true };
+  }
+  if (!willing && !m.options.fillBots) {
+    return { text: 'Nobody is willing to be Grandma yet: tick the box, or "Fill empty seats with bots" for a bot Grandma.', blocked: true };
+  }
+  const total = humans.length + (willing ? 0 : 1);
+  if (total < MIN_PLAYERS && !m.options.fillBots) {
+    return { text: `Need ${MIN_PLAYERS} players (have ${total}), or tick "Fill empty seats with bots".`, blocked: true };
+  }
+  const bots = Math.max(0, MIN_PLAYERS - total);
+  const parts: string[] = [];
+  if (!willing) parts.push('Nobody volunteered: a bot will play Grandma.');
+  if (bots > 0) parts.push(`Bots will fill ${bots} seat${bots === 1 ? '' : 's'}.`);
+  return { text: parts.length ? parts.join(' ') : 'Ready when you are.', blocked: false };
+}
+
+/**
+ * Put text on the clipboard: the Clipboard API where the page may use it
+ * (https, localhost), else the old copy command (plain http on a home network).
+ * False if neither worked.
+ */
+async function copyText(text: string): Promise<boolean> {
+  try {
+    if (window.isSecureContext && navigator.clipboard) { await navigator.clipboard.writeText(text); return true; }
+  } catch { /* try the old way */ }
+  try {
+    const ta = el('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand('copy');
+    ta.remove();
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
 /** The will as the waiting lobby lists it: highest share first. */
 export function inProgressWill(ip: MatchInProgress): { id: string; name: string; share: number }[] {
   return Object.entries(ip.shares)
@@ -73,6 +131,9 @@ export class Screens {
   private mapButtons = new Map<string, HTMLButtonElement>();
   private startBtn = el('button', 'btn primary', 'Start the visit');
   private startNote = el('div', 'start-note');
+  /** The invite link, shown to copy by hand when the browser would not copy it. */
+  private inviteBox = el('div', 'invite-box');
+  private inviteIn = el('input', 'text-in invite-in');
   private hostBox = el('div', 'host-box');
   private micFill = el('div', 'mic-fill');
   private micText = el('div', 'mic-text', 'Microphone: not started');
@@ -157,8 +218,23 @@ export class Screens {
     const copy = el('button', 'btn small', 'Copy invite link');
     copy.addEventListener('click', () => {
       const url = `${location.origin}${location.pathname}?room=${this.roomCode.textContent ?? ''}`;
-      void navigator.clipboard?.writeText(url).then(() => { copy.textContent = 'Copied!'; setTimeout(() => { copy.textContent = 'Copy invite link'; }, 1500); }, () => {});
+      void copyText(url).then((ok) => {
+        show(this.inviteBox, !ok);
+        if (ok) {
+          copy.textContent = 'Copied!';
+          setTimeout(() => { copy.textContent = 'Copy invite link'; }, 1500);
+        } else {
+          // The browser would not let us: hand them the link to copy themselves.
+          this.inviteIn.value = url;
+          this.inviteIn.focus();
+          this.inviteIn.select();
+        }
+      });
     });
+    this.inviteIn.readOnly = true;
+    this.inviteIn.addEventListener('focus', () => this.inviteIn.select());
+    this.inviteBox.append(el('span', 'invite-label', 'Your browser would not copy it. Send the family this link:'), this.inviteIn);
+    show(this.inviteBox, false);
     const leave = el('button', 'btn small ghost', 'Leave');
     leave.addEventListener('click', () => this.h.leave());
     head.append(el('div', 'lobby-label', 'Room'), this.roomCode, copy, leave);
@@ -175,7 +251,7 @@ export class Screens {
       this.check(this.optFull, 'Full match (Tea, Dinner, The Storm)', (v) => this.h.options({ fullMatch: v })),
       this.check(this.optBots, 'Fill empty seats with bots', (v) => this.h.options({ fillBots: v })),
       this.check(this.optPush, 'Cousins may shove Grandma', (v) => this.h.options({ pushGrandma: v })),
-      this.startBtn, this.startNote,
+      this.startBtn, this.startNote, this.lobbyErr,
     );
     this.startBtn.addEventListener('click', () => this.h.start());
     right.appendChild(this.hostBox);
@@ -207,7 +283,7 @@ export class Screens {
       this.mapButtons.set(c.id, b);
       this.mapCards.appendChild(b);
     }
-    card.append(head, this.ipBox, cols, where, this.lobbyErr);
+    card.append(head, this.inviteBox, this.ipBox, cols, where);
     this.lobby.appendChild(card);
   }
 
@@ -222,7 +298,14 @@ export class Screens {
   }
 
   showTitle(): void { show(this.root, true); show(this.title, true); show(this.lobby, false); show(this.elsewhere, false); }
-  showLobby(): void { show(this.root, true); show(this.title, false); show(this.lobby, true); setText(this.lobbyErr, ''); }
+  showLobby(): void {
+    // Every lobby update calls this: only a fresh arrival clears the last error.
+    const already = this.root.style.display !== 'none' && this.lobby.style.display !== 'none';
+    show(this.root, true);
+    show(this.title, false);
+    show(this.lobby, true);
+    if (!already) setText(this.lobbyErr, '');
+  }
   hide(): void { show(this.root, false); }
 
   /** Show the push-to-talk setting (also changed from the settings panel) and its key. */
@@ -255,7 +338,8 @@ export class Screens {
     for (const p of m.players) {
       const row = el('div', `player${p.id === this.selfId ? ' self' : ''}${p.connected ? '' : ' away'}`);
       row.appendChild(el('span', `dot${p.connected ? ' on' : ''}`));
-      row.appendChild(el('span', 'pname', p.name));
+      // A bot's name without the server's "(bot)": the badge says it.
+      row.appendChild(el('span', 'pname', p.isBot ? cleanName(p.name) : p.name));
       if (p.isHost) row.appendChild(el('span', 'badge host', 'host'));
       if (p.isBot) row.appendChild(el('span', 'badge bot', 'bot'));
       if (p.willingGrandma) row.appendChild(el('span', 'badge granny', 'willing Grandma'));
@@ -277,17 +361,9 @@ export class Screens {
     }
     show(this.startBtn, host);
     this.startBtn.disabled = running;
-    const count = m.players.length;
-    const willing = m.players.some((p) => p.willingGrandma && !p.isBot);
-    let note = '';
-    const hostName = m.players.find((p) => p.isHost)?.name;
-    if (running) note = host ? 'You can start the next match when this one ends.' : `${hostName ?? 'The host'} can start the next match when this one ends.`;
-    else if (!host) note = `Waiting for ${hostName ?? 'the host'} to start.`;
-    else if (count < MIN_PLAYERS && !m.options.fillBots) note = `Need ${MIN_PLAYERS} players (have ${count}), or tick "Fill empty seats with bots".`;
-    else if (!willing && !m.options.fillBots) note = 'Nobody is willing to be Grandma yet.';
-    else if (!willing) note = 'Nobody volunteered: a bot will play Grandma.';
-    else note = count < MIN_PLAYERS ? `Bots will fill ${MIN_PLAYERS - count} seat(s).` : 'Ready when you are.';
-    setText(this.startNote, note);
+    const note = lobbyStartNote(m, this.selfId);
+    setText(this.startNote, note.text);
+    this.startNote.classList.toggle('warn', host && note.blocked && !running);
     this.updateInProgress(m.inProgress ?? null);
   }
 
@@ -298,10 +374,12 @@ export class Screens {
     this.ipWill.innerHTML = '';
     for (const r of inProgressWill(ip)) {
       const row = el('div', `ip-row${r.id === this.selfId ? ' self' : ''}`);
-      row.append(el('span', 'ip-name', r.name), el('span', 'ip-share', `${r.share}%`));
+      const name = el('span', 'ip-name', cleanName(r.name));
+      if (isBotName(r.name)) name.appendChild(botGlyph());
+      row.append(name, el('span', 'ip-share', `${r.share}%`));
       this.ipWill.appendChild(row);
     }
-    setText(this.ipGrandma, `Grandma: ${ip.names[ip.grandmaId] ?? '???'}${ip.map ? ` · ${MAPS[ip.map].name}` : ''}`);
+    setText(this.ipGrandma, `Grandma: ${cleanName(ip.names[ip.grandmaId] ?? '???')}${ip.map ? ` · ${MAPS[ip.map].name}` : ''}`);
     this.frame();
   }
 

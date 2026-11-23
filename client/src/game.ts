@@ -158,11 +158,12 @@ export class Game {
     const s = this.s;
     const visit = s.phase === 'visit';
     switch (a) {
-      case 'help': if (down) hud.toggleHelp(); return;
+      case 'help': if (down && s.inMatch) hud.toggleHelp(); return;
       case 'whisper': voice.setWhisper(down); return;
       case 'talk': voice.setTalkKey(down); return;
       case 'chat':
-        if (down && !hud.chat.isOpen) { input.typing = true; input.clear(); hud.chat.open(); }
+        // The chat box swallows key-ups: let go of push-to-talk now or it would stay on.
+        if (down && !hud.chat.isOpen) { input.typing = true; input.clear(); input.releaseTalk(); hud.chat.open(); }
         return;
       case 'back':
         if (!down) return;
@@ -197,7 +198,7 @@ export class Game {
       case 'bless':
       case 'tut': {
         const t = this.target?.id ?? this.lockedId();
-        if (!t) { hud.toasts.push('Aim at a cousin, or scroll to lock a name.', 'warn', 2); return; }
+        if (!t) { hud.toasts.push(input.lastDevice === 'pad' ? 'Aim at a cousin, or lock a name with the D-pad.' : 'Aim at a cousin, or scroll to lock a name.', 'warn', 2); return; }
         send({ t: 'grandma', a, target: t });
         sfx.play(a === 'bless' ? 'bless' : 'tut');
         return;
@@ -304,13 +305,14 @@ export class Game {
       cinematic: s.phase === 'reading' || s.phase === 'vote' || s.phase === 'results',
     });
 
-    // Grandma's Bless/Tut target: crosshair first, else the locked name.
-    if (this.isGrandma) {
+    // Grandma's Bless/Tut target: crosshair first, else the locked name. Only in a
+    // visit (the only time she can Bless or Tut): no ring in the reading's shots.
+    if (this.isGrandma && s.phase === 'visit') {
       const aim = renderer.pickCousin(s.selfId, s.grandmaId, 10);
       const locked = this.lockedId();
       this.target = aim ? { id: aim, via: 'aim' } : locked ? { id: locked, via: 'locked' } : null;
-      renderer.setTargetMarker(this.target?.id ?? null, this.target?.via === 'aim');
     } else this.target = null;
+    renderer.setTargetMarker(this.target?.id ?? null, this.target?.via === 'aim');
 
     if (hud.wheel.isOpen) hud.wheel.point(input.cursor.x, input.cursor.y, input.digit());
 

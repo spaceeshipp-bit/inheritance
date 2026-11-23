@@ -9,6 +9,8 @@ import { WILL } from '../../../shared/constants.js';
 import type { CousinInfo } from '../../../shared/types.js';
 import { clamp, el, setStyle, setText, show } from '../util.js';
 import { botGlyph, cleanName, isBotName, swatch } from './ident.js';
+import { mapWords } from './mapwords.js';
+import { rejectText } from './rejects.js';
 
 interface Row { root: HTMLElement; fill: HTMLElement; val: HTMLElement; bar: HTMLElement; shadeLo: HTMLElement; shadeHi: HTMLElement; name: string }
 
@@ -54,10 +56,11 @@ export class FullParchment {
   private shares: Record<string, number> = {};
   private avail: { budget: number; rolling: number } = { budget: WILL.budgetPerVisit, rolling: WILL.rollingCap };
 
-  constructor(cousins: CousinInfo[], grandmaName: string) {
+  /** `map`: the match's map (options.map), for the address under her name. */
+  constructor(cousins: CousinInfo[], grandmaName: string, map?: string) {
     const sheet = el('div', 'fp-sheet');
     sheet.appendChild(el('div', 'fp-title', 'Last Will and Testament'));
-    sheet.appendChild(el('div', 'fp-sub', `of ${cleanName(grandmaName)}, of Harrowgate Manor`));
+    sheet.appendChild(el('div', 'fp-sub', `of ${cleanName(grandmaName)}, ${mapWords(map).address}`));
     const list = el('div', 'fp-rows');
     for (const c of cousins) {
       this.order.push(c.id);
@@ -175,6 +178,7 @@ export class FullParchment {
     this.pending.clear();
     if (reason === 'budget') this.say(BLOCK_TEXT.budget);
     else if (reason === 'rolling') this.say(BLOCK_TEXT.rolling);
+    else this.say(rejectText(reason ?? 'rejected'));
   }
 
   frame(shares: Record<string, number>, avail: { budget: number; rolling: number }): void {

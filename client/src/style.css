@@ -29,7 +29,9 @@ button, input { font: inherit; }
 .swatch.huge { width: 34px; height: 34px; border-radius: 6px; }
 
 /* ───────── Title + lobby ───────── */
-.screen { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; padding: 16px; }
+.screen { width: 100%; height: 100%; display: flex; align-items: flex-start; justify-content: flex-start; padding: 16px; overflow-y: auto; }
+/* Centred when it fits; when it does not (a short window), it starts at the top and the screen scrolls: never clipped. */
+.screen > .card { margin: auto; }
 .card { background: rgba(28, 19, 13, 0.9); border: 1px solid var(--panel-border); border-radius: 14px; padding: 26px 30px; box-shadow: 0 20px 60px rgba(0,0,0,0.6); }
 .title-card { width: 440px; text-align: center; }
 .logo { font-family: var(--serif); font-size: 52px; margin: 0 0 4px; color: var(--gold); letter-spacing: 1px; font-weight: normal; text-shadow: 0 2px 0 #000; }
@@ -47,14 +49,14 @@ button, input { font: inherit; }
 .btn.ghost { background: transparent; }
 .err { color: var(--bad); min-height: 20px; margin-top: 10px; font-size: 14px; }
 .small-print { color: var(--muted); font-size: 12px; margin-top: 8px; }
-.lobby-card { width: min(820px, 96vw); }
-.lobby-head { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+.lobby-card { width: min(980px, calc(100vw - 112px)); padding: 18px 26px 20px; } /* clear of the settings gear */
+.lobby-head { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
 .lobby-label { color: var(--muted); font-size: 14px; }
 .room-code { font-family: monospace; font-size: 32px; letter-spacing: 6px; color: var(--gold); margin-right: auto; }
 .lobby-cols { display: grid; grid-template-columns: 1.1fr 1fr; gap: 22px; }
 .section-title { font-family: var(--serif); color: var(--gold); font-size: 16px; margin: 6px 0 8px; }
 .players { display: flex; flex-direction: column; gap: 6px; }
-.player { display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: rgba(255,255,255,0.05); border-radius: 8px; }
+.player { display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: rgba(255,255,255,0.05); border-radius: 8px; }
 .player.self { outline: 1px solid var(--gold); }
 .player.away { opacity: 0.5; }
 .dot { width: 8px; height: 8px; border-radius: 50%; background: #666; }
@@ -71,9 +73,13 @@ button, input { font: inherit; }
 .host-box { border-top: 1px solid rgba(255,255,255,0.08); padding-top: 6px; }
 .host-box .btn { width: 100%; margin-top: 10px; }
 .start-note { color: var(--muted); font-size: 13px; margin-top: 6px; min-height: 18px; }
+.start-note.warn { color: var(--warn); }
+.host-box .err { margin-top: 4px; min-height: 0; }
+.invite-box { display: flex; flex-direction: column; gap: 4px; margin: -2px 0 12px; font-size: 13px; color: var(--warn); }
+.invite-in { font-size: 14px; padding: 6px 10px; font-family: monospace; }
 .mic-box { border-top: 1px solid rgba(255,255,255,0.08); margin-top: 12px; padding-top: 6px; }
 .map-pick { border-top: 1px solid rgba(255,255,255,0.08); margin-top: 14px; padding-top: 6px; }
-.map-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.map-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
 .map-card { display: flex; flex-direction: column; gap: 4px; text-align: left; padding: 10px 12px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.1);
   background: rgba(255,255,255,0.04); color: var(--text); cursor: pointer; font: inherit; transition: background 0.15s, border-color 0.15s; }
 .map-card:hover:not(:disabled) { background: rgba(255,255,255,0.09); }
@@ -232,7 +238,7 @@ button, input { font: inherit; }
 .nametag { position: absolute; left: 0; top: 0; display: flex; align-items: center; gap: 5px; background: rgba(10,7,5,0.6); padding: 2px 8px; border-radius: 99px; font-size: 12px; white-space: nowrap; }
 
 /* Wheel */
-.wheel { position: absolute; inset: 0; background: radial-gradient(circle at center, rgba(0,0,0,0.55) 0, rgba(0,0,0,0.15) 260px, transparent 380px); }
+.wheel { position: absolute; inset: 0; z-index: 10; background: radial-gradient(circle at center, rgba(0,0,0,0.55) 0, rgba(0,0,0,0.15) 260px, transparent 380px); }
 .wheel-title { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); font-family: var(--serif); color: var(--gold); font-size: 20px; }
 .wheel-item { position: absolute; transform: translate(-50%, -50%); display: flex; align-items: center; gap: 6px; background: rgba(20,14,10,0.88); border: 1px solid var(--panel-border); padding: 6px 10px; border-radius: 8px; font-size: 14px; white-space: nowrap; max-width: 230px; }
 .wheel-item.sel { background: var(--gold); color: #1e140c; font-weight: 700; transform: translate(-50%, -50%) scale(1.08); }
@@ -323,7 +329,7 @@ button, input { font: inherit; }
 .results-metrics { color: var(--muted); font-size: 12px; margin-top: 10px; }
 
 /* Misc */
-.help-card { position: absolute; left: 50%; bottom: 150px; transform: translateX(-50%); width: 640px; background: rgba(15,10,7,0.92); border: 1px solid var(--panel-border); border-radius: 10px; padding: 10px 14px; }
+.help-card { position: absolute; z-index: 12; left: 50%; bottom: 150px; transform: translateX(-50%); width: min(640px, 94vw); background: rgba(15,10,7,0.97); box-shadow: 0 12px 40px rgba(0,0,0,0.6); border: 1px solid var(--panel-border); border-radius: 10px; padding: 10px 14px; }
 .help-keys { font-size: 13px; line-height: 1.6; margin-bottom: 6px; }
 .lock-hint { position: absolute; left: 50%; top: calc(50% + 110px); transform: translateX(-50%); background: rgba(10,7,5,0.7); padding: 6px 14px; border-radius: 8px; font-size: 14px; }
 .net-banner { position: fixed; top: 0; left: 50%; transform: translateX(-50%); background: #8a2a20; color: #fff; padding: 6px 16px; border-radius: 0 0 8px 8px; z-index: 50; font-weight: 700; }
@@ -410,7 +416,8 @@ kbd { display: inline-block; min-width: 22px; padding: 1px 6px; border-radius: 5
 
 /* Toasts: no pile of copies, and to the side while the full parchment is open. */
 .toast-count { margin-left: 8px; font-size: 12px; font-weight: 800; color: var(--warn); }
-.toasts.side { left: auto; right: 12px; top: 330px; width: 300px; transform: none; align-items: flex-end; }
+/* Beside the full parchment (560 px, centred), never under it: narrower on small screens. */
+.toasts.side { left: auto; right: 12px; top: 330px; width: clamp(160px, calc(50vw - 300px), 300px); transform: none; align-items: flex-end; }
 .bubble.unseen { background: #e4ded2; font-style: italic; }
 
 /* Grandma: target label and crash pings. */

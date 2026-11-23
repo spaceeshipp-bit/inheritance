@@ -394,6 +394,9 @@ export class Room {
     if (!this.players.get(this.hostId)?.conn) this.hostId = p.id;
     if (this.match) {
       this.match.setConnected(p.id, true);
+      // A second tab that replaced a live one never went through a disconnect:
+      // its inputs start again at 1, so the count starts afresh here too.
+      this.match.restartInputs(p.id);
       this.match.sendStateTo(p.id);
     }
     this.broadcastLobby();

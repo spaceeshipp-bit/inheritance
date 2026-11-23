@@ -3,22 +3,22 @@
 // quietly counting down. One storey, 3 m ceilings, x 86..113 (local -14..13).
 //
 // Local coordinates (x relative to X = 100; z as is). North (-z) is up.
+// ═ doorway, ▒ glass panel (see-through for Nana, solid for everyone), P plinth.
 //
-//  x: -14        -8                          6    8.4               13
-// z=-10 ┌─────────┬───────────────────────────┬──────┬────────────────┐
-//       │  Sun    │       Dining Hall    hatch│ fire │  Nurses'       │
-//       │  Lounge │  P5   ┌───────────┐   P6  │ exit │  Station  meds │
-//       │  P7     D       │ Family    │       D(din)D▒▒(glass)  trolley│
-//       │ jigsaw  │       │ Dinner    │  tray │  er  ║      P11     │
-//       │         │       └───────────┘       │      D═══════D══════┤ z=-3
-// z=-3.5│ white-  ├────────────────D──────────┤  c   │  Sluice Room   │
-//       │  board  D  P1  fish   bingo│  ⌒ ⌒   │  o   D  shelves  wm │
-//       │         │ chair  cousins  │  TV ⌒   │  r   │                │
-//       │  yoga   │  P2   piano     │  ⌒ ⌒   │  r   ├───stub─────────┤ z=2.4
-//       │  P8     │            P3  ▒▒▒glass▒▒ │  .   │ Reception  desk│
-// z=6   ├──D──────┴──────D────────────────────┘      ╵         front ▯ │
-//       │ Residents' Corridor: rooms 1-6, handrails, Lost Property   │ scooters  P10│
-// z=8.4 └──────────────────────────────────────────────────────────────────────┘
+//     x: -14       -8                             6   8.4          13
+// z=-10  ┌─────────┬──────────────────────────────┬────┬────────────┐
+//        │ SUN     │ DINING HALL  menu  hatch(tea)│fire│ NURSES'    │
+//        │ LOUNGE  │ P5  ┌──────────────┐      P6 │exit│ STATION    │
+//        │ P7 palm ═     │ FAMILY TABLE │ table 2 ═ C  ▒ desk  meds │
+//        │ jigsaw  │     └──────────────┘ trolley │ O  ═ drugs  P11 │
+//        │         ├──────────────────────═───────┤ R  ├────═───────┤ z=-3.5 / -3
+//        │ white-  ═ P1  fish tank   bingo║  ⌒  ⌒ │ R  │ SLUICE     │
+//        │ board   │ Nana's chair  cousins  ⌒ TV  │ I  ═ shelves  wm│
+//        │         │ P2 rug         coffee ⌒  ⌒   │ D  ├────────────┤ z=2.4
+//        │ yoga P8 │    piano     P3  ▒▒glass▒▒   │ O  │ RECEPTION  │
+// z=6    ├──═──────┴───────═────────────────────┘ R     desk  tree ▯│
+//        │ RESIDENTS' CORRIDOR: rooms 1-6, Lost Property  scooters  │
+// z=8.4  └──────────────────────────────────────────────────────────┘
 //
 // Loops: Day Room → Dining Hall → corridor (east) → corridor (south) → Day Room,
 // and Day Room → Sun Lounge → corridor (south) → Day Room; the Nurses' Station
@@ -131,6 +131,7 @@ const BOXES: Box[] = [
   B('counter', 1.0, 0, -3.35, 1.25, 2.1, -1.6, 'Bingo board'),
   B('counter', -5.0, 0, 3.9, -3.5, 1.3, 4.5, 'Piano nobody plays'),
   B('counter', 5.25, 0, -0.3, 5.85, 0.7, 2.3, 'Telly cabinet'),
+  B('table', 3.9, 0, 0.6, 4.7, 0.5, 1.4, 'Coffee table'),
   // Residents' armchairs in a semicircle round the telly.
   B('counter', 2.0, 0, 0.6, 2.8, 1.0, 1.4, 'Armchair (centre)'),
   B('counter', 2.75, 0, -1.46, 3.55, 1.0, -0.66, 'Armchair (north)'),
@@ -144,6 +145,7 @@ const BOXES: Box[] = [
   // ── The Dining Hall ──
   B('table', -4.0, 0, -7.6, 1.0, 0.78, -6.0, 'Family Dinner table'),
   B('counter', 2.2, 0, -9.85, 4.6, 1.0, -9.4, 'Serving hatch ledge'),
+  B('table', 2.9, 0, -6.6, 4.5, 0.75, -5.4, 'Table 2 (residents)'),
   B('counter', 4.6, 0, -5.0, 5.6, 1.0, -4.4, 'Tray trolley'),
   B('counter', -7.85, 0, -6.0, -7.35, 2.0, -4.4, 'Welsh dresser'),
   B('pedestal', -7.6, 0, -9.6, -6.8, 1.0, -8.8, "Nana's silver, Dining Hall"),
@@ -179,9 +181,9 @@ const BOXES: Box[] = [
   // ── Reception ──
   B('counter', 9.8, 0, 2.55, 11.8, 1.1, 3.25, 'Reception desk'),
   B('counter', 12.2, 0, 3.0, 12.8, 1.8, 3.6, 'Oxygen-tank Christmas tree'),
-  B('counter', 9.2, 0, 7.0, 9.85, 1.2, 8.2, 'Mobility scooter 1'),
-  B('counter', 10.25, 0, 7.0, 10.9, 1.2, 8.2, 'Mobility scooter 2'),
-  B('counter', 11.3, 0, 7.0, 11.95, 1.2, 8.2, 'Mobility scooter 3'),
+  B('counter', 9.2, 0, 7.0, 9.85, 1.1, 8.2, 'Mobility scooter 1'),
+  B('counter', 10.25, 0, 7.0, 10.9, 1.1, 8.2, 'Mobility scooter 2'),
+  B('counter', 11.3, 0, 7.0, 11.95, 1.1, 8.2, 'Mobility scooter 3'),
   B('pedestal', 12.05, 0, 7.4, 12.85, 1.0, 8.2, 'Reception plinth: awaiting collection'),
 ];
 
@@ -192,13 +194,13 @@ const GROUND: Vec3[] = [
   // Day Room
   L(-4.6, -1.6), L(-4.4, 2.6), L(-1.2, 1.2), L(1.7, 3.4), L(1.6, -0.6), L(3.4, 5.0), L(-5.8, 5.1),
   // Day Room ↔ Dining Hall doorway (both sides)
-  L(3.6, -2.6), L(3.6, -4.4),
+  L(3.6, -2.6), L(3.6, -4.4), L(2.1, -2.6),
   // Day Room ↔ Sun Lounge doorway (both sides)
   L(-7.1, -2.0), L(-8.9, -2.0),
   // Day Room ↔ corridor doorway (both sides)
   L(-1.6, 5.1), L(-1.6, 7.2),
   // Dining Hall
-  L(-5.6, -4.5), L(-1.5, -4.5), L(-1.5, -9.0), L(2.4, -8.2),
+  L(-5.6, -4.5), L(-1.5, -9.0), L(2.4, -8.2),
   // Dining Hall ↔ Sun Lounge, Dining Hall ↔ corridor (both sides)
   L(-7.1, -7.5), L(-8.9, -7.5), L(5.1, -7.5), L(7.2, -7.5),
   // Sun Lounge

@@ -6,23 +6,24 @@
 // it all: the Preparation Room (hearse backed up to the loading bay), the back
 // corridor and the Arrangements Office.
 //
-// Local plan (x = world x - 200, z as world). Side rooms are 3 m high; the
-// chapel rises to 5.5 m, with stained-glass clerestory windows above them.
+// Local plan (x = world x - 200, z as world; ═ doorways, ▣ heirloom pedestals,
+// ▮ tall displays). Side rooms are 3 m high; the chapel rises to 5.5 m, with
+// stained-glass clerestory windows above the side rooms' roofs.
 //
-//  z=-9.5 ┌────────────────┬──────── back corridor ────────┬────────────────┐
-//         │ Preparation    ═ (staff only)                  ═  Arrangements  │
-//  z=-7.1 │ Room  ▤fridges ├vestry═┐──────────────────────┤  Office        │
-//         │                │       │▓dais [coffin]▓  organ│   [desk]  ▥wills│
-//         ║hearse [slab]   │        Nana ▼          chair │                │
-//         │                │                               │ brochures      │
-//  z=-2.5 ├──═staff only═──┤   ▭▭▭  front of the pews  ▭▭▭ ├──═wake door═───┤ z=-2
-//         │ Viking  Deluxe │   ▭▭▭        aisle      ▭▭▭ │                │
-//         │   ▮▮      ▮▮   │   ▭▭▭         ║         ▭▭▭ │   [ buffet ]   │
-//         │ Pauper ▯ ▯     ═   ▭▭▭  (box pews, 1.25 m) ▭▭▭ ═ Nana's end     │
-//         │      ▮▮  ▯     │   ▭▭▭         ║         ▭▭▭ │   tea urn      │
-//         │ urns & plinths │ guestbook   narthex           │  settee        │
-//  z=9    └────────────────┴──────── front doors ─────────┴────────────────┘
-//       x=-13            x=-5                            x=5              x=13
+//        x=-13             x=-5                           x=+5             x=+13
+// z=-9.5 ┌────────────────┬──────── Back Corridor ────────┬────────────────┐
+//        │ ▤fridges       ═  STAFF ONLY · mix-ups: 0      ═     bookcase   │
+//        │ trolley        │                               │ Arrangements ▥ │
+// z=-7.1 ║hearse  [table] ├vestry═╤───────────────────────┤ Office  [desk] ▥│
+//        ║(loading bay)   │       ▣ dais [COFFIN] ▓organ  │ brochure     ▥ │
+//        │ Preparation  ▣ │          Nana ▼       chair   │ rack           │
+// z=-2.5 ├════ STAFF ONLY ┤                               ├══ wake door ═══┤ z=-2
+//        │ Viking  Deluxe │   ▭▭▭▭   ║aisle║   ▭▭▭▭       │▣         palm▮ │
+//        │   ▮      ▮▮    │   ▭▭▭▭   ║     ║   ▭▭▭▭       │       tea urn  │
+//        │ Coffin         ═   ▭▭▭▭   ║     ║   ▭▭▭▭       ═ Nana [BUFFET]  │
+//        │ Showroom       │   ▭▭▭▭  (box pews 1.25 m)     │ Wake Room      │
+//        │ Pauper Flat Eco▮ guestbook  narthex        ▣   │ coats  settee ▣│
+// z=9    └── ▣ urns ▣ ────┴──── front doors · balloons ───┴────────────────┘
 import type { Vec3 } from '../types.js';
 import { WALL, box, pedestalTops, type Box, type BoxKind, type MapDef } from './types.js';
 
@@ -122,14 +123,14 @@ const BOXES: Box[] = [
   B('counter', -10.4, 0, 4.75, -9.7, 0.9, 6.85, 'The Flat-Pack'),
   B('counter', -8.2, 0, 4.75, -7.5, 0.95, 6.85, 'The Eco Wicker'),
   B('counter', -7.25, 0, 4.9, -6.6, 2.2, 6.7, 'Upright display south'),
-  B('counter', -12.75, 0, 8.25, -12.15, 1.0, 8.85, 'Urn plinth SW'),
-  B('counter', -9.3, 0, 8.25, -8.7, 1.0, 8.85, 'Urn plinth S'),
-  B('counter', -6.0, 0, 8.25, -5.4, 1.0, 8.85, 'Urn plinth SE'),
+  B('counter', -12.8, 0, 8.4, -12.2, 1.0, 9.0, 'Urn plinth SW'),
+  B('counter', -9.3, 0, 8.4, -8.7, 1.0, 9.0, 'Urn plinth S'),
+  B('counter', -6.0, 0, 8.4, -5.4, 1.0, 9.0, 'Urn plinth SE'),
 
   // ── Preparation Room (staff only) ──
   B('counter', -10.2, 0, -6.4, -8.0, 0.9, -5.6, 'Mortuary table'),
   B('counter', -12.6, 0, -9.5, -9.6, 2.3, -8.75, 'Refrigerated drawers'),
-  B('counter', -12.85, 0, -3.25, -10.2, 0.95, -2.65, 'Sink and cosmetics bench'),
+  B('counter', -13, 0, -3.25, -10.2, 0.95, -2.65, 'Sink and cosmetics bench'),
   B('counter', -12.4, 0, -8.0, -10.9, 0.9, -7.4, 'Trolley'),
 
   // ── Arrangements Office ──
@@ -144,12 +145,13 @@ const BOXES: Box[] = [
   B('counter', 12.25, 0, 0.2, 13, 0.95, 2.6, 'Sideboard (tea urn)'),
   B('counter', 9.0, 0, 8.15, 11.4, 0.85, 9, 'Settee'),
   B('counter', 5 + T, 0, 6.6, 5.7, 1.8, 8.4, 'Coat stand and umbrella rack'),
+  B('counter', 12.2, 0, -1.8, 12.9, 1.9, -1.1, 'Potted palm'),
 
   // ── Heirloom pedestals (urns, busts and the family silver among the merchandise) ──
   B('pedestal', -2.4, 0.3, -6.2, -1.8, 1.3, -5.6, 'Pedestal beside the coffin'),
   B('pedestal', 3.85, 0, 7.95, 4.45, 1.0, 8.55, 'Pedestal in the narthex'),
-  B('pedestal', -11.0, 0, 8.25, -10.4, 1.0, 8.85, 'Pedestal among the urns W'),
-  B('pedestal', -7.6, 0, 8.25, -7.0, 1.0, 8.85, 'Pedestal among the urns E'),
+  B('pedestal', -11.0, 0, 8.4, -10.4, 1.0, 9.0, 'Pedestal among the urns W'),
+  B('pedestal', -7.6, 0, 8.4, -7.0, 1.0, 9.0, 'Pedestal among the urns E'),
   B('pedestal', -6.05, 0, -5.4, -5.45, 1.0, -4.8, 'Pedestal awaiting collection'),
   B('pedestal', 11.95, 0, -3.25, 12.55, 1.0, -2.65, 'Pedestal in the office'),
   B('pedestal', 5.5, 0, -1.5, 6.1, 1.0, -0.9, 'Pedestal by the wake-room door'),

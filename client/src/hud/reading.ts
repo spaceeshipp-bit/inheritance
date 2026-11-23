@@ -79,11 +79,14 @@ export function planReading(n: number, topCount: number, momentCount: number, to
   return { lines, badges, moments };
 }
 
-/** "She tutted them: found his phone where it shouldn't be. Really: Agatha planted it there." */
+/**
+ * "She tutted them: found his phone where it shouldn't be. Really: Agatha planted it there."
+ * The server's sentences name bots "Dot (bot)"; the reading names them as the HUD does.
+ */
 export function reasonText(r: NanaReason): { did: string; really: string } {
   const verb = r.via === 'tut' ? 'She tutted' : r.via === 'bless' ? 'She blessed' : r.moved < 0 ? 'She cut them' : 'She raised them';
-  const really = r.truth ? `Really: ${r.truth}` : r.via === 'tut' || r.moved < 0 ? 'And she was right.' : '';
-  return { did: `${verb}: ${r.why}.`, really };
+  const really = r.truth ? `Really: ${cleanText(r.truth)}` : r.via === 'tut' || r.moved < 0 ? 'And she was right.' : '';
+  return { did: `${verb}: ${cleanText(r.why)}.`, really };
 }
 
 function reasonNote(r: NanaReason): HTMLElement {

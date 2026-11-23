@@ -132,11 +132,14 @@ Imports between folders use relative paths with `.js` extensions
   drag in 1-point steps (sends `grandma set`), shows remaining budget, closing it ends the "opening".
 - **Bless/Tut targeting:** the cousin under her crosshair (raycast, within 10 m and identifiable), else
   the locked name (scroll wheel / D-pad cycles the lock).
-- **Controls** exactly as the design doc's tables (cousin: WASD, mouse, Shift run, Ctrl sneak, Space jump,
+- **Controls** as the design doc's tables (cousin: WASD, mouse, Shift run, C sneak (the doc's Ctrl works too,
+  but the HUD offers C: Ctrl+W closes the browser tab), Space jump,
   LMB grab, RMB throw, F shove, E interact, G plant, Q quick-chat wheel, T tattle wheel, Left Alt whisper,
   Enter typed chat; Grandma: E Bless, Q Tut, scroll lock name, Tab parchment, LMB cane, RMB hearing aid,
   F spectacles, R summon, C pin, V quick-chat wheel). Gamepad via the Gamepad API with the doc's layout.
-  Voice is open mic with noise gate by default; optional push-to-talk on a key in settings.
+  Voice is open mic with noise gate by default; optional push-to-talk on a key in settings, which works on
+  every screen (lobby mic check, reading, vote) except while typing in a text field, and lets go on key-up
+  whatever the phase, on focus loss or a hidden tab, and when the chat box opens.
 - **Interpolation:** render remote entities ~100 ms behind using the snapshot buffer; predict your own
   movement with the same movement code as the server (put shared kinematic movement in `shared/` if
   needed) and reconcile on `ack`.

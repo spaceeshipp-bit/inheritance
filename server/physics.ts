@@ -254,9 +254,12 @@ export function stepProp(p: PhysProp, dt: number): number {
     p.vel.x = 0; p.vel.y = 0; p.vel.z = 0;
     p.resting = true;
   }
-  // Safety: never lose a prop out of the world.
-  if (p.pos.y < -5 || !Number.isFinite(p.pos.x + p.pos.y + p.pos.z)) {
-    p.pos = { x: 0, y: 0, z: 0 };
+  // Safety: a prop that fell out of the bottom of its map (or went NaN) stops
+  // where it is. It is then outside its map (propOutside), and the match
+  // brings it back somewhere sensible on that map (Match.rescueProp): this
+  // never picks a place itself, because only the match knows which map it is on.
+  const m = mapAt(p.pos);
+  if (!Number.isFinite(p.pos.x + p.pos.y + p.pos.z) || p.pos.y < (m ? m.bounds.min.y : -5)) {
     p.vel = { x: 0, y: 0, z: 0 };
     p.resting = true;
   }

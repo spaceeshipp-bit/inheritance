@@ -1,8 +1,8 @@
 // Keyboard + mouse (pointer lock) + Gamepad API -> InputMsg at TICK_HZ, plus
 // discrete action keys (wheels, chat, Grandma's Bless/Tut/parchment...).
 //
-// Cousin:  WASD move, mouse look, Shift run, Ctrl sneak (C also works: Ctrl+W
-//          closes browser tabs), Space jump, LMB grab, RMB throw, F shove,
+// Cousin:  WASD move, mouse look, Shift run, C sneak (Ctrl works too, but the
+//          HUD never offers it: Ctrl+W would close the tab), Space jump, LMB grab, RMB throw, F shove,
 //          E interact, G plant, Q quick-chat wheel, T tattle wheel,
 //          Z gesture wheel, X dance wheel, Left Alt whisper, Enter typed chat.
 // Grandma: WASD move, mouse look, E Bless, Q Tut, scroll lock name,
@@ -11,10 +11,32 @@
 //          Left Alt whisper, Enter typed chat.
 // Gamepad: the design doc's controller table (see padAction).
 // Both:    push-to-talk key (settings, default B), H controls help.
+//
+// Push-to-talk works on every screen (the lobby's mic check, the role card, the
+// reading, the vote), never while typing in a text field, and lets go when the
+// key is released (whatever the phase), the window loses focus or the tab is
+// hidden, or the chat box opens. Left Alt whisper lets go the same way.
 import type { InputMsg } from '../../shared/protocol.js';
 import type { Role } from '../../shared/types.js';
 import type { SettingsData } from './settings.js';
 import { clamp } from './util.js';
+
+/** Input types that take no typing: the talk key still talks while one of these has focus. */
+const NON_TEXT_INPUTS = new Set(['checkbox', 'radio', 'range', 'button', 'submit', 'reset', 'color', 'file', 'image']);
+
+/**
+ * Is this event target somewhere the player types (a text box, a select, an
+ * editable element)? Keys pressed there are typing, never push-to-talk.
+ */
+export function isTextEntry(t: EventTarget | null): boolean {
+  const e = t as { tagName?: unknown; type?: unknown; isContentEditable?: unknown } | null;
+  if (!e || typeof e.tagName !== 'string') return false;
+  if (e.isContentEditable === true) return true;
+  const tag = e.tagName.toUpperCase();
+  if (tag === 'TEXTAREA' || tag === 'SELECT') return true;
+  if (tag !== 'INPUT') return false;
+  return !NON_TEXT_INPUTS.has(typeof e.type === 'string' ? e.type.toLowerCase() : 'text');
+}
 
 export type Action =
   | 'quickWheel' | 'tattleWheel' | 'gestureWheel' | 'danceWheel' | 'chat' | 'bless' | 'tut' | 'parchment' | 'summon' | 'pin'
@@ -69,11 +91,18 @@ export class Input {
   private padRun = false;
   /** Push-to-talk key (KeyboardEvent.code), from the settings. */
   private talkKey = 'KeyB';
+  /** The push-to-talk key is down (we told the voice to transmit). */
+  private talkDown = false;
+  /** Whisper is on (we told the voice to whisper). */
+  private whisperDown = false;
 
   constructor(private canvas: HTMLElement) {
     window.addEventListener('keydown', (e) => this.onKey(e, true));
     window.addEventListener('keyup', (e) => this.onKey(e, false));
-    window.addEventListener('blur', () => this.clear());
+    // Focus gone (Alt+Tab, a notification) or the tab hidden: the key-ups will
+    // never arrive here, so let go of everything now, the open mic included.
+    window.addEventListener('blur', () => { this.clear(); this.releaseTalk(); });
+    document.addEventListener('visibilitychange', () => { if (document.hidden) { this.clear(); this.releaseTalk(); } });
     canvas.addEventListener('mousedown', (e) => {
       if (!this.active || Input.blocked) return;
       if (!this.locked) {
@@ -110,6 +139,7 @@ export class Input {
     this.sensitivity = 0.0024 * s.mouseSensitivity;
     this.padSensitivity = 2.8 * s.padSensitivity;
     this.invertY = s.invertY;
+    if (s.pushToTalkKey !== this.talkKey) this.releaseTalk();
     this.talkKey = s.pushToTalkKey;
   }
 
@@ -126,29 +156,72 @@ export class Input {
     if (this.locked) document.exitPointerLock();
   }
 
-  /** Forget held keys/buttons (focus loss, chat opened, phase change). */
+  /**
+   * Forget held keys/buttons (focus loss, chat opened, phase change). Whisper
+   * goes with them; push-to-talk does not (see releaseTalk): a phase change
+   * must not cut someone off mid-sentence, and its key-up is always heard.
+   */
   clear(): void {
     this.keys.clear();
     this.mouse = 0;
     this.latchKeys.clear();
     this.latchMouse = 0;
+    this.setWhisper(false);
+  }
+
+  /** Stop transmitting if push-to-talk is held (focus lost, chat box opened, key changed). */
+  releaseTalk(): void {
+    if (!this.talkDown) return;
+    this.talkDown = false;
+    this.onAction('talk', false);
   }
 
   held(code: string): boolean { return this.keys.has(code); }
 
+  private setWhisper(on: boolean): void {
+    if (this.whisperDown === on) return;
+    this.whisperDown = on;
+    this.onAction('whisper', on);
+  }
+
   private onKey(e: KeyboardEvent, down: boolean): void {
-    if (this.typing || !this.active) return;
-    if (down && Input.blocked) return;
     const code = e.code;
-    if (GAME_KEYS.has(code) || code === this.talkKey || (e.ctrlKey && /^Key[A-Z]$/.test(code) && code !== 'KeyW')) e.preventDefault();
+    // The push-to-talk key is chosen in the settings; it is only ever push-to-talk
+    // (never also a held movement or action key), and it works on every screen.
+    if (code === this.talkKey) { this.talkKeyEvent(e, down); return; }
+    if (!down) {
+      // A release always counts, whatever the phase, so nothing stays held.
+      this.keys.delete(code);
+      if (code === 'AltLeft') this.setWhisper(false);
+    }
+    if (this.typing) return;
+    if (!this.active) {
+      // Role card, reading, vote, results: H still shows the controls.
+      if (down && !e.repeat && code === 'KeyH' && !Input.blocked && !isTextEntry(e.target)) this.onAction('help', true);
+      return;
+    }
+    if (down && Input.blocked) return;
+    if (GAME_KEYS.has(code) || (e.ctrlKey && /^Key[A-Z]$/.test(code) && code !== 'KeyW')) e.preventDefault();
     if (down && e.repeat) return;
     this.lastDevice = 'kbm';
-    // The push-to-talk key is chosen in the settings; it is only ever push-to-talk
-    // (never also a held movement or action key).
-    if (code === this.talkKey) { this.onAction('talk', down); return; }
     if (down) { this.keys.add(code); this.latchKeys.add(code); }
-    else this.keys.delete(code);
     this.keyAction(code, down);
+  }
+
+  /** Push-to-talk: down talks unless typing in a text field; up always stops. */
+  private talkKeyEvent(e: KeyboardEvent, down: boolean): void {
+    if (!down) {
+      if (this.active) e.preventDefault();
+      this.releaseTalk();
+      return;
+    }
+    if (this.typing || isTextEntry(e.target)) return;
+    // In a match the key is the game's alone (no page scroll, no button press).
+    if (this.active) e.preventDefault();
+    if (e.repeat || this.talkDown) return;
+    this.talkDown = true;
+    if (this.active) this.lastDevice = 'kbm';
+    this.onAction('talk', true);
   }
 
   private keyAction(code: string, down: boolean): void {
@@ -165,7 +238,7 @@ export class Input {
       case 'KeyR': if (g) act('summon'); break;
       case 'KeyC': if (g) act('pin'); break;
       case 'Enter': case 'NumpadEnter': act('chat'); break;
-      case 'AltLeft': act('whisper'); break;
+      case 'AltLeft': this.setWhisper(down); break;
       case 'KeyH': act('help'); break;
       case 'Escape': act('back'); break;
       default:
@@ -246,7 +319,7 @@ export class Input {
         case PAD.UP: act('tattleWheel'); break;
         case PAD.LEFT: act('gestureWheel'); break;
         case PAD.RIGHT: act('danceWheel'); break;
-        case PAD.LT: act('whisper'); break;
+        case PAD.LT: this.setWhisper(down); break;
         case PAD.L3: if (down) this.padRun = !this.padRun; break;
         case PAD.START: if (down) this.onAction('help', true); break;
         default: break;

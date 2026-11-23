@@ -39,6 +39,12 @@ export class SettingsPanel {
    * first Escape to free the mouse; the next one opens the panel.
    */
   canOpenWithEscape: () => boolean = () => false;
+  /**
+   * May closing the panel take the mouse back for the game (it had it when the
+   * panel opened)? Set by the HUD: not once the visit has ended (the vote and
+   * the lobby need the pointer).
+   */
+  canRelock: () => boolean = () => true;
   private card = el('div', 'settings-card');
   private quality = el('select', 'set-select');
   private sliders: Partial<Record<keyof SettingsData, Slider>> = {};
@@ -113,14 +119,14 @@ export class SettingsPanel {
 
     // Accessibility.
     right.appendChild(el('div', 'set-section', 'Accessibility'));
-    right.appendChild(this.check('reducedMotion', 'Reduced motion', 'No camera shake or flashing effects.'));
+    right.appendChild(this.check('reducedMotion', 'Reduced motion', 'No camera shake or pulsing; the Storm\'s lightning fades in gently. On by default if your system asks for less motion.'));
     right.appendChild(this.check('captions', 'Captions', 'Quick-chat lines and important sounds, bottom right.'));
     right.appendChild(this.check('bandPatterns', 'Colour-band patterns', 'Each cousin\'s band gets a pattern as well as a colour.'));
 
     const foot = el('div', 'settings-foot');
     const reset = el('button', 'btn small ghost', 'Reset to defaults');
     reset.type = 'button';
-    reset.addEventListener('click', () => this.set({ ...DEFAULT_SETTINGS }));
+    reset.addEventListener('click', () => this.set({ ...(this.getSettings()?.defaults ?? DEFAULT_SETTINGS) }));
     const done = el('button', 'btn small primary', 'Done');
     done.type = 'button';
     done.addEventListener('click', () => this.close());
@@ -215,8 +221,9 @@ export class SettingsPanel {
     if (document.activeElement instanceof HTMLElement && this.root.contains(document.activeElement)) document.activeElement.blur();
     this.root.style.display = 'none';
     this.gear.classList.remove('on');
-    // Clicking Done is a user gesture: take the mouse back for the game if it had it.
-    if (this.relock) {
+    // Clicking Done is a user gesture: take the mouse back for the game if it had it
+    // and still wants it (not if the visit ended meanwhile: the vote needs the pointer).
+    if (this.relock && this.canRelock()) {
       const canvas = document.getElementById('game-canvas');
       try {
         const r = canvas?.requestPointerLock() as unknown;

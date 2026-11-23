@@ -112,23 +112,31 @@ export class GameState {
         if (m.phase === 'lobby') this.phase = 'lobby';
         this.emit('lobby', m);
         break;
-      case 'match':
+      case 'match': {
+        // The running match sent again (a take-over changed Grandma, or we came
+        // back after a drop): the role and snapshots start afresh, but Nana's
+        // wish, her summons, the will's arrows and our vote carry on; the server
+        // does not send those again on a take-over.
+        const sameMatch = this.match !== null && this.phase !== 'lobby';
         this.match = m;
         this.buf = [];
-        this.shares = {};
-        this.shareChange = {};
-        this.wish = null;
-        this.reading = null;
-        this.results = null;
-        this.found = [];
-        this.summon = null;
-        this.myVote = null;
         this.selfDisplay = null;
         this.predictor.reset();
-        this.dark = false;
-        this.flash = false;
+        if (!sameMatch) {
+          this.shares = {};
+          this.shareChange = {};
+          this.wish = null;
+          this.reading = null;
+          this.results = null;
+          this.found = [];
+          this.summon = null;
+          this.myVote = null;
+          this.dark = false;
+          this.flash = false;
+        }
         this.emit('match', m);
         break;
+      }
       case 'phase':
         this.phase = m.phase;
         this.visit = m.visit;

@@ -44,7 +44,7 @@ describe('context prompts (review P11, P8, P12)', () => {
 
   it('next to Nana, a compliment outranks pinching the cousin beside you', () => {
     const p = rankPrompts(ctx(me, [nana, bea], [item('me', 'me'), item('bea', 'bea')]));
-    expect(p[0]).toMatchObject({ key: 'Q', text: 'Compliment Nana', sabotage: false });
+    expect(p[0]).toMatchObject({ key: 'Hold Q', text: 'Compliment Nana: pick a line', sabotage: false });
     expect(p.map((x) => x.text)).toContain("Pinch BEA's Phone");
     expect(p.length).toBeLessThanOrEqual(3);
   });
@@ -71,7 +71,7 @@ describe('context prompts (review P11, P8, P12)', () => {
 
   it('controller prompts name the pad buttons', () => {
     const p = rankPrompts(ctx(me, [nana, bea], [item('me', 'me'), item('bea', 'bea')], { pad: true }));
-    expect(p[0].key).toBe('LB');
+    expect(p[0].key).toBe('Hold LB');
   });
 
   it('the shove target follows the server rule: in front, in range, never Nana unless allowed', () => {
@@ -233,7 +233,7 @@ describe('first-visit coaching (review P3)', () => {
 
   it('the tips say the keys', () => {
     const texts = TIPS.map((t) => t.kbm);
-    expect(texts).toContain('Nana is over there — walk up and press [Q] to compliment her');
+    expect(texts).toContain('Nana is over there — walk up, hold [Q] and pick a line to compliment her');
     expect(texts).toContain('Stand next to a cousin and press [E] to pinch their signature item');
     expect(texts).toContain('Hold [G] to plant a stolen item');
     expect(texts).toContain('[F] shoves — not where Nana can see');

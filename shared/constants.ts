@@ -204,8 +204,13 @@ export const STORM = { lightningEvery: 10, lightningJitter: 2, flashDuration: 0.
 /** Wishes (errands). One active at a time, a new one when it is fulfilled or expires. */
 export const WISH = { duration: 45, deliverRange: 1.6, gapMin: 4, gapMax: 10 } as const;
 
-/** Disconnects. */
-export const DISCONNECT = { cousinRejoin: 90, grandmaLieDown: 15 } as const;
+/**
+ * Disconnects. A cousin who drops sleeps where they stood and may rejoin for
+ * `cousinRejoin` s. Only after `cousinGrace` s asleep do they count as gone
+ * for the "too few cousins awake: read the will" rule, so a page reload or a
+ * network blip never ends the match.
+ */
+export const DISCONNECT = { cousinRejoin: 90, cousinGrace: 20, grandmaLieDown: 15 } as const;
 
 /** Moments (auto-tagged for replays, achievements, Steam Timeline later). */
 export const MOMENT = {
@@ -340,6 +345,14 @@ export const BOTS = {
   holdBackPatience: 10,
   /** Nana's personal space: bots never come closer. */
   personalSpace: 1.2,
+  /**
+   * ...except at Family Dinner, where she sits at the head of the table and
+   * everyone is at her elbow: bots squeeze past her this close (just clear of
+   * her chair), or they could never get round the table or back from the door.
+   */
+  dinnerPersonalSpace: 0.8,
+  /** Family Dinner: a bot's one unexcused wander from the table lasts at most this long (s). */
+  dinnerWander: 15,
   /** Compliments are paid from between these distances (she hears clearly within SENSES.clear). */
   complimentMin: 1.3,
   complimentMax: 1.6,

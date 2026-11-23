@@ -125,8 +125,10 @@ export type LogEvent =
   | { t: number; kind: 'found'; item: string; owner: string; plant: number | null; visit: number }
   | { t: number; kind: 'compliment'; by: string; line: string }
   | { t: number; kind: 'tattle'; by: string; accused: string }
-  /** A Tut that landed on a cousin linked to a crime (`crime` = log index of it). */
-  | { t: number; kind: 'accuse'; target: string; crime: number | null }
+  /** A Tut that landed on a cousin linked to a crime (`crime` = log index of it), in visit `visit`. */
+  | { t: number; kind: 'accuse'; target: string; crime: number | null; visit: number }
+  /** A cousin has their own signature item back on them (picked up, snatched back, returned): evidence no more. */
+  | { t: number; kind: 'recovered'; by: string; item: string }
   | { t: number; kind: 'will'; target: string; moved: number; via: 'bless' | 'tut' | 'parchment' | 'takeover' }
   | { t: number; kind: 'wish'; by: string; wish: WishInfo['kind'] }
   | { t: number; kind: 'cane'; victim: string }

@@ -41,8 +41,9 @@ export interface PromptCtx {
 }
 
 const KEYS = {
-  kbm: { compliment: 'Q', tattle: 'T', interact: 'E', grab: 'LMB', throw: 'RMB', plant: 'Hold G', shove: 'F', drop: 'LMB' },
-  pad: { compliment: 'LB', tattle: 'D-pad up', interact: 'Y', grab: 'RT', throw: 'RB', plant: 'Hold D-pad down', shove: 'X', drop: 'RT' },
+  // The wheels open while their key is held and say the line you point at when it is let go: a tap says nothing.
+  kbm: { compliment: 'Hold Q', tattle: 'Hold T', interact: 'E', grab: 'LMB', throw: 'RMB', plant: 'Hold G', shove: 'F', drop: 'LMB' },
+  pad: { compliment: 'Hold LB', tattle: 'Hold D-pad up', interact: 'Y', grab: 'RT', throw: 'RB', plant: 'Hold D-pad down', shove: 'X', drop: 'RT' },
 } as const;
 
 /** Is `o` within grabbing / stealing reach of `me` (the server's inReach)? */
@@ -128,9 +129,9 @@ export function rankPrompts(c: PromptCtx): Prompt[] {
       const thief = others.find((o) => o.id === mine.heldBy);
       if (thief && inReach(me, thief.pos) && Math.abs(thief.pos.y - me.pos.y) < 1.2) out.push({ key: k.interact, text: `Snatch your ${c.itemName(c.selfId)} back`, sabotage: false, score: 93 });
     }
-    if (g && nanaD <= COUSIN.complimentRange) out.push({ key: k.compliment, text: 'Compliment Nana', sabotage: false, score: 90 });
+    if (g && nanaD <= COUSIN.complimentRange) out.push({ key: k.compliment, text: 'Compliment Nana: pick a line', sabotage: false, score: 90 });
     else if (g && nanaD <= 5) out.push({ key: '', text: 'Get closer to Nana to compliment her', sabotage: false, dim: true, score: 34 });
-    if (g && nanaD <= COUSIN.tattleRange) out.push({ key: k.tattle, text: 'Tattle on someone', sabotage: false, score: 52 });
+    if (g && nanaD <= COUSIN.tattleRange) out.push({ key: k.tattle, text: 'Tattle: pick a cousin', sabotage: false, score: 52 });
     const mark = markOf(me, others, props);
     if (mark && mark.d <= COUSIN.reach) out.push({ key: k.interact, text: `Pinch ${c.name(mark.c.id)}'s ${c.itemName(mark.c.id)}`, sabotage: true, score: 75 });
     else if (mark && mark.d <= COUSIN.reach + 1.4) out.push({ key: '', text: `Closer to pinch ${c.name(mark.c.id)}'s ${c.itemName(mark.c.id)}`, sabotage: true, dim: true, score: 44 });
@@ -174,6 +175,8 @@ export class CousinHud {
   private shoveMark = el('div', 'shove-mark');
   private shove = el('div', 'cd-ring');
   private shoveArc: SVGCircleElement;
+  /** The key on the shove ring (F, or X on a controller). */
+  private shoveKey: HTMLElement;
   private charge = el('div', 'charge');
   private chargeFill = el('div', 'charge-fill');
   private plant = el('div', 'plant-ring');
@@ -209,6 +212,7 @@ export class CousinHud {
     const bar = el('div', 'actionbar hud-panel');
     this.shove.innerHTML = `<svg viewBox="0 0 40 40"><circle cx="20" cy="20" r="17" class="ring-bg"/><circle cx="20" cy="20" r="17" class="ring-fg" transform="rotate(-90 20 20)"/></svg><span class="cd-key">F</span><span class="cd-label">Shove</span>`;
     this.shoveArc = this.shove.querySelectorAll('circle')[1] as SVGCircleElement;
+    this.shoveKey = this.shove.querySelector('.cd-key') as HTMLElement;
     this.charge.append(el('span', 'charge-label', 'Throw'), this.chargeFill);
     this.voice.append(el('span', 'ico', ''), this.voiceText, this.voiceFill);
     (this.voice.firstChild as HTMLElement).innerHTML = ICONS.mic;
@@ -312,6 +316,7 @@ export class CousinHud {
     const circ = 2 * Math.PI * 17;
     setStyle(this.shoveArc, 'stroke-dasharray', `${(circ * (1 - cdFrac)).toFixed(1)} ${circ.toFixed(1)}`);
     this.shove.classList.toggle('cooling', cdFrac > 0);
+    setText(this.shoveKey, f.device === 'pad' ? KEYS.pad.shove : KEYS.kbm.shove);
     this.shove.classList.toggle('armed', cdFrac === 0 && !!tgt);
     const ch = me?.charge ?? 0;
     show(this.charge, ch > 0);

@@ -6,7 +6,7 @@ import { canIdentify, visionBand, type GrandmaSenseState, type VisionBand } from
 import type { CharSnap, PropSnap, ReplayNana, ReplaySeen, Role, Vec3, WishInfo } from '../../../shared/types.js';
 import type { Quality } from '../settings.js';
 import type { View } from '../state.js';
-import { hashStr } from '../util.js';
+import { damp, hashStr } from '../util.js';
 import { CameraRig } from './camera.js';
 import { CharacterModel, type Degrade } from './characters.js';
 import { buildMap, type MapView } from './map.js';
@@ -62,6 +62,30 @@ export function degradeFor(b: VisionBand): Degrade {
   return b === 'sharp' || b === 'soft' ? 'none' : b === 'heavy' ? 'heavy' : 'shapes';
 }
 
+/** Heights on a cousin (feet, waist, head) Grandma's aim assist measures to. */
+const AIM_HEIGHTS = [0.35, 0.95, 1.5] as const;
+
+/** Reduced motion: the lightning peaks at this much of its full brightness... */
+export const CALM_FLASH_PEAK = 0.6;
+/** ...above this much it counts as lit (her daylight sight, the flash fog). */
+const CALM_FLASH_LIT = 0.3;
+
+/**
+ * The lightning shown this frame, 0..1, from the last value: all or nothing
+ * normally; with reduced motion it eases in and out and peaks lower, still
+ * enough to see by (the Storm's flash is the setting's "no flashing effects").
+ */
+export function easeFlash(prev: number, flash: boolean, calm: boolean, dt: number): number {
+  if (!calm) return flash ? 1 : 0;
+  const target = flash ? CALM_FLASH_PEAK : 0;
+  return prev + (target - prev) * damp(flash ? 7 : 4, dt);
+}
+
+/** Lit by the lightning right now (normally: the flash is on; calm: the eased flash is bright enough). */
+function litBy(flash: boolean, k: number, calm: boolean): boolean {
+  return calm ? k > CALM_FLASH_LIT : flash;
+}
+
 export class GameRenderer {
   readonly renderer: THREE.WebGLRenderer;
   readonly scene = new THREE.Scene();
@@ -77,7 +101,15 @@ export class GameRenderer {
   photoCam: { pos: Vec3; look: Vec3; fov?: number } | null = null;
   private lightning: THREE.DirectionalLight;
   private candle: THREE.PointLight;
+  /** Reduced motion (settings): lightning eases in and out, dimmer, instead of a hard flash. */
+  calm = false;
+  /** The lightning shown now (easeFlash). */
+  private flashK = 0;
   private ray = new THREE.Raycaster();
+  /** Scratch vectors for the per-frame maths (project, pickCousin, the replay camera). */
+  private tmpA = new THREE.Vector3();
+  private tmpB = new THREE.Vector3();
+  private tmpC = new THREE.Vector3();
   private w = 1;
   private h = 1;
   private lastSense: GrandmaSenseState | null = null;
@@ -230,6 +262,8 @@ export class GameRenderer {
     for (const m of this.models.values()) m.dispose();
     this.models.clear();
     this.props.clear();
+    // Grandma's target ring belongs to the match: never left on the lobby's floor.
+    if (this.targetRing) this.targetRing.visible = false;
   }
 
   model(id: string): CharacterModel | undefined { return this.models.get(id); }
@@ -271,13 +305,17 @@ export class GameRenderer {
     if (isGrandma && sense && view.self) { sense.pos = view.self.pos; sense.yaw = f.yaw; }
     this.lastSense = sense;
 
-    // Lights: Storm darkness and lightning.
-    const level = f.dark && !f.flash ? 0.12 : 1;
+    // Lights: Storm darkness and lightning (eased in and out with reduced motion).
+    this.flashK = easeFlash(this.flashK, f.flash, this.calm, dt);
+    const fl = this.flashK;
+    const stormy = f.dark || f.flash;
+    const lit = litBy(f.flash, fl, this.calm);
+    const level = stormy ? 0.12 + 0.88 * fl : 1;
     for (const l of this.lights) l.light.intensity = l.base * level;
-    this.lightning.intensity = f.flash ? 4.5 : 0;
+    this.lightning.intensity = 4.5 * fl;
     // In the dark the tall windows still read as pale silhouettes.
-    this.map.windows.emissiveIntensity = f.dark ? (f.flash ? 3 : 0.3) : 0.9;
-    this.candle.intensity = f.dark && !f.flash ? (isGrandma ? 7 : 6) : 0;
+    this.map.windows.emissiveIntensity = stormy ? 0.3 + 2.7 * fl : 0.9;
+    this.candle.intensity = stormy ? (isGrandma ? 7 : 6) * (1 - fl) : 0;
     this.map.tick?.(f.time, dt);
 
     // Characters.
@@ -331,15 +369,15 @@ export class GameRenderer {
         specs: !!self?.specsActive && !self?.specsOff, down: self?.state === 'ragdoll', parchment: f.parchment,
       });
       this.candle.position.copy(this.rig.camera.position);
-      this.scene.fog = this.grandmaFog({ flash: f.flash, dark: f.dark, specsOff: !!self?.specsOff, specsActive: !!self?.specsActive });
-      this.vision.render(this.scene, this.rig.camera, visionParams({
-        specsActive: !!self?.specsActive, specsOff: !!self?.specsOff, dark: f.dark && !f.flash, flash: f.flash,
-      }), dt);
+      this.scene.fog = this.grandmaFog({ flash: lit, dark: stormy, specsOff: !!self?.specsOff, specsActive: !!self?.specsActive });
+      const vp = visionParams({ specsActive: !!self?.specsActive, specsOff: !!self?.specsOff, dark: stormy && !lit, flash: lit });
+      if (this.calm) vp.flash = Math.min(vp.flash, fl);
+      this.vision.render(this.scene, this.rig.camera, vp, dt);
     } else {
       const pos = self?.pos ?? this.map.idle.center;
       this.rig.updateCousin(pos, f.yaw, f.pitch, dt, this.map.blockers);
       this.candle.position.copy(this.rig.camera.position);
-      this.scene.fog = f.dark && !f.flash ? this.cousinDarkFog : null;
+      this.scene.fog = stormy && !lit ? this.cousinDarkFog : null;
       this.renderer.setRenderTarget(null);
       this.renderer.render(this.scene, this.rig.camera);
     }
@@ -356,14 +394,19 @@ export class GameRenderer {
    */
   frameReplay(v: ReplayView, dt: number, time: number): void {
     const n = v.nana;
-    const dark = !!n?.dark && !n.flash;
-    const level = dark ? 0.12 : 1;
+    this.flashK = easeFlash(this.flashK, !!n?.flash, this.calm, dt);
+    const fl = this.flashK;
+    const stormy = !!n?.dark || !!n?.flash;
+    const lit = litBy(!!n?.flash, fl, this.calm);
+    const dark = stormy && !lit;
+    const level = stormy ? 0.12 + 0.88 * fl : 1;
     for (const l of this.lights) l.light.intensity = l.base * level;
-    this.lightning.intensity = n?.flash ? 4.5 : 0;
-    this.map.windows.emissiveIntensity = n?.dark ? (n.flash ? 3 : 0.3) : 0.9;
+    this.lightning.intensity = 4.5 * fl;
+    this.map.windows.emissiveIntensity = stormy ? 0.3 + 2.7 * fl : 0.9;
     this.map.tick?.(time, dt);
 
     this.rig.hideViewModel();
+    if (this.targetRing) this.targetRing.visible = false;
     // Everyone as they really were (animated once a frame).
     const ids = new Set(v.chars.map((c) => c.id));
     for (const [id, m] of this.models) if (!ids.has(id)) { m.dispose(); this.models.delete(id); }
@@ -397,10 +440,12 @@ export class GameRenderer {
       cam.updateProjectionMatrix();
       cam.position.set(n.x, n.y + 1.75, n.z);
       cam.rotation.set(n.pitch, n.yaw, 0, 'YXZ');
-      this.candle.intensity = dark ? 7 : 0;
+      this.candle.intensity = stormy ? 7 * (1 - fl) : 0;
       this.candle.position.copy(cam.position);
-      this.scene.fog = this.grandmaFog({ flash: n.flash, dark: n.dark, specsOff: false, specsActive: n.specs });
-      this.vision.render(this.scene, cam, visionParams({ specsActive: n.specs, specsOff: false, dark, flash: n.flash }), dt, { x: 0, y: H - half, w: W, h: half });
+      this.scene.fog = this.grandmaFog({ flash: lit, dark: stormy, specsOff: false, specsActive: n.specs });
+      const vp = visionParams({ specsActive: n.specs, specsOff: false, dark, flash: lit });
+      if (this.calm) vp.flash = Math.min(vp.flash, fl);
+      this.vision.render(this.scene, cam, vp, dt, { x: 0, y: H - half, w: W, h: half });
     }
 
     // Bottom: what really happened.
@@ -408,17 +453,17 @@ export class GameRenderer {
     const cam = this.replayTruthCam;
     cam.aspect = W / Math.max(1, H - half);
     cam.updateProjectionMatrix();
-    const target = new THREE.Vector3(v.focus.x, v.focus.y + 1.0, v.focus.z);
+    const target = this.tmpA.set(v.focus.x, v.focus.y + 1.0, v.focus.z);
     // Drift round the focus; start from the side facing into the hall, and stay inside the walls.
     const a = 0.6 + v.clock * 0.1;
-    const dir = new THREE.Vector3(Math.sin(a), 0.55, Math.cos(a)).normalize();
+    const dir = this.tmpB.set(Math.sin(a), 0.55, Math.cos(a)).normalize();
     this.ray.set(target, dir);
     this.ray.far = 5;
     const hit = this.ray.intersectObjects(this.map.blockers, false)[0];
     const dist = hit ? Math.max(1.2, hit.distance - 0.3) : 4.6;
     cam.position.copy(target).addScaledVector(dir, dist);
     cam.lookAt(target);
-    this.candle.intensity = dark ? 6 : 0;
+    this.candle.intensity = stormy ? 6 * (1 - fl) : 0;
     this.candle.position.copy(cam.position);
     this.scene.fog = dark ? this.cousinDarkFog : null;
     this.renderer.setRenderTarget(null);
@@ -437,8 +482,10 @@ export class GameRenderer {
     if (!keepLights) {
       for (const l of this.lights) l.light.intensity = l.base;
       this.lightning.intensity = 0;
+      this.flashK = 0;
       this.candle.intensity = 0;
       this.map.windows.emissiveIntensity = 0.9;
+      if (this.targetRing) this.targetRing.visible = false;
     }
     this.scene.fog = null;
     const a = t * 0.05;
@@ -474,12 +521,11 @@ export class GameRenderer {
 
   /** Project a world point to CSS pixels. */
   project(p: Vec3): ScreenPoint {
+    // Called many times a frame (tags, bubbles, markers): scratch vectors, no garbage.
     const cam = this.rig.camera;
-    const v = new THREE.Vector3(p.x, p.y, p.z);
-    const toP = v.clone().sub(cam.position);
-    const fwd = new THREE.Vector3();
-    cam.getWorldDirection(fwd);
-    const behind = toP.dot(fwd) < 0;
+    const fwd = cam.getWorldDirection(this.tmpC);
+    const behind = (p.x - cam.position.x) * fwd.x + (p.y - cam.position.y) * fwd.y + (p.z - cam.position.z) * fwd.z < 0;
+    const v = this.tmpA.set(p.x, p.y, p.z);
     v.project(cam);
     const x = ((v.x + 1) / 2) * this.w;
     const y = ((1 - v.y) / 2) * this.h;
@@ -491,7 +537,7 @@ export class GameRenderer {
   headPos(id: string): Vec3 | null {
     const m = this.models.get(id);
     if (!m || !m.root.visible) return null;
-    const v = m.headWorld(new THREE.Vector3());
+    const v = m.headWorld(this.tmpB);
     return { x: v.x, y: v.y, z: v.z };
   }
 
@@ -512,17 +558,17 @@ export class GameRenderer {
   pickCousin(selfId: string, grandmaId: string, maxDist = 10): string | null {
     const cam = this.rig.camera;
     const origin = cam.position;
-    const dir = cam.getWorldDirection(new THREE.Vector3());
+    const dir = cam.getWorldDirection(this.tmpB);
     const now = performance.now();
     let best: string | null = null;
     let bestScore = Infinity;
-    const to = new THREE.Vector3();
+    const to = this.tmpA;
     for (const [id, m] of this.models) {
       if (id === selfId || id === grandmaId || !m.root.visible || !this.lastSense) continue;
       const feet = m.root.position;
       if (!canIdentify(this.lastSense, { x: feet.x, y: feet.y, z: feet.z })) continue;
       let angle = Infinity, dist = Infinity;
-      for (const h of [0.35, 0.95, 1.5]) {
+      for (const h of AIM_HEIGHTS) {
         to.set(feet.x - origin.x, feet.y + h - origin.y, feet.z - origin.z);
         const d = to.length();
         if (d < 0.2 || d > maxDist) continue;
@@ -549,6 +595,7 @@ export class GameRenderer {
 
   /** A ring on the floor under Grandma's Bless/Tut target (bright when aimed, dim when only locked). */
   setTargetMarker(id: string | null, aimed: boolean): void {
+    if (!this.targetRing && !id) return;
     if (!this.targetRing) {
       const mat = new THREE.MeshBasicMaterial({ color: '#ffd75a', transparent: true, opacity: 0.85, depthWrite: false });
       this.targetRing = new THREE.Mesh(new THREE.RingGeometry(0.42, 0.52, 40), mat);

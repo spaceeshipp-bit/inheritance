@@ -2,6 +2,7 @@
 import { VISITS, WISH } from '../../../shared/constants.js';
 import type { GameState } from '../state.js';
 import { el, fmtTime, setStyle, setText, show } from '../util.js';
+import { mapWords } from './mapwords.js';
 
 export class TopBar {
   readonly root = el('div', 'topbar');
@@ -25,7 +26,8 @@ export class TopBar {
   }
 
   frame(s: GameState, now: number): void {
-    const phaseName = s.phase === 'visit' && s.visit ? VISITS[s.visit].name : s.phase === 'intermission' ? 'Intermission' : s.phase === 'roles' ? 'Arriving at Harrowgate' : '';
+    const phaseName = s.phase === 'visit' && s.visit ? VISITS[s.visit].name : s.phase === 'intermission' ? 'Intermission'
+      : s.phase === 'roles' ? mapWords(s.match?.options.map).arriving : '';
     setText(this.visit, phaseName);
     setText(this.clock, fmtTime(s.phaseEndsAt - now));
     this.clock.classList.toggle('urgent', s.phase === 'visit' && s.phaseEndsAt - now < 20);
