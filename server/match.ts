@@ -19,11 +19,12 @@ import { grandmaScore } from '../shared/scoring.js';
 import { dist, flatDist, hearingBand, scrambleText, visionBand, type GrandmaSenseState, type HearingBand, type VisionBand } from '../shared/senses.js';
 import { CHEST_HEIGHT, PROP_MID, eyeOf, lineOfSight } from '../shared/sight.js';
 import type {
-  CharSnap, CousinInfo, FinalResult, MatchOptions, Phase, PropKind, PropSnap, ReadingResult, ReplaySeen, Role, Vec3, VisitId, WishInfo,
+  CharSnap, CousinInfo, FinalResult, LogEvent, MatchOptions, Phase, PropKind, PropSnap, ReadingResult, ReplaySeen, Role, Vec3, VisitId, WishInfo,
 } from '../shared/types.js';
 import { applyChange, available, createWill, leader, readingOrder, resetVisitBudget, setShare, type WillResult, type WillState } from '../shared/will.js';
 import { CousinBot, GrandmaBot, type Bot } from './bots.js';
 import { EMOTE, EMOTES, type EmoteId } from '../shared/emotes.js';
+import { PRACTICE, type PracticeRole } from '../shared/practice.js';
 import { EventLog } from './log.js';
 import { ReplayRecorder, type FullFrame } from './replay.js';
 import { replaysSeconds } from '../shared/replay.js';
@@ -288,6 +289,8 @@ export class Match {
   readonly options: MatchOptions;
   /** The map this match is played on (options.map, with 'random' already chosen). */
   readonly mapDef: MapDef;
+  /** A practice round: who is practising, as what, and the checklist steps done. */
+  practice: { role: PracticeRole; who: string; done: Set<string> } | null = null;
   readonly visits: VisitId[];
   readonly fast: boolean;
   readonly durations: PhaseDurations;
@@ -370,6 +373,10 @@ export class Match {
     const vs = cfg.visitSeconds;
     this.durations = !this.fast ? NORMAL_DURATIONS
       : vs !== undefined && Number.isFinite(vs) && vs > 0 ? { ...FAST_DURATIONS, visit: () => vs } : FAST_DURATIONS;
+    if (this.options.practice && !this.fast) {
+      const secs = PRACTICE[this.options.practice].minutes * 60;
+      this.durations = { ...this.durations, visit: () => secs };
+    }
     const seed = cfg.seed ?? Math.floor(Math.random() * 2 ** 31);
     this.rng = makeRng(seed);
     if (this.options.map === 'random') this.options.map = MAP_IDS[Math.floor(makeRng(seed ^ 0x2545f491)() * MAP_IDS.length)];
@@ -388,6 +395,11 @@ export class Match {
       if (role === 'cousin') this.cousinIds.push(p.id);
     }
     if (!this.chars.has(this.grandmaId)) throw new Error('grandmaId is not a player');
+    if (this.options.practice) {
+      // The human practising: Grandma for a Grandma practice, else the first human cousin.
+      const who = this.options.practice === 'grandma' ? this.grandmaId : this.humans.find((h) => h !== this.grandmaId) ?? null;
+      if (who) this.practice = { role: this.options.practice, who, done: new Set() };
+    }
     this.will = createWill(this.cousinIds);
     this.prefCards = this.shuffle([...PREFERENCE_CARDS]).slice(0, 2);
     this.makeProps();
@@ -414,7 +426,40 @@ export class Match {
     this.log.onLog((ev, i) => {
       for (const b of this.bots.values()) b.onLog(ev, i);
       this.replay.event(ev, i, ev.kind === 'shove' ? this.lastComplimentAt(ev.by, ev.t) : null);
+      this.practiceFromLog(ev);
     });
+  }
+
+  // ───────────── practice rounds ─────────────
+
+  /** What the practising player just did, from the log (only the server knows). */
+  private practiceFromLog(ev: LogEvent): void {
+    const p = this.practice;
+    if (!p) return;
+    if (p.role === 'cousin') {
+      const by = 'by' in ev ? ev.by : null;
+      if (by !== p.who) return;
+      if (ev.kind === 'compliment') this.practiceDone('compliment');
+      else if (ev.kind === 'steal') this.practiceDone('steal');
+      else if (ev.kind === 'plant') this.practiceDone('plant');
+      else if (ev.kind === 'break') this.practiceDone('break');
+      else if (ev.kind === 'rude' && ev.atNana) this.practiceDone('cheek');
+    } else if (ev.kind === 'will' && (ev.via === 'bless' || ev.via === 'tut' || ev.via === 'parchment')) {
+      this.practiceDone(ev.via);
+    }
+  }
+
+  /** Tick a step off the practising player's checklist; all done, and the visit wraps up shortly. */
+  private practiceDone(step: string): void {
+    const p = this.practice;
+    if (!p || p.done.has(step) || !PRACTICE[p.role].steps.some((s) => s.id === step)) return;
+    p.done.add(step);
+    const all = PRACTICE[p.role].steps.every((s) => p.done.has(s.id));
+    this.emit(p.who, { e: 'practice', done: [...p.done], all });
+    if (all && this.phase === 'visit') {
+      this.emit(p.who, { e: 'toast', text: 'Practice complete. You are ready to inherit (or to disinherit).' });
+      this.phaseEndsAt = Math.min(this.phaseEndsAt, this.time + 8);
+    }
   }
 
   // ───────────── setup ─────────────
@@ -1215,6 +1260,10 @@ export class Match {
     if (canAct) {
       if (c.role === 'cousin') this.cousinActions(c, h);
       else this.grandmaActions(c);
+      if (this.practice?.who === c.id && c.role === 'grandma') {
+        if (c.specsT > 0) this.practiceDone('specs');
+        if (c.aidT > 0) this.practiceDone('aid');
+      }
     } else {
       c.charge = 0;
       c.plantT = 0;

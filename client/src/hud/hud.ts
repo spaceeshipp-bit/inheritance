@@ -36,6 +36,7 @@ import { Toasts } from './toasts.js';
 import { TopBar } from './topbar.js';
 import { panelRects, type HudFrame, type Rect } from './types.js';
 import { Wheel, type WheelKind } from './wheel.js';
+import { PracticeList } from './practicelist.js';
 
 type Overlay = { root: HTMLElement; frame(s: GameState, now: number, t: number): void };
 
@@ -49,6 +50,7 @@ export class Hud {
   readonly bubbles = new Bubbles();
   readonly wheel = new Wheel();
   readonly chat = new ChatBox();
+  private practice: PracticeList | null = null;
   readonly captions = new Captions();
   readonly floats = new Floats();
   readonly settingsPanel: SettingsPanel;
@@ -133,6 +135,11 @@ export class Hud {
     this.endMatch();
     const m = this.s.match;
     if (!m) return;
+    // A practice round: its checklist, for whoever is practising (the host, in their practised role).
+    if (m.options.practice && m.options.practice === m.role) {
+      this.practice = new PracticeList(m.options.practice);
+      this.roleRoot.appendChild(this.practice.root);
+    }
     if (m.role === 'grandma') {
       this.grandmaHud = new GrandmaHud(m.cousins, m.prefCards ?? []);
       this.roleRoot.appendChild(this.grandmaHud.root);
@@ -159,6 +166,8 @@ export class Hud {
   }
 
   endMatch(): void {
+    this.practice?.root.remove();
+    this.practice = null;
     this.cousinHud?.root.remove();
     this.grandmaHud?.root.remove();
     this.parchment?.root.remove();
@@ -255,6 +264,9 @@ export class Hud {
       case 'tattle':
         if (g) t.push(`${nm(ev.from)} tattles: it was ${nm(ev.accused)}!`, 'warn', 4);
         else if (ev.accused === me) t.push(`${nm(ev.from)} tattled on you!`, 'bad', 4);
+        break;
+      case 'practice':
+        this.practice?.update(ev.done, ev.all);
         break;
       case 'gesture': {
         // Aimed at you, or (Grandma) something she clearly saw a cousin do.

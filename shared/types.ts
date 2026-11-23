@@ -1,6 +1,7 @@
 // Core data types shared by server and client.
 import type { EmoteId } from './emotes.js';
 import type { MapId } from './maps/types.js';
+import type { PracticeRole } from './practice.js';
 import type { ItemKey, VisitId } from './constants.js';
 
 export interface Vec3 { x: number; y: number; z: number }
@@ -150,6 +151,8 @@ export interface MatchOptions {
   pushGrandma: boolean;
   /** Where the family gathers: a map, or 'random' (the room picks one when the match starts). */
   map: MapId | 'random';
+  /** A practice round (shared/practice.ts): the host plays this role against bots, with a checklist. */
+  practice?: PracticeRole;
 }
 
 export interface ReadingResult {

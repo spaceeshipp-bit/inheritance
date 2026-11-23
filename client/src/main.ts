@@ -1,6 +1,7 @@
 // Boot: title (name + room) -> lobby -> match -> results -> lobby.
 // URL ?room=CODE&name=NAME pre-fills and auto-joins. In dev, ?mock=grandma or
 // ?mock=cousin runs against an offline fake server (src/dev/mock.ts).
+import type { MatchOptions } from '../../shared/types.js';
 import './style.css';
 import type { ServerMsg, RtcSignal } from '../../shared/protocol.js';
 import { Sfx } from './audio/sfx.js';
@@ -108,6 +109,8 @@ async function boot(): Promise<void> {
   };
 
   let myName = '';
+  /** A practice round asked for on the title screen, waiting for its room. */
+  let pendingPractice: 'cousin' | 'grandma' | null = null;
   const join = (name: string, room: string, gesture = true) => {
     if (gesture) sfx.unlock();
     myName = name;
@@ -116,7 +119,9 @@ async function boot(): Promise<void> {
   };
   const screens = new Screens($('screens'), {
     join: (name, room) => join(name, room),
-    create: (name) => join(name, ''),
+    create: (name) => { pendingPractice = null; join(name, ''); },
+    // A practice round: make a room, ask for practice in that role, start at once.
+    practice: (name, role) => { pendingPractice = role; join(name, ''); },
     willing: (on) => net.send({ t: 'lobby', willingGrandma: on }),
     options: (o) => net.send({ t: 'lobby', options: o }),
     start: () => { sfx.unlock(); net.send({ t: 'start' }); },
@@ -176,6 +181,15 @@ async function boot(): Promise<void> {
     // ended or went on without us (e.g. we rejoined after it finished).
     if (state.match && lobbyEndsOurMatch(m)) endStaleMatch();
     screens.updateLobby(m);
+    if (pendingPractice && m.hostId === state.selfId && m.phase === 'lobby') {
+      const role = pendingPractice;
+      pendingPractice = null;
+      net.send({ t: 'lobby', willingGrandma: role === 'grandma', options: { practice: role, fillBots: true } });
+      net.send({ t: 'start' });
+    } else if (!pendingPractice && m.options.practice && m.hostId === state.selfId && !state.inMatch && m.phase === 'lobby') {
+      // Back in the lobby after a practice: the next match is a real one unless asked again.
+      net.send({ t: 'lobby', options: { practice: null } as unknown as Partial<MatchOptions> });
+    }
     if (!state.inMatch) {
       screens.showLobby();
       // The backdrop behind the lobby is where the host says the family gathers.

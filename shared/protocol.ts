@@ -135,6 +135,8 @@ export type GameEvent =
    * clearly saw a cousin make (`at` is whoever it was aimed at, or null).
    */
   | { e: 'gesture'; by: string; emote: EmoteId; at: string | null }
+  /** Practice rounds: the checklist steps done so far (shared/practice.ts), and whether that is all of them. */
+  | { e: 'practice'; done: string[]; all: boolean }
   | { e: 'toast'; text: string };
 
 export type ServerMsg =

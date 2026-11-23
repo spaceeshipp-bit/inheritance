@@ -2,6 +2,7 @@
 // null (and is dropped); numbers are clamped into range; strings are trimmed
 // and stripped of control characters. The server never trusts a client shape.
 import { isEmoteId } from '../shared/emotes.js';
+import { isPracticeRole } from '../shared/practice.js';
 import { QUICKCHAT } from '../shared/constants.js';
 import { SURVEY_ANSWERS, SURVEY_QUESTIONS, type ClientMsg, type GrandmaAction, type InputMsg, type RtcSignal } from '../shared/protocol.js';
 import type { MatchOptions } from '../shared/types.js';
@@ -87,6 +88,8 @@ function parseOptions(v: unknown): Partial<MatchOptions> | undefined {
   if (typeof v.fillBots === 'boolean') out.fillBots = v.fillBots;
   if (typeof v.pushGrandma === 'boolean') out.pushGrandma = v.pushGrandma;
   if (v.map === 'random' || MAP_IDS.some((id) => id === v.map)) out.map = v.map as MatchOptions['map'];
+  if (v.practice === null) out.practice = undefined;
+  else if (isPracticeRole(v.practice)) out.practice = v.practice;
   return out;
 }
 

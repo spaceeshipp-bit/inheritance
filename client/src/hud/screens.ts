@@ -16,6 +16,8 @@ import { botGlyph, cleanName, isBotName } from './ident.js';
 export interface ScreenHandlers {
   join(name: string, room: string): void;
   create(name: string): void;
+  /** A practice round on your own against bots (shared/practice.ts). */
+  practice(name: string, role: 'cousin' | 'grandma'): void;
   willing(on: boolean): void;
   options(o: Partial<MatchOptions>): void;
   start(): void;
@@ -199,7 +201,14 @@ export class Screens {
     cancel.addEventListener('click', () => this.h.leave());
     this.netNote.append(this.netText, cancel);
     show(this.netNote, false);
-    card.append(this.elsewhere, f1, f2, btns, this.netNote, this.err);
+    // Practice rounds: on your own, against bots, with a checklist.
+    const practice = el('div', 'practice-row');
+    const pc = el('button', 'btn small ghost', 'Practise as a cousin (4 min)');
+    const pg = el('button', 'btn small ghost', 'Practise as Grandma (3 min)');
+    pc.addEventListener('click', go(() => this.h.practice(this.nameIn.value.trim(), 'cousin')));
+    pg.addEventListener('click', go(() => this.h.practice(this.nameIn.value.trim(), 'grandma')));
+    practice.append(el('span', 'practice-label', 'New here?'), pc, pg);
+    card.append(this.elsewhere, f1, f2, btns, practice, this.netNote, this.err);
     card.appendChild(el('div', 'small-print', '5-8 players. One of you is Grandma; bots fill empty seats. Use headphones: voice is proximity-based.'));
     this.title.appendChild(card);
   }

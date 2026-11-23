@@ -538,7 +538,15 @@ export class Room {
     const humans = this.connectedHumans();
     const willing = humans.filter((h) => h.willingGrandma);
     let grandmaId: string | null = null;
-    if (willing.length > 0) {
+    const practice = this.options.practice;
+    if (practice) {
+      // Practice: the host plays the role they asked for; bots do the rest.
+      if (practice === 'cousin' && humans.length >= MAX_PLAYERS) {
+        this.error(p, `A practice round needs a seat for the bot Grandma: at most ${MAX_PLAYERS - 1} players.`);
+        return;
+      }
+      grandmaId = practice === 'grandma' ? p.id : null;
+    } else if (willing.length > 0) {
       const weights = willing.map((h) => (h.id === this.lastGrandmaId && willing.length > 1 ? 0.35 : 1));
       let r = Math.random() * weights.reduce((a, b) => a + b, 0);
       for (let i = 0; i < willing.length; i++) {
@@ -552,6 +560,7 @@ export class Room {
       this.error(p, 'Nobody is willing to be Grandma. Someone must tick "Willing to be Grandma", or turn on "Fill with bots" for a bot Grandma.');
       return;
     }
+    if (practice && !this.options.fillBots) this.options = { ...this.options, fillBots: true };
     const botGrandma = grandmaId === null;
     const total = humans.length + (botGrandma ? 1 : 0);
     let botCousins = 0;
