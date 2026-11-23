@@ -52,6 +52,7 @@ async function boot(): Promise<void> {
     sfx.applySettings(s);
     voice.setPushToTalk(s.pushToTalk);
     voice.setVolume(s.masterVolume * s.voiceVolume);
+    voice.setDevices(s.micDevice, s.outputDevice);
     screens.setPushToTalk(s.pushToTalk, keyLabel(s.pushToTalkKey));
   };
 

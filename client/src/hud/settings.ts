@@ -47,6 +47,9 @@ export class SettingsPanel {
   canRelock: () => boolean = () => true;
   private card = el('div', 'settings-card');
   private quality = el('select', 'set-select');
+  private micSel = el('select', 'set-select') as HTMLSelectElement;
+  private outSel = el('select', 'set-select') as HTMLSelectElement;
+  private devNote = el('div', 'set-note', '');
   private sliders: Partial<Record<keyof SettingsData, Slider>> = {};
   private checks: Partial<Record<keyof SettingsData, HTMLInputElement>> = {};
   private pttKey = el('button', 'btn small key-btn');
@@ -116,6 +119,12 @@ export class SettingsPanel {
       this.refresh();
     });
     right.append(this.row('Push-to-talk key', this.pttKey), this.pttNote);
+    this.micSel.addEventListener('change', () => this.set({ micDevice: this.micSel.value }));
+    this.outSel.addEventListener('change', () => this.set({ outputDevice: this.outSel.value }));
+    right.append(this.row('Microphone', this.micSel));
+    if (canPickOutput()) right.append(this.row('Speakers', this.outSel));
+    right.append(this.devNote);
+    navigator.mediaDevices?.addEventListener?.('devicechange', () => { void this.listDevices(); });
 
     // Accessibility.
     right.appendChild(el('div', 'set-section', 'Accessibility'));
@@ -181,10 +190,37 @@ export class SettingsPanel {
   }
 
   /** Show the stored values. */
+  /** Fill the microphone and speaker lists (names appear once the mic has been allowed). */
+  private async listDevices(): Promise<void> {
+    const md = navigator.mediaDevices;
+    if (!md?.enumerateDevices) { setText(this.devNote, 'This browser cannot list audio devices.'); return; }
+    let devs: MediaDeviceInfo[] = [];
+    try { devs = await md.enumerateDevices(); } catch { /* not allowed */ }
+    const fill = (sel: HTMLSelectElement, kind: MediaDeviceKind, word: string, current: string) => {
+      sel.innerHTML = '';
+      const def = el('option', '', 'System default') as HTMLOptionElement;
+      def.value = '';
+      sel.appendChild(def);
+      devs.filter((d) => d.kind === kind && d.deviceId && d.deviceId !== 'default').forEach((d, i) => {
+        const o = el('option', '', d.label || `${word} ${i + 1}`) as HTMLOptionElement;
+        o.value = d.deviceId;
+        sel.appendChild(o);
+      });
+      sel.value = [...sel.options].some((o) => o.value === current) ? current : '';
+    };
+    const cur = this.getSettings()?.get();
+    fill(this.micSel, 'audioinput', 'Microphone', cur?.micDevice ?? '');
+    fill(this.outSel, 'audiooutput', 'Speakers', cur?.outputDevice ?? '');
+    const named = devs.some((d) => d.kind === 'audioinput' && d.label);
+    setText(this.devNote, named ? '' : 'Device names show once you have allowed the microphone.');
+  }
+
   private refresh(): void {
     const s = this.getSettings();
     if (!s) return;
     const d = s.get();
+    if (document.activeElement !== this.micSel) this.micSel.value = [...this.micSel.options].some((o) => o.value === d.micDevice) ? d.micDevice : '';
+    if (document.activeElement !== this.outSel) this.outSel.value = [...this.outSel.options].some((o) => o.value === d.outputDevice) ? d.outputDevice : '';
     this.quality.value = d.quality;
     for (const [k, sl] of Object.entries(this.sliders) as [keyof SettingsData, Slider][]) {
       const v = d[k] as number;
@@ -201,6 +237,7 @@ export class SettingsPanel {
   }
 
   open(): void {
+    void this.listDevices();
     if (this.isOpen) return;
     this.isOpen = true;
     this.capturing = false;
@@ -256,4 +293,9 @@ export class SettingsPanel {
       e.stopImmediatePropagation();
     }
   }
+}
+
+/** Can audio be sent to a chosen output device here (AudioContext.setSinkId)? */
+function canPickOutput(): boolean {
+  return typeof AudioContext !== 'undefined' && 'setSinkId' in AudioContext.prototype;
 }

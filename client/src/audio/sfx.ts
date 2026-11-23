@@ -56,16 +56,27 @@ export class Sfx {
         const d = this.noise.getChannelData(0);
         for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
       }
+      if (this.output) void this.applyOutput();
       if (this.ctx.state === 'suspended') void this.ctx.resume();
     } catch { this.ctx = null; }
   }
 
   get ready(): boolean { return !!this.ctx && this.ctx.state === 'running'; }
 
-  /** Apply player settings (master x effects volume). */
+  /** Apply player settings (master x effects volume, and the speakers). */
   applySettings(s: SettingsData): void {
     this.volume = s.masterVolume * s.sfxVolume;
     if (this.master && this.ctx) this.master.gain.setTargetAtTime(this.volume, this.ctx.currentTime, 0.05);
+    this.output = s.outputDevice;
+    void this.applyOutput();
+  }
+
+  private output = '';
+  /** Play through the chosen speakers where the browser can (AudioContext.setSinkId). */
+  private async applyOutput(): Promise<void> {
+    const ctx = this.ctx as (AudioContext & { setSinkId?: (id: string) => Promise<void> }) | null;
+    if (!ctx?.setSinkId) return;
+    try { await ctx.setSinkId(this.output); } catch { /* gone: stay on the default */ }
   }
 
   setListener(pos: Vec3, yaw: number, role: 'grandma' | 'cousin' | 'lobby', aid: boolean): void {

@@ -26,6 +26,9 @@ export interface SettingsData {
   captions: boolean;
   /** Draw a pattern on each cousin's colour band as well as the colour. */
   bandPatterns: boolean;
+  /** Microphone and speakers (device ids from the browser; '' = the system default). */
+  micDevice: string;
+  outputDevice: string;
 }
 
 export const DEFAULT_SETTINGS: SettingsData = {
@@ -41,6 +44,8 @@ export const DEFAULT_SETTINGS: SettingsData = {
   reducedMotion: false,
   captions: true,
   bandPatterns: true,
+  micDevice: '',
+  outputDevice: '',
 };
 
 /**
@@ -84,7 +89,14 @@ export function sanitize(raw: unknown, d: SettingsData = DEFAULT_SETTINGS): Sett
     reducedMotion: bool('reducedMotion'),
     captions: bool('captions'),
     bandPatterns: bool('bandPatterns'),
+    micDevice: deviceId(r.micDevice, d.micDevice),
+    outputDevice: deviceId(r.outputDevice, d.outputDevice),
   };
+}
+
+/** A media device id as browsers give them (opaque, URL-safe, bounded), or the default. */
+function deviceId(v: unknown, d: string): string {
+  return typeof v === 'string' && v.length <= 200 && /^[A-Za-z0-9+/=_-]*$/.test(v) ? v : d;
 }
 
 type Listener = (s: SettingsData) => void;

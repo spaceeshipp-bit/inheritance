@@ -15,7 +15,7 @@ import { REJECT_REASONS, rejectText } from '../../client/src/hud/rejects.js';
 import { lobbyStartNote } from '../../client/src/hud/screens.js';
 import { Input, isTextEntry, type Action } from '../../client/src/input.js';
 import { CALM_FLASH_PEAK, easeFlash } from '../../client/src/render/scene.js';
-import { DEFAULT_SETTINGS, Settings, systemDefaults } from '../../client/src/settings.js';
+import { DEFAULT_SETTINGS, Settings, systemDefaults, sanitize } from '../../client/src/settings.js';
 import { GameState } from '../../client/src/state.js';
 
 describe('push-to-talk and whisper (review 1, 2)', () => {
@@ -229,5 +229,16 @@ describe("Nana's reasons name bots as the HUD does (review 15)", () => {
     const t = reasonText({ target: 'c', via: 'tut', moved: -5, why: "found Clementine (bot)'s phone where it shouldn't be", truth: 'Dot (bot) planted it there.' });
     expect(t.did).toBe("She tutted: found Clementine's phone where it shouldn't be.");
     expect(t.really).toBe('Really: Dot planted it there.');
+  });
+});
+
+describe('audio devices in the settings', () => {
+  it('keep a browser device id, and fall back to the system default for anything else', () => {
+    expect(DEFAULT_SETTINGS.micDevice).toBe('');
+    expect(DEFAULT_SETTINGS.outputDevice).toBe('');
+    const id = 'f3a9c1e0b2d4AbC+/=_-';
+    expect(sanitize({ micDevice: id, outputDevice: id })).toMatchObject({ micDevice: id, outputDevice: id });
+    expect(sanitize({ micDevice: '<script>', outputDevice: 42 })).toMatchObject({ micDevice: '', outputDevice: '' });
+    expect(sanitize({ micDevice: 'x'.repeat(201) }).micDevice).toBe('');
   });
 });

@@ -128,15 +128,27 @@ export class Outbound {
     return !!this.src;
   }
 
-  /** Ask for the mic. Resolves false when denied or unavailable (insecure origin, no device). */
-  async acquire(isCancelled: () => boolean): Promise<boolean> {
+  /**
+   * Ask for the mic (`deviceId`: a particular one, else the system default; if
+   * that one has gone, the default). Resolves false when denied or unavailable.
+   * Called again with another device, it swaps the mic under the running sends.
+   */
+  async acquire(isCancelled: () => boolean, deviceId = ''): Promise<boolean> {
     const md = typeof navigator !== 'undefined' ? navigator.mediaDevices : undefined;
     if (!md || typeof md.getUserMedia !== 'function') return false;
     let mic: MediaStream;
     try {
-      mic = await md.getUserMedia({ audio: MIC_CONSTRAINTS, video: false });
+      mic = await md.getUserMedia({ audio: deviceId ? { ...MIC_CONSTRAINTS, deviceId: { exact: deviceId } } : MIC_CONSTRAINTS, video: false });
     } catch {
-      return false;
+      if (!deviceId) return false;
+      try { mic = await md.getUserMedia({ audio: MIC_CONSTRAINTS, video: false }); } catch { return false; }
+    }
+    // Swapping mics: the old one goes; the analyser and the sends keep their places.
+    if (this.src) {
+      try { this.src.disconnect(); } catch { /* already gone */ }
+      for (const t of this.mic?.getTracks() ?? []) t.stop();
+      this.src = null;
+      this.mic = null;
     }
     if (isCancelled() || mic.getAudioTracks().length === 0) {
       for (const t of mic.getTracks()) t.stop();

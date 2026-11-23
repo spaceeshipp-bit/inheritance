@@ -51,6 +51,8 @@ export interface VoiceManager {
   setMuted(id: string, muted: boolean): void;
   /** Volume of everyone else's voices, 0..1 (settings: master x voice). */
   setVolume(v: number): void;
+  /** Microphone and speakers by device id ('' = the system default); applied live. */
+  setDevices(mic: string, output: string): void;
   stop(): void;
 }
 
@@ -112,6 +114,9 @@ class Voice implements VoiceManager {
   private volume = 1;
   private lastUpdate: VoiceUpdate | null = null;
 
+  private micDevice = '';
+  private outputDevice = '';
+
   constructor() {
     if (typeof window !== 'undefined') window.__voiceDebug = () => this.debug();
   }
@@ -134,7 +139,8 @@ class Voice implements VoiceManager {
     this.out = out;
     this.ensureRunning();
 
-    const micOk = await out.acquire(() => gen !== this.generation);
+    void this.applyOutput();
+    const micOk = await out.acquire(() => gen !== this.generation, this.micDevice);
     if (gen !== this.generation) return { micOk: false }; // stopped while waiting for the mic
     this.micOk = micOk;
     this.note(micOk ? 'mic ok' : 'no mic: receive only');
@@ -271,6 +277,28 @@ class Voice implements VoiceManager {
   level(id: string): number {
     if (id === 'self' || id === this.selfId) return this.out && this.started ? this.out.level() : 0;
     return this.peers.get(id)?.level() ?? 0;
+  }
+
+  setDevices(mic: string, output: string): void {
+    const micChanged = mic !== this.micDevice;
+    this.micDevice = mic;
+    this.outputDevice = output;
+    void this.applyOutput();
+    if (micChanged && this.out && this.started) {
+      const gen = this.generation;
+      void this.out.acquire(() => gen !== this.generation, mic).then((ok) => {
+        if (gen !== this.generation) return;
+        this.micOk = ok;
+        this.note(ok ? `mic switched${mic ? '' : ' to the default'}` : 'mic switch failed');
+      });
+    }
+  }
+
+  /** Send the voices to the chosen speakers (browsers with AudioContext.setSinkId; others keep the default). */
+  private async applyOutput(): Promise<void> {
+    const ctx = this.ctx as (AudioContext & { setSinkId?: (id: string) => Promise<void> }) | null;
+    if (!ctx?.setSinkId) return;
+    try { await ctx.setSinkId(this.outputDevice); } catch { /* gone or not allowed: stay on the default */ }
   }
 
   setVolume(v: number): void {
