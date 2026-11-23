@@ -4,6 +4,22 @@ Read this first, then `docs/ARCHITECTURE.md` (the build spec) and `docs/GDD.md` 
 This file says where the build stands, what is left, in what order, and the bar each
 piece has to clear. Update the "Status" section as you go; it is the project's memory.
 
+## Resume here (save point `save-2026-11-23`)
+
+Paused on 2026-11-23 at the owner's request; the build continues the following week.
+
+- Everything is on `main` and tagged `save-2026-11-23`. CI is green on it.
+- Unit tests: 390 pass in 45 files. Full-match e2e: 17/17. Two-browser match e2e: 70-71 of
+  72-79, because its scripted walks get stuck in the redesigned hall (not the game, as far as
+  the evidence goes). Fixing that is item 0 of "Still to do" below.
+- The look book (maps, eight path-traced renders, gestures, the new mechanics, four art
+  directions, asset sources) is published as a private Claude artifact:
+  https://claude.ai/artifact/3ycngUjbZvn1eEdQHQWiWt. The owner's verdict: a good base, with
+  the graphics level-up to come later, so lightmap baking is paused (`tools/render/` has the
+  whole render and bake pipeline; `client/public/lightmaps/index.json` lists no bakes yet).
+- Next, in order: the match e2e fix; a real playtest with friends on all four maps; the TURN
+  relay for voice; remapping and a gamepad test; then the art track.
+
 ## Status (2026-11-23)
 
 Everything below was run in this container on this date. The browser suites must run on an
@@ -12,7 +28,7 @@ otherwise idle machine: software WebGL makes them sensitive to load.
 | Check | Command | Result |
 | --- | --- | --- |
 | Typecheck | `npm run typecheck` | passes |
-| Unit and rule tests | `npm test` | 346 pass in 36 files (rules, perception and secrecy, will, inputs and prediction, netcode limits, bots, HUD logic, metrics, replays, reasons, Dinner, maps, emotes, lightmaps, the review fixes, a real server) |
+| Unit and rule tests | `npm test` | 390 pass in 45 files (rules, perception and secrecy, will, inputs and prediction, netcode limits, bots, HUD logic, metrics, replays, reasons, Dinner, maps, emotes, lightmaps, the review fixes, a real server) |
 | Build | `npm run build` | passes |
 | E2E | `npm run e2e` | see "Last e2e run" below (re-run pending on an idle machine) |
 | CI | GitHub Actions | typecheck, build and unit tests on every push; e2e on pull requests and on demand |
