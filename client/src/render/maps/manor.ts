@@ -870,11 +870,11 @@ export function buildManor(def: MapDef): MapView {
     blackLacquer: mat('#151112', { rough: 0.3 }),
     white: mat('#f2eee4', { rough: 0.6 }),
     cream: mat('#e8dcc0', { rough: 0.7 }),
-    gilt: mat('#c9a24a', { rough: 0.35, metal: 0.75 }),
-    brass: mat('#d0aa50', { rough: 0.3, metal: 0.85 }),
-    silver: mat('#c8ccd0', { rough: 0.25, metal: 0.9 }),
+    gilt: mat('#d4ad55', { rough: 0.4, metal: 0.35 }),
+    brass: mat('#d8b45a', { rough: 0.35, metal: 0.45 }),
+    silver: mat('#dfe2e6', { rough: 0.3, metal: 0.45 }),
     iron: mat('#1e1c1c', { rough: 0.6, metal: 0.4 }),
-    whiteIron: mat('#f0f0ea', { rough: 0.45, metal: 0.2 }),
+    whiteIron: mat('#f0f0ea', { rough: 0.5, metal: 0.05 }),
     velvet: mat('#6a1a26', { rough: 0.95 }),
     velvetHi: mat('#8a2a36', { rough: 0.95 }),
     leather: mat('#5a1e16', { rough: 0.5 }),
@@ -897,8 +897,9 @@ export function buildManor(def: MapDef): MapView {
     leafDark: mat('#2a4a24', { rough: 0.8 }),
     soot: mat('#0c0a0a', { rough: 1 }),
     paper: mat('#f2ead2', { rough: 0.9 }),
-    copper: mat('#b8643a', { rough: 0.35, metal: 0.8 }),
+    copper: mat('#c8744a', { rough: 0.4, metal: 0.4 }),
     ribbon: mat('#0a0808', { rough: 0.6 }),
+    mirror: mat('#b4c2c2', { rough: 0.15, metal: 0.3, emissive: '#2c3838', emissiveIntensity: 1 }),
     baize: mat('#1f6a3a', { rough: 1 }),
     glass: new THREE.MeshStandardMaterial({ color: '#dfeff4', roughness: 0.05, metalness: 0.1, transparent: true, opacity: 0.25, depthWrite: false }),
     water: mat('#3a7a7a', { rough: 0.1, emissive: '#1a4a4a', emissiveIntensity: 0.6 }),
@@ -1231,7 +1232,7 @@ export function buildManor(def: MapDef): MapView {
     mesh.position.set((x0 + x1) / 2, y, (z0 + z1) / 2);
     v.add(mesh, true);
   };
-  const cofferHall = mat('#ffffff', { map: coffers('cofferHall', '#e8dcc4', '#c8b890', '#a8884a', '#c9a24a'), rough: 0.9 });
+  const cofferHall = mat('#ffffff', { map: coffers('cofferHall', '#d8c8a8', '#a88c5c', '#7a5a2a', '#c9a24a'), rough: 0.9 });
   ceilingPlane(-8, -8, 8, 6, HALL_HEIGHT, cofferHall, 2);
   ceilingPlane(-8, -12, 8, -8, HALL_HEIGHT, cofferHall, 2);
   ceilingPlane(8, -6, 16, 6, KITCHEN_HEIGHT, M.plaster);
@@ -1244,6 +1245,9 @@ export function buildManor(def: MapDef): MapView {
   // The conservatory roof: glass on a white iron grid.
   ceilingPlane(-30, -15, -22.3, 6, HT.conservatory, windows);
 
+  const __marks: [string, number][] = [];
+  const __mark = (n: string) => { let c = 0; v.group.traverse((o) => { if (o instanceof THREE.Mesh) c++; }); __marks.push([n, c]); };
+  __mark('structure');
   // ═════════════════════════════ Shared furniture ═════════════════════════════
 
   /** A window on the inside face of an outer wall: pane, glazing bars, sill, curtains and pelmet. */
@@ -1361,8 +1365,8 @@ export function buildManor(def: MapDef): MapView {
     bx(g, -L2 - 0.02, top - 0.14, -depth, L2 + 0.02, top, 0.04, M.walnut); // cornice
     const rows: number[] = [];
     if (opts.storeys) {
-      for (let y = 0.16; y < 2.45; y += 0.4) rows.push(y);
-      for (let y = 2.86; y < top - 0.45; y += 0.4) rows.push(y);
+      for (let y = 0.16; y < 2.75; y += 0.4) rows.push(y);
+      for (let y = 3.3; y < top - 0.45; y += 0.4) rows.push(y);
     } else {
       for (let y = 0.16; y < top - 0.45; y += 0.4) rows.push(y);
     }
@@ -1377,11 +1381,12 @@ export function buildManor(def: MapDef): MapView {
     });
     if (opts.storeys) {
       // The upper storey's walkway and its iron rail (two storeys of books; nobody is allowed up there).
-      bx(g, -L2, 2.56, -0.05, L2, 2.66, 0.42, M.walnut);
-      bx(g, -L2, 3.5, 0.38, L2, 3.54, 0.42, M.iron);
-      bx(g, -L2, 2.7, 0.39, L2, 2.73, 0.41, M.iron);
-      for (let x = -L2 + 0.15; x < L2; x += 0.3) bx(g, x - 0.012, 2.66, 0.388, x + 0.012, 3.5, 0.412, M.iron);
-      bx(g, -L2, 2.4, 0.03, L2, 2.42, 0.06, M.brass); // the ladder's rail
+      bx(g, -L2, 3.05, -0.05, L2, 3.17, 0.42, M.walnut);
+      bx(g, -L2, 2.98, 0.36, L2, 3.05, 0.42, M.gilt);
+      bx(g, -L2, 3.98, 0.38, L2, 4.02, 0.42, M.iron);
+      bx(g, -L2, 3.21, 0.39, L2, 3.24, 0.41, M.iron);
+      for (let x = -L2 + 0.15; x < L2; x += 0.3) bx(g, x - 0.012, 3.17, 0.388, x + 0.012, 3.98, 0.412, M.iron);
+      bx(g, -L2, 2.88, 0.03, L2, 2.9, 0.06, M.brass); // the ladder's rail
     }
   };
 
@@ -1499,6 +1504,7 @@ export function buildManor(def: MapDef): MapView {
     }
   };
 
+  __mark('before The front hall');
   // ═════════════════════════════ The front hall ═════════════════════════════
 
   // Grand staircase: oak treads, crimson runner with brass rods.
@@ -1630,7 +1636,8 @@ export function buildManor(def: MapDef): MapView {
   for (const z of [-4.6, 3.6]) windowAt(8, z, 'W', 1.2, 4.2, 5.5);
 
   // The great chandelier.
-  chandelier(0, 4.55, 0.5, 0.95, 12, HALL_HEIGHT);
+  chandelier(0, 4.45, 0.5, 1.35, 16, HALL_HEIGHT);
+  chandelier(0, 3.95, 0.5, 0.7, 8, 4.45);
   // Sconces under the gallery, by the dining room doors.
   for (const x of [-6.7, -2.1, 2.1, 6.7]) sconce(x, 1.9, -12, 'S');
 
@@ -1760,6 +1767,7 @@ export function buildManor(def: MapDef): MapView {
   rug(0, 2.2, 6.4, 4.6, persian('hallRug', { field: '#7a1a22', border: '#1c2a4a', ground: '#140e0a', accent: '#c9a24a', light: '#e8d8b0' }));
   for (const label of ['Pedestal hall NW', 'Pedestal hall NE', 'Pedestal hall SW', 'Pedestal hall SE', 'Pedestal stair foot W', 'Pedestal stair foot E', 'Gallery pedestal 1', 'Gallery pedestal 2', 'Gallery pedestal 3', 'Gallery pedestal 4', 'Gallery pedestal by the rail W', 'Gallery pedestal by the rail E']) pedestalAt(byLabel(label));
 
+  __mark('before The drawing room');
   // ═════════════════════════════ The drawing room ═════════════════════════════
   {
     const breast = byLabel('Drawing room chimney breast');
@@ -1779,7 +1787,7 @@ export function buildManor(def: MapDef): MapView {
     bx(g, 0.85, 0, 0.08, 1.05, 0.02, 0.24, M.gilt);
     // Overmantel mirror.
     bx(g, -0.75, 0.45, 0, 0.75, 2.45, 0.05, M.gilt);
-    bx(g, -0.65, 0.55, 0.05, 0.65, 2.35, 0.06, mat('#9aa8a8', { rough: 0.08, metal: 0.9 }));
+    bx(g, -0.65, 0.55, 0.05, 0.65, 2.35, 0.06, M.mirror);
     ball(g, 0, 2.55, 0.03, 0.12, M.gilt, 1.6, 1, 0.5);
     void fg;
     for (const s of [-1, 1]) sconce(fx + s * 1.25, 2.6, breast.max.z, 'S');
@@ -1825,7 +1833,7 @@ export function buildManor(def: MapDef): MapView {
   {
     const b = byLabel('Grand piano');
     const g = grp(b.max.x, 0, (b.min.z + b.max.z) / 2, 'E', true);
-    const lac = mat('#0e0c0c', { rough: 0.12 });
+    const lac = mat('#221a18', { rough: 0.22 });
     bx(g, -0.78, 0.68, -1.4, 0.78, 0.98, -0.6, lac);
     const tail = new THREE.Mesh(new THREE.CylinderGeometry(0.78, 0.78, 0.3, 20, 1, false, Math.PI / 2, Math.PI), lac);
     tail.position.set(0, 0.83, -1.4);
@@ -1837,8 +1845,8 @@ export function buildManor(def: MapDef): MapView {
     bx(g, -0.78, 0.82, 0.12, 0.78, 0.96, 0.16, lac);
     for (const [lx, lz] of [[-0.66, 0.0], [0.66, 0.0], [0, -1.95]]) cyl(g, lx, 0, lz, 0.05, 0.07, 0.68, lac, 8);
     const lid = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.03, 1.9), lac);
-    lid.position.set(-0.35, 1.4, -1.0);
-    lid.rotation.z = 0.62;
+    lid.position.set(-0.22, 1.22, -1.0);
+    lid.rotation.z = 0.42;
     g.add(lid);
     cyl(g, 0.55, 0.98, -1.0, 0.012, 0.012, 0.55, M.brass, 4).rotation.z = 0.2;
     bx(g, -0.3, 0.98, -0.12, 0.3, 1.3, -0.08, lac);
@@ -1893,6 +1901,7 @@ export function buildManor(def: MapDef): MapView {
   pedestalAt(byLabel('Pedestal drawing room window'));
   pedestalAt(byLabel('Pedestal behind the screen'));
 
+  __mark('before The conservatory');
   // ═════════════════════════════ The conservatory ═════════════════════════════
   {
     // Glass walls: a white stone plinth, glass in a white iron grid.
@@ -1922,7 +1931,7 @@ export function buildManor(def: MapDef): MapView {
     for (let z = -14; z <= 5; z += 1.9) {
       v.add(boxMesh(-30, HT.conservatory - 0.12, z - 0.04, -22.3, HT.conservatory, z + 0.04, M.whiteIron));
       const arc = new THREE.Mesh(new THREE.TorusGeometry(3.85, 0.035, 4, 24, Math.PI), M.whiteIron);
-      arc.position.set(-26.15, HT.conservatory - 3.85 - 0.12, z);
+      arc.position.set(-26.15, HT.conservatory - 0.14 - 3.85 * 0.18, z);
       arc.scale.set(1, 0.18, 1);
       v.add(arc);
     }
@@ -2029,6 +2038,7 @@ export function buildManor(def: MapDef): MapView {
   }
   rug(-26.2, -0.9, 3.4, 2.2, persian('consRug', { field: '#c8b080', border: '#5a7a4a', ground: '#3a4a2a', accent: '#a4502e', light: '#e8dcc0' }, 384, 256));
 
+  __mark('before The library');
   // ═════════════════════════════ The library ═════════════════════════════
   bookcase(byLabel('Bookcase north 1'), 'S', { storeys: true });
   bookcase(byLabel('Bookcase north 2'), 'S', { storeys: true });
@@ -2068,13 +2078,13 @@ export function buildManor(def: MapDef): MapView {
     // The rolling ladder, leaning on the north shelves.
     const g = grp(-11.4, 0, -20.6 + 0.02, 'S');
     for (const s of [-1, 1]) {
-      const rail = new THREE.Mesh(new THREE.BoxGeometry(0.05, 2.75, 0.05), M.oak);
-      rail.position.set(s * 0.25, 1.32, 0.42);
+      const rail = new THREE.Mesh(new THREE.BoxGeometry(0.05, 3.0, 0.05), M.oak);
+      rail.position.set(s * 0.25, 1.45, 0.42);
       rail.rotation.x = -0.16;
       g.add(rail);
       ball(g, s * 0.25, 0.04, 0.62, 0.04, M.brass);
     }
-    for (let i = 0; i < 8; i++) bx(g, -0.25, 0.2 + i * 0.32, 0.6 - i * 0.052 - 0.02, 0.25, 0.23 + i * 0.32, 0.6 - i * 0.052 + 0.02, M.oak);
+    for (let i = 0; i < 9; i++) bx(g, -0.25, 0.2 + i * 0.32, 0.6 - i * 0.052 - 0.02, 0.25, 0.23 + i * 0.32, 0.6 - i * 0.052 + 0.02, M.oak);
     // The writing desk: the half-burnt will, a quill, a candle, a lamp.
     const d = byLabel('Writing desk');
     const dg = grp((d.min.x + d.max.x) / 2, 0, (d.min.z + d.max.z) / 2, 'S', true);
@@ -2145,6 +2155,7 @@ export function buildManor(def: MapDef): MapView {
   pedestalAt(byLabel('Pedestal library bay'));
   pedestalAt(byLabel('Pedestal library corner'));
 
+  __mark('before The dining room (laid for the wake)');
   // ═════════════════════════════ The dining room (laid for the wake) ═════════════════════════════
   {
     const t = byLabel('Dining table');
@@ -2183,7 +2194,7 @@ export function buildManor(def: MapDef): MapView {
         for (const dx of [-0.17, -0.2, 0.2]) bx(g, x + dx - 0.006, 0.785, z - 0.09, x + dx + 0.006, 0.79, z + 0.09, M.silver);
         const nm = names[(i * 2 + (s > 0 ? 1 : 0)) % names.length];
         signAt(g, [nm], 0.16, 0.06, x, 0.83, z - s * 0.17, SIGN.card, s > 0 ? Math.PI : 0, s * 0.5);
-        chair(x, s * (tw + 0.32), s > 0 ? 'N' : 'S', M.blackLacquer, mat('#5a1a22', { rough: 0.9 }), 1.15, M.ribbon);
+        chair(x, tz + s * (tw + 0.32), s > 0 ? 'N' : 'S', M.blackLacquer, mat('#5a1a22', { rough: 0.9 }), 1.15, M.ribbon);
       }
     }
     for (const s of [-1, 1]) {
@@ -2215,7 +2226,7 @@ export function buildManor(def: MapDef): MapView {
     candlestick(g, -1.05, 0, 0.15, M.gilt);
     candlestick(g, 1.05, 0, 0.15, M.gilt);
     bx(g, -0.85, 0.45, 0, 0.85, 2.3, 0.05, M.gilt);
-    bx(g, -0.75, 0.55, 0.05, 0.75, 2.2, 0.06, mat('#5a6262', { rough: 0.08, metal: 0.9 }));
+    bx(g, -0.75, 0.55, 0.05, 0.75, 2.2, 0.06, M.mirror);
     // The silver, counted daily.
     const sc = byLabel('Silver cabinet');
     const sg = grp((sc.min.x + sc.max.x) / 2, 0, sc.max.z, 'S', true);
@@ -2239,7 +2250,7 @@ export function buildManor(def: MapDef): MapView {
     const ar = byLabel('Suit of armour');
     const ag = grp((ar.min.x + ar.max.x) / 2, 0, (ar.min.z + ar.max.z) / 2, 'S', true);
     bx(ag, -0.32, 0, -0.32, 0.32, 0.12, 0.32, M.blackLacquer);
-    const steel = mat('#a8acb0', { rough: 0.3, metal: 0.85 });
+    const steel = mat('#c4c8cc', { rough: 0.35, metal: 0.5 });
     for (const s of [-1, 1]) { cyl(ag, s * 0.1, 0.12, 0, 0.07, 0.06, 0.75, steel, 8); ball(ag, s * 0.1, 0.5, 0.02, 0.07, steel); bx(ag, s * 0.1 - 0.07, 0.12, -0.02, s * 0.1 + 0.07, 0.2, 0.16, steel); }
     cyl(ag, 0, 0.85, 0, 0.17, 0.2, 0.25, steel, 10);
     cyl(ag, 0, 1.1, 0, 0.2, 0.22, 0.4, steel, 12);
@@ -2301,6 +2312,7 @@ export function buildManor(def: MapDef): MapView {
   painting('cuthbert', 7.98, 2.6, -13.9, 'W', 0.75, 0.95);
   pedestalAt(byLabel('Pedestal dining room'));
 
+  __mark('before study');
   // ═════════════════════════════ Grandpa's study ═════════════════════════════
   {
     const d = byLabel('Study desk');
@@ -2374,6 +2386,7 @@ export function buildManor(def: MapDef): MapView {
     pedestalAt(byLabel('Pedestal study'));
   }
 
+  __mark('before The billiard room');
   // ═════════════════════════════ The billiard room ═════════════════════════════
   {
     const t = byLabel('Billiard table');
@@ -2443,6 +2456,7 @@ export function buildManor(def: MapDef): MapView {
     pedestalAt(byLabel('Pedestal billiard room'));
   }
 
+  __mark('before The kitchen, pantry and scullery');
   // ═════════════════════════════ The kitchen, pantry and scullery ═════════════════════════════
   {
     const c = byLabel('Kitchen counter');
@@ -2590,6 +2604,8 @@ export function buildManor(def: MapDef): MapView {
     cyl(v.group, 18.2, 2.81, 0.0, 0.005, 0.005, HT.scullery - 2.81, M.black, 4);
   }
 
+  __mark('end');
+  v.group.userData.marks = __marks;
   // ───────── Finish ─────────
   signs.tex.needsUpdate = true;
   portraitsAtlas.tex.needsUpdate = true;
