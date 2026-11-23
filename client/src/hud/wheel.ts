@@ -1,8 +1,10 @@
-// Radial wheel (quick-chat lines, tattle targets). Hold the key, flick the
+// Radial wheel (quick-chat lines, tattle targets, gestures, dances). Hold the key, flick the
 // mouse / right stick toward an entry (or press 1-8), release to choose.
 import { el } from '../util.js';
 
-export interface WheelItem { label: string; color?: string }
+export type WheelKind = 'quick' | 'tattle' | 'gesture' | 'dance';
+
+export interface WheelItem { label: string; color?: string; /** A small grey note under the label. */ note?: string }
 
 export class Wheel {
   readonly root = el('div', 'wheel');
@@ -11,14 +13,14 @@ export class Wheel {
   private items: WheelItem[] = [];
   private sel = -1;
   isOpen = false;
-  kind: 'quick' | 'tattle' = 'quick';
+  kind: WheelKind = 'quick';
 
   constructor() {
     this.root.appendChild(this.title);
     this.root.style.display = 'none';
   }
 
-  open(kind: 'quick' | 'tattle', title: string, items: WheelItem[]): void {
+  open(kind: WheelKind, title: string, items: WheelItem[]): void {
     this.kind = kind;
     this.items = items;
     this.isOpen = true;
@@ -36,6 +38,7 @@ export class Wheel {
         e.appendChild(sw);
       }
       e.appendChild(el('span', '', it.label));
+      if (it.note) e.appendChild(el('span', 'wheel-note', it.note));
       e.style.left = `calc(50% + ${Math.cos(a) * 150}px)`;
       e.style.top = `calc(50% + ${Math.sin(a) * 120}px)`;
       this.root.appendChild(e);

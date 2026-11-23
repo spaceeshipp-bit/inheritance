@@ -1,6 +1,7 @@
 // WebSocket protocol between the browser client and the game server.
 // JSON messages, one object per frame, discriminated by `t`.
 // The server is the authority on everything; clients send intents.
+import type { EmoteId } from './emotes.js';
 import type { MapId } from './maps/types.js';
 import type {
   CharSnap, CousinInfo, FinalResult, MatchOptions, Phase, PlayerInfo, PropSnap,
@@ -64,6 +65,8 @@ export type ClientMsg =
   | { t: 'chat'; text: string }
   /** Tattle on a cousin (must be within tattle range of Grandma). */
   | { t: 'tattle'; accused: string }
+  /** Start a gesture or dance (shared/emotes.ts). */
+  | { t: 'emote'; id: EmoteId }
   | { t: 'vote'; target: string }
   /** One click on the results screen's playtest survey (about the match just played). */
   | { t: 'survey'; q: SurveyQuestion; a: SurveyAnswer }
@@ -125,6 +128,11 @@ export type GameEvent =
   | { e: 'specs-off'; pos: Vec3 }
   | { e: 'lightning' }
   | { e: 'moment'; moment: Moment }
+  /**
+   * A gesture or dance aimed at you (`at` is your id), or, for Grandma, one she
+   * clearly saw a cousin make (`at` is whoever it was aimed at, or null).
+   */
+  | { e: 'gesture'; by: string; emote: EmoteId; at: string | null }
   | { e: 'toast'; text: string };
 
 export type ServerMsg =

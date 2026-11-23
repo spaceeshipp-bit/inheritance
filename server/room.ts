@@ -487,6 +487,7 @@ export class Room {
       case 'quick':
       case 'chat':
       case 'tattle':
+      case 'emote':
         if (!this.match) break;
         if (!p.chat.take(now)) {
           if (now >= p.slowToastAt) {

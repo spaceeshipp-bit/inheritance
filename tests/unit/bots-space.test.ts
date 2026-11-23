@@ -2,10 +2,13 @@
 // from 1.3-1.6 m (close enough for her to hear clearly), wishes handed over from
 // within the 1.6 m delivery range and then a step back. Whole Afternoon Tea
 // visits at normal speed: a bot Grandma and four bot cousins, several seeds.
+import { EMOTES } from '../../shared/emotes.js';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { BOTS, WISH } from '../../shared/constants.js';
 import { flatDist } from '../../shared/senses.js';
 import { Match } from '../../server/match.js';
+
+const EMOTE_NAMES = new Set(Object.values(EMOTES).map((d) => d.name));
 
 const COUSINS = ['c0', 'c1', 'c2', 'c3'];
 
@@ -33,7 +36,8 @@ function run(seed: number): Run {
     return flatDist(c.body.pos, g.body.pos);
   };
   m.log.onLog((ev) => {
-    if (ev.kind === 'compliment') out.compliments.push(gap(ev.by));
+    // Spoken compliments (a gesture she sees counts as flattery from further off: shared/emotes.ts).
+    if (ev.kind === 'compliment' && !EMOTE_NAMES.has(ev.line)) out.compliments.push(gap(ev.by));
     if (ev.kind === 'wish') out.deliveries.push({ d: gap(ev.by), by: ev.by, t: ev.t });
   });
   m.start();

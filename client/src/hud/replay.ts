@@ -84,6 +84,8 @@ export class ReplayClip {
         yaw: lerpAngle(ca.yaw, cb.yaw, k), pitch: 0, vel, state: ca.state, ragdollT: 0, holding: ca.holding,
         running: speed > 4.5, sneaking: false, whispering: false, charge: 0, plant: 0, leader: false,
         ...(n ? { aidActive: n.aid, specsActive: n.specs, specsOff: false } : {}),
+        // A gesture or dance carries on between frames (its clock runs with the replay's).
+        ...(ca.emote !== undefined && ca.emoteT !== undefined ? { emote: ca.emote, emoteT: ca.emoteT + (T - a.t) } : {}),
       });
       seen.set(ca.id, ca.seen);
     }

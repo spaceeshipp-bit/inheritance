@@ -21,11 +21,12 @@ export const OUTCOME_TEXT: Record<CousinOutcome, string> = {
 };
 
 /** How good a moment is for the reading: lower is better. */
-const MOMENT_RANK: Record<MomentKind, number> = { framed: 0, 'big-cut': 1, 'love-you-nana': 2, 'favourite-broken': 3, 'caught-red-handed': 4 };
+const MOMENT_RANK: Record<MomentKind, number> = { framed: 0, 'big-cut': 1, 'love-you-nana': 2, 'behind-her-back': 3, 'favourite-broken': 4, 'caught-red-handed': 5, cheek: 6 };
 
 /**
  * The (at most) `max` moments worth reading out: people before bots, then
- * framed > big cut > love you, Nana > favourite broken > caught red-handed,
+ * framed > big cut > love you, Nana > behind her back > favourite broken >
+ * caught red-handed > the cheek of it,
  * then the earliest; never two for the same actor. Returned best first.
  */
 export function pickMoments(moments: Moment[], isHuman: (id: string) => boolean, max = 3): Moment[] {

@@ -4,10 +4,11 @@
 // Cousin:  WASD move, mouse look, Shift run, Ctrl sneak (C also works: Ctrl+W
 //          closes browser tabs), Space jump, LMB grab, RMB throw, F shove,
 //          E interact, G plant, Q quick-chat wheel, T tattle wheel,
-//          Left Alt whisper, Enter typed chat.
+//          Z gesture wheel, X dance wheel, Left Alt whisper, Enter typed chat.
 // Grandma: WASD move, mouse look, E Bless, Q Tut, scroll lock name,
 //          Tab parchment, LMB cane, RMB hearing aid, F spectacles, R summon,
-//          C pin, V quick-chat wheel, Left Alt whisper, Enter typed chat.
+//          C pin, V quick-chat wheel, Z gesture wheel, X dance wheel,
+//          Left Alt whisper, Enter typed chat.
 // Gamepad: the design doc's controller table (see padAction).
 // Both:    push-to-talk key (settings, default B), H controls help.
 import type { InputMsg } from '../../shared/protocol.js';
@@ -16,7 +17,7 @@ import type { SettingsData } from './settings.js';
 import { clamp } from './util.js';
 
 export type Action =
-  | 'quickWheel' | 'tattleWheel' | 'chat' | 'bless' | 'tut' | 'parchment' | 'summon' | 'pin'
+  | 'quickWheel' | 'tattleWheel' | 'gestureWheel' | 'danceWheel' | 'chat' | 'bless' | 'tut' | 'parchment' | 'summon' | 'pin'
   | 'lockNext' | 'lockPrev' | 'whisper' | 'talk' | 'help' | 'back'
   | 'navUp' | 'navDown' | 'navLeft' | 'navRight' | 'select';
 
@@ -25,7 +26,7 @@ const PAD = { A: 0, B: 1, X: 2, Y: 3, LB: 4, RB: 5, LT: 6, RT: 7, BACK: 8, START
 
 const GAME_KEYS = new Set([
   'Tab', 'Space', 'AltLeft', 'AltRight', 'ControlLeft', 'ControlRight', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
-  'KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyF', 'KeyE', 'KeyG', 'KeyQ', 'KeyT', 'KeyR', 'KeyC', 'KeyV', 'KeyB', 'KeyH',
+  'KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyF', 'KeyE', 'KeyG', 'KeyQ', 'KeyT', 'KeyR', 'KeyC', 'KeyV', 'KeyB', 'KeyH', 'KeyZ', 'KeyX',
 ]);
 
 export class Input {
@@ -157,6 +158,8 @@ export class Input {
       case 'KeyQ': act(g ? 'tut' : 'quickWheel'); break;
       case 'KeyV': if (g) act('quickWheel'); break;
       case 'KeyT': if (!g) act('tattleWheel'); break;
+      case 'KeyZ': act('gestureWheel'); break;
+      case 'KeyX': act('danceWheel'); break;
       case 'KeyE': if (g) act('bless'); break;
       case 'Tab': if (g) act('parchment'); break;
       case 'KeyR': if (g) act('summon'); break;
@@ -206,9 +209,10 @@ export class Input {
   /**
    * Controller layout from the design doc. Cousin: L3 run (toggle), B sneak,
    * A jump, RT grab, RB throw, X shove, Y interact, D-down plant, LB
-   * compliment wheel, D-up tattle, LT whisper. Grandma: RB Bless, LB Tut,
-   * D-left/right lock, View parchment, RT cane, LT hearing aid, Y spectacles,
-   * B summon, X pin, R3 quick-chat wheel.
+   * compliment wheel, D-up tattle, D-left gestures, D-right dances, LT
+   * whisper. Grandma: RB Bless, LB Tut, D-left/right lock, View parchment, RT
+   * cane, LT hearing aid, Y spectacles, B summon, X pin, R3 quick-chat wheel,
+   * L3 gestures, D-down dances.
    */
   private padAction(i: number, down: boolean): void {
     const g = this.role === 'grandma';
@@ -229,6 +233,8 @@ export class Input {
         case PAD.B: act('summon'); break;
         case PAD.X: act('pin'); break;
         case PAD.R3: act('quickWheel'); break;
+        case PAD.L3: act('gestureWheel'); break;
+        case PAD.DOWN: act('danceWheel'); break;
         case PAD.LEFT: if (down) this.onAction('lockPrev', true); break;
         case PAD.RIGHT: if (down) this.onAction('lockNext', true); break;
         case PAD.START: if (down) this.onAction('help', true); break;
@@ -238,6 +244,8 @@ export class Input {
       switch (i) {
         case PAD.LB: act('quickWheel'); break;
         case PAD.UP: act('tattleWheel'); break;
+        case PAD.LEFT: act('gestureWheel'); break;
+        case PAD.RIGHT: act('danceWheel'); break;
         case PAD.LT: act('whisper'); break;
         case PAD.L3: if (down) this.padRun = !this.padRun; break;
         case PAD.START: if (down) this.onAction('help', true); break;

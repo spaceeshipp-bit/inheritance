@@ -5,7 +5,7 @@
 // wall. A new map is checked by this file as soon as it is registered.
 import { describe, expect, it } from 'vitest';
 import { COUSIN, DINNER, HEIRLOOM } from '../../shared/constants.js';
-import { MAPS, MAP_IDS, groundHeight, insideMap, mapAt, roomAt, type Box, type MapDef } from '../../shared/map.js';
+import { MAPS, MAP_IDS, groundHeight, inDrop, insideMap, mapAt, roomAt, type Box, type MapDef } from '../../shared/map.js';
 import { CHAR_SHAPE, blockersAt, circleRectPush } from '../../shared/movement.js';
 import { flatDist } from '../../shared/senses.js';
 import type { Vec3 } from '../../shared/types.js';
@@ -129,8 +129,9 @@ for (const id of MAP_IDS) {
           const same = m.phase === phase && m.visitIndex === visit;
           for (const c of m.chars.values()) {
             const was = last.get(c.id);
-            if (same && was && flatDist(was, c.body.pos) > 1.5) lost++;
-            if (!insideMap(c.body.pos, def, 0.6, 2)) lost++;
+            // Brought back without having fallen through a drop zone (overboard is allowed: it is the point).
+            if (same && was && flatDist(was, c.body.pos) > 1.5 && !inDrop(was, def)) lost++;
+            if (!insideMap(c.body.pos, def, 0.6, 2) && !inDrop(c.body.pos, def)) lost++;
             last.set(c.id, { ...c.body.pos });
           }
           phase = m.phase; visit = m.visitIndex;

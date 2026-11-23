@@ -6,13 +6,16 @@
 // Axes: X east(+)/west(-), Z south(+)/north(-), Y up. Ground floor at y = 0.
 import type { Vec3 } from './types.js';
 import { MANOR, GALLERY_Y, HALL_HEIGHT, KITCHEN_HEIGHT } from './maps/manor.js';
+import { CAREHOME } from './maps/carehome.js';
+import { PARLOUR } from './maps/parlour.js';
+import { CRUISE } from './maps/cruise.js';
 import type { Box, MapDef, MapId, Ramp, Room, Volume } from './maps/types.js';
 
 export type { Box, BoxKind, MapDef, MapId, Ramp, Rect, Room, Volume } from './maps/types.js';
 export { GALLERY_Y, HALL_HEIGHT, KITCHEN_HEIGHT };
 
 /** Every map, in the order the lobby offers them. */
-export const MAPS: Record<MapId, MapDef> = registry([MANOR]);
+export const MAPS: Record<MapId, MapDef> = registry([MANOR, CAREHOME, PARLOUR, CRUISE]);
 export const MAP_IDS = Object.keys(MAPS) as MapId[];
 
 function registry(defs: MapDef[]): Record<MapId, MapDef> {
@@ -75,6 +78,11 @@ export function roomAt(p: Vec3): string {
     if (p.x >= r.min.x && p.x <= r.max.x && p.z >= r.min.z && p.z <= r.max.z && p.y >= r.min.y - 0.5 && p.y <= r.max.y) return r.name;
   }
   return 'Outside';
+}
+
+/** Falling through one of a map's drop zones (over the side of the ship). */
+export function inDrop(p: Vec3, m: MapDef): boolean {
+  return (m.drops ?? []).some((v) => p.x >= v.min.x && p.x <= v.max.x && p.z >= v.min.z && p.z <= v.max.z && p.y >= v.min.y && p.y <= v.max.y);
 }
 
 /** Inside one of a map's volumes, with `margin` to spare sideways and `below` metres of drop allowed. */

@@ -10,6 +10,8 @@ import type { CharSnap } from '../../../shared/types.js';
 import { clamp, damp, rng } from '../util.js';
 import { bandPatternIndex, bandPatternTexture, blobMaterial, boxGeo, mat } from './materials.js';
 import { makeItem } from './items.js';
+import { EmoteRig, emotePose, type BodyPose } from './emotes.js';
+import type { EmoteId } from '../../../shared/emotes.js';
 
 export type Degrade = 'none' | 'heavy' | 'shapes';
 
@@ -93,6 +95,14 @@ export class CharacterModel {
   private bandPlain: THREE.Material | null = null;
   private bandPatterned: THREE.Material | null = null;
   private patternsShown: boolean | null = null;
+  /** Gestures and dances: the one playing, its clock, the body pose it wants and the one shown (smoothed), its props. */
+  private emoteId: EmoteId | null = null;
+  private emoteClock = 0;
+  private emWant: BodyPose = { leanX: 0, leanZ: 0, bob: 0, spin: 0 };
+  private emNow: BodyPose = { leanX: 0, leanZ: 0, bob: 0, spin: 0 };
+  private rig: EmoteRig | null = null;
+  private hands: THREE.Object3D[] = [];
+  private front = new THREE.Group();
   /** Near-camera fade: current opacity and per-material transparent copies. */
   private fade = 1;
   private fadeMats = new Map<THREE.Material, THREE.Material>();
@@ -108,6 +118,7 @@ export class CharacterModel {
     this.tumbleG.add(this.leanG);
     this.tumbleG.position.y = this.hipH;
     this.yawG.scale.setScalar(this.scale);
+    this.yawG.add(this.front);
     this.build();
     this.shadow = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), blobMaterial());
     this.shadow.rotation.x = -Math.PI / 2;
@@ -191,6 +202,10 @@ export class CharacterModel {
       const arm = this.joint(s < 0 ? 'armL' : 'armR', s * (g ? 0.31 : 0.29), 0.56, 0);
       this.part(arm, new THREE.CapsuleGeometry(0.062, 0.42, 4, 8), shirt, 0, -0.26, 0);
       this.part(arm, new THREE.SphereGeometry(0.07, 10, 8), skin, 0, -0.53, 0);
+      const hand = new THREE.Object3D();
+      hand.position.set(0, -0.56, 0);
+      arm.add(hand);
+      this.hands[s < 0 ? 0 : 1] = hand;
       if (g && s > 0) {
         // The cane, held in the right hand.
         const caneM = mat('#3b2414', { rough: 0.4 });
@@ -426,6 +441,7 @@ export class CharacterModel {
       }
       this.leanG.rotation.x *= 1 - damp(6, dt);
     }
+    this.applyEmote(c, dt, floppy, speed, f.degrade);
     const k = floppy ? 28 : 260;
     const cdamp = floppy ? 3.5 : 30;
     for (const j of Object.values(J)) {
@@ -442,7 +458,45 @@ export class CharacterModel {
     this.shadow.scale.setScalar((0.95 + lying * 0.6) * s);
   }
 
+  /**
+   * A gesture or dance: its pose over the gait (only standing still, upright),
+   * the lean, bob and spin eased in and out, and its props.
+   */
+  private applyEmote(c: CharSnap, dt: number, floppy: boolean, speed: number, degrade: Degrade): void {
+    const id = !floppy && speed < 0.8 && c.emote ? c.emote : null;
+    if (id !== this.emoteId) {
+      this.emoteId = id;
+      this.emoteClock = c.emoteT ?? 0;
+      // Unwind a twirl the short way round.
+      this.emNow.spin = Math.atan2(Math.sin(this.emNow.spin), Math.cos(this.emNow.spin));
+    } else if (id) {
+      this.emoteClock += dt;
+      if (c.emoteT !== undefined && Math.abs(c.emoteT - this.emoteClock) > 0.35) this.emoteClock = c.emoteT;
+    }
+    const want = this.emWant, now = this.emNow;
+    if (id) emotePose(id, this.emoteClock, this.joints, want);
+    else { want.leanX = this.leanG.rotation.x; want.leanZ = 0; want.bob = 0; want.spin = 0; }
+    if (floppy) { now.leanX = this.leanG.rotation.x; now.leanZ = 0; now.bob = 0; now.spin = 0; }
+    else {
+      const k = damp(id ? 14 : 10, dt);
+      now.leanX += (want.leanX - now.leanX) * k;
+      now.leanZ += (want.leanZ - now.leanZ) * k;
+      now.bob += (want.bob - now.bob) * k;
+      // A twirl turns at its own speed; everything else eases.
+      now.spin = id === 'tea-twirl' || id === 'still-alive' ? want.spin : now.spin + (want.spin - now.spin) * k;
+      this.leanG.rotation.x = now.leanX;
+    }
+    this.leanG.rotation.z = now.leanZ;
+    this.tumbleG.position.y += now.bob;
+    this.yawG.rotation.y = c.yaw + now.spin;
+    if (id && degrade !== 'shapes') {
+      this.rig ??= new EmoteRig({ body: this.leanG, head: this.joints.head.obj, handL: this.hands[0], handR: this.hands[1], front: this.front });
+      this.rig.show(id, this.emoteClock, degrade !== 'none');
+    } else this.rig?.hide();
+  }
+
   dispose(): void {
+    this.rig?.dispose();
     this.root.removeFromParent();
     this.root.traverse((o) => {
       if (o instanceof THREE.Mesh) o.geometry.dispose();

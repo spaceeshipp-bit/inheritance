@@ -72,4 +72,6 @@ export const MOMENT_TITLES: Record<MomentKind, string> = {
   'caught-red-handed': 'Caught Red-Handed',
   'big-cut': 'The Big Cut',
   'favourite-broken': 'Her Favourite, Broken',
+  'behind-her-back': 'Behind Her Back',
+  cheek: 'The Cheek of It',
 };

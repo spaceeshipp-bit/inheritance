@@ -1,6 +1,7 @@
 // Strict validation of everything a client sends. Anything malformed becomes
 // null (and is dropped); numbers are clamped into range; strings are trimmed
 // and stripped of control characters. The server never trusts a client shape.
+import { isEmoteId } from '../shared/emotes.js';
 import { QUICKCHAT } from '../shared/constants.js';
 import { SURVEY_ANSWERS, SURVEY_QUESTIONS, type ClientMsg, type GrandmaAction, type InputMsg, type RtcSignal } from '../shared/protocol.js';
 import type { MatchOptions } from '../shared/types.js';
@@ -203,6 +204,8 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
         const accused = id(m.accused);
         return accused ? { t: 'tattle', accused } : null;
       }
+      case 'emote':
+        return isEmoteId(m.id) ? { t: 'emote', id: m.id } : null;
       case 'vote': {
         const target = id(m.target);
         return target ? { t: 'vote', target } : null;

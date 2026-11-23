@@ -5,6 +5,7 @@ import type { ClientMsg, GameEvent } from '../../shared/protocol.js';
 import { dist } from '../../shared/senses.js';
 import type { Vec3 } from '../../shared/types.js';
 import type { Sfx } from './audio/sfx.js';
+import { EmoteWatch } from './hud/emotewatch.js';
 import type { Hud } from './hud/hud.js';
 import type { HudFrame } from './hud/types.js';
 import type { Action, Input } from './input.js';
@@ -49,6 +50,7 @@ export class Game {
   private tickClock = performance.now();
   private takeover = el('div', 'takeover');
   private prevCane = 0;
+  private emotes: EmoteWatch | null = null;
 
   constructor(private d: GameDeps) {
     d.input.onAction = (a, down) => this.onAction(a, down);
@@ -91,6 +93,7 @@ export class Game {
   }
 
   end(): void {
+    this.emotes?.clear();
     clearInterval(this.tickTimer);
     this.d.hud.endMatch();
     this.d.renderer.setMatch(null);
@@ -167,9 +170,13 @@ export class Game {
         else if (hud.wheel.isOpen) { hud.wheel.close(); input.lookFrozen = false; }
         return;
       case 'quickWheel':
-      case 'tattleWheel': {
-        if (!visit && !(a === 'quickWheel' && s.phase === 'intermission')) return;
-        const kind = a === 'quickWheel' ? 'quick' : 'tattle';
+      case 'tattleWheel':
+      case 'gestureWheel':
+      case 'danceWheel': {
+        const between = s.phase === 'intermission' && a !== 'tattleWheel';
+        if (!visit && !between) return;
+        if (this.parchmentOpen && down) return;
+        const kind = a === 'quickWheel' ? 'quick' : a === 'tattleWheel' ? 'tattle' : a === 'gestureWheel' ? 'gesture' : 'dance';
         if (down) {
           if (hud.wheel.isOpen) return;
           input.cursor.x = input.cursor.y = 0;
@@ -223,6 +230,7 @@ export class Game {
     if (!pick) return;
     if (pick.kind === 'quick' && pick.line !== undefined) send({ t: 'quick', line: pick.line });
     if (pick.kind === 'tattle' && pick.accused) send({ t: 'tattle', accused: pick.accused });
+    if (pick.emote) send({ t: 'emote', id: pick.emote });
   }
 
   // ───────────── events ─────────────
@@ -277,6 +285,14 @@ export class Game {
     const g = view.grandma;
     if (g && (g.caneCooldown ?? 0) > this.prevCane + 0.5) renderer.caneSwing(s.grandmaId, s.selfId);
     this.prevCane = g?.caneCooldown ?? 0;
+
+    // Gestures and dances: their sounds, pops and captions (not during the reading's replays).
+    if (s.phase === 'visit' || s.phase === 'intermission') {
+      this.emotes ??= new EmoteWatch({ sfx, floats: hud.floats, captions: hud.captions });
+      this.emotes.frame(view.chars.values(), view.self ? { pos: view.self.pos, yaw: input.yaw } : null, {
+        now: t, grandma: this.isGrandma, name: (id) => s.name(id), head: (id) => renderer.headPos(id),
+      });
+    }
 
     // What Nana Saw plays at the end of the reading; otherwise the usual view.
     const replay = s.phase === 'reading' ? hud.replayView() : null;

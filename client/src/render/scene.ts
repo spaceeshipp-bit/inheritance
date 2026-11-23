@@ -288,7 +288,7 @@ export class GameRenderer {
       const m = this.ensureModel(c);
       const mine = c.id === selfId;
       // Hide yourself in first person, or when a wall pulls the orbit camera right up to your head.
-      m.root.visible = !(mine && (isGrandma || (!f.cinematic && this.rig.boom < 1.1)));
+      m.root.visible = !(mine && !this.photoCam && (isGrandma || (!f.cinematic && this.rig.boom < 1.1)));
       const ip = itemProps.get(c.id);
       const itemOnBody = !ip || (ip.heldBy === c.id && c.holding !== ip.id);
       const degrade: Degrade = isGrandma && sense && !mine ? degradeFor(visionBand(sense, c.pos)) : 'none';

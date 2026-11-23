@@ -3,7 +3,7 @@
 // bounce, rest on boxes and the stair ramp, get carried and thrown.
 // Pure functions over plain data so tests can drive them directly.
 import { FALL_RAGDOLL_HEIGHT, GRAVITY, HEIRLOOM, RAGDOLL_TIME } from '../shared/constants.js';
-import { BOXES, RAMPS, groundHeight, insideMap, mapAt } from '../shared/map.js';
+import { BOXES, RAMPS, groundHeight, inDrop, insideMap, mapAt } from '../shared/map.js';
 import {
   CHAR_SHAPE, createBody, forwardOf, rampHeightAt, resolveHorizontal, stepMovement,
   type MoveBody, type MoveCmd, type MoveResult,
@@ -303,14 +303,14 @@ export function bumpsPedestal(c: PhysChar, spot: Vec3): boolean {
 /** Is a prop outside its map (escaped through a gap, overboard, or lost)? */
 export function propOutside(p: Vec3): boolean {
   const m = mapAt(p);
-  return !m || !insideMap(p, m);
+  return !m || (!insideMap(p, m) && !inDrop(p, m));
 }
 
 /** Keep a character inside its map; returns true if it had to be rescued (fallen out, overboard). */
 export function rescueIfLost(c: PhysChar, fallback: Vec3): boolean {
   const p = c.body.pos;
   const m = mapAt(p);
-  const bad = !m || !insideMap(p, m, 0.6, 2);
+  const bad = !m || (!insideMap(p, m, 0.6, 2) && !inDrop(p, m));
   if (!bad) return false;
   c.body = createBody(fallback);
   return true;

@@ -68,7 +68,11 @@ export interface MapDef {
   /** Where heirlooms can stand (the top of each pedestal). */
   heirloomSpots: Vec3[];
   /** Family Dinner: the table everyone sits round, and the door you excuse yourself at. */
-  dinner: { table: Rect; door: { x: number; z: number } };
+  /**
+   * Family Dinner: the table everyone sits round (matching a 'table' box), and
+   * the door you excuse yourself at, with what the game calls it ("the kitchen door").
+   */
+  dinner: { table: Rect; door: { x: number; z: number }; doorName: string };
   nav: {
     /** Ground-floor waypoints (y = 0): in the open, a few metres apart, every room reachable. */
     ground: Vec3[];
@@ -81,6 +85,12 @@ export interface MapDef {
   };
   /** Told to everyone when someone leaves the map and is brought back; {name} is replaced. */
   lostToast?: string;
+  /**
+   * Places you can fall through but not stand in (over a ship's side, down to
+   * the sea): someone (or something) here is not brought back until they drop
+   * below the bottom of it, so the fall is seen.
+   */
+  drops?: Volume[];
   /** Height of the ground where there is no floor box (default 0). The sea around a ship is far below. */
   voidFloor?: number;
 }

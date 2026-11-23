@@ -23,6 +23,7 @@ import type {
 } from '../shared/types.js';
 import { applyChange, available, createWill, leader, readingOrder, resetVisitBudget, setShare, type WillResult, type WillState } from '../shared/will.js';
 import { CousinBot, GrandmaBot, type Bot } from './bots.js';
+import { EMOTE, EMOTES, type EmoteId } from '../shared/emotes.js';
 import { EventLog } from './log.js';
 import { ReplayRecorder, type FullFrame } from './replay.js';
 import { replaysSeconds } from '../shared/replay.js';
@@ -104,6 +105,9 @@ export interface Char extends PhysChar {
   released: Btns;
   ack: number;
   shoveCd: number;
+  /** A gesture or dance under way (`judged`: Nana's view of it has been taken), and when the next may start. */
+  emote: { id: EmoteId; at: number; until: number; judged: boolean } | null;
+  emoteCd: number;
   /** A shove pressed just before the cooldown ended fires when it does (until this match time). */
   shoveBufferUntil: number;
   cousinIndex: number;
@@ -387,7 +391,7 @@ export class Match {
       if (moment.kind === 'big-cut') return { e: 'moment', moment };
       if (moment.kind === 'favourite-broken' || moment.kind === 'framed') return null;
       if (to === moment.actor) return { e: 'moment', moment };
-      if (to === this.grandmaId && moment.kind === 'caught-red-handed') return { e: 'moment', moment };
+      if (to === this.grandmaId && (moment.kind === 'caught-red-handed' || moment.kind === 'cheek')) return { e: 'moment', moment };
       return null;
     }));
     this.log.onLog((ev, i) => {
@@ -403,7 +407,7 @@ export class Match {
       id: p.id, name: p.name, isBot: p.isBot, connected: true, role,
       body: createBody({ x: 0, y: 0, z: 0 }), yaw: 0, pitch: 0, state: 'normal', ragdollT: 0, knockedBy: null, knockedAt: -Infinity,
       holding: null, sticky: false, running: false, sneaking: false, whispering: false, charge: 0, plantT: 0,
-      input: this.blankInput(), inputQueue: [], lastSeq: 0, repeats: 0, credit: 0, queueLow: Infinity, queueWindow: 0, guess: null, yawHold: 0, yawHoldFrom: 0, last: noBtns(), pressed: noBtns(), released: noBtns(), ack: 0, shoveCd: 0, shoveBufferUntil: -Infinity,
+      input: this.blankInput(), inputQueue: [], lastSeq: 0, repeats: 0, credit: 0, queueLow: Infinity, queueWindow: 0, guess: null, yawHold: 0, yawHoldFrom: 0, last: noBtns(), pressed: noBtns(), released: noBtns(), ack: 0, shoveCd: 0, emote: null, emoteCd: 0, shoveBufferUntil: -Infinity,
       cousinIndex, itemId: role === 'cousin' ? `item-${COUSINS[cousinIndex % COUSINS.length].key}` : null,
       parchmentOpen: false, aidT: 0, aidCd: 0, specsT: 0, specsCd: 0, specsOff: false, caneCd: 0, summonCd: 0, quillT: 0, whistleT: 0,
     };
@@ -466,6 +470,7 @@ export class Match {
     const seats = dinner ? SPAWNS.dinnerCousins : SPAWNS.cousins;
     for (const c of this.chars.values()) {
       this.dropHeld(c, false);
+      c.emote = null;
       if (c.role === 'grandma') {
         c.body = createBody(nana);
         c.yaw = dinner ? SPAWNS.dinnerGrandmaYaw : SPAWNS.grandmaYaw;
@@ -581,6 +586,7 @@ export class Match {
         case 'quick': this.handleQuick(id, msg.line); break;
         case 'chat': this.handleChat(id, msg.text); break;
         case 'tattle': this.handleTattle(id, msg.accused); break;
+        case 'emote': this.handleEmote(id, msg.id); break;
         case 'vote': this.handleVote(id, msg.target); break;
         default: break;
       }
@@ -834,6 +840,67 @@ export class Match {
     if (c.role === 'cousin' && COMPLIMENT_RE.test(text) && NANA_RE.test(text)) this.maybeCompliment(c, text);
   }
 
+  /** Start a gesture or dance (validated: a known emote). */
+  handleEmote(id: string, emote: EmoteId): void {
+    const c = this.chars.get(id);
+    const def = EMOTES[emote];
+    if (!c || !def || def.who !== c.role) return;
+    if ((this.phase !== 'visit' && this.phase !== 'intermission') || this.pause || c.state !== 'normal' || !c.connected) return;
+    if (this.time < c.emoteCd) return;
+    if (c.holding || c.charge > 0 || c.plantT > 0 || c.parchmentOpen) {
+      this.emit(id, { e: 'toast', text: c.parchmentOpen ? 'Put the quill down first, dear.' : 'Your hands are full.' });
+      return;
+    }
+    c.emote = { id: emote, at: this.time, until: this.time + def.secs, judged: false };
+    c.emoteCd = this.time + EMOTE.cooldown;
+  }
+
+  /**
+   * Who an emote is aimed at: the nearest person in front of you (within
+   * EMOTE.aimRange and EMOTE.aimCone either side of your facing; behind you
+   * for a moon) that you can see.
+   */
+  aimedAt(c: Char, away = false): Char | null {
+    let best: Char | null = null, bestScore = Infinity;
+    const f = forwardOf(c.yaw + (away ? Math.PI : 0));
+    for (const o of this.chars.values()) {
+      if (o === c || o.state === 'sleeping') continue;
+      const dx = o.body.pos.x - c.body.pos.x, dz = o.body.pos.z - c.body.pos.z;
+      const d = Math.hypot(dx, dz);
+      if (d > EMOTE.aimRange || d < 1e-3 || Math.abs(o.body.pos.y - c.body.pos.y) > 2) continue;
+      const ang = Math.acos(Math.max(-1, Math.min(1, (dx * f.x + dz * f.z) / d)));
+      if (ang > EMOTE.aimCone) continue;
+      if (!lineOfSight(eyeOf(c.body.pos), { x: o.body.pos.x, y: o.body.pos.y + CHEST_HEIGHT, z: o.body.pos.z })) continue;
+      const score = d * (1 + ang);
+      if (score < bestScore) { bestScore = score; best = o; }
+    }
+    return best;
+  }
+
+  /**
+   * An emote at its height: whoever it is aimed at is told; Nana is told what
+   * she clearly saw. Rude ones go in the log (seen or not: Behind Her Back is a
+   * moment); a sweet one she clearly sees aimed at her, close by, is flattery.
+   */
+  private judgeEmote(c: Char): void {
+    if (!c.emote) return;
+    const def = EMOTES[c.emote.id];
+    const target = this.aimedAt(c, !!def.away);
+    const at = target?.id ?? null;
+    const g = this.grandma;
+    if (target && target !== g) this.emit(target.id, { e: 'gesture', by: c.id, emote: def.id, at });
+    if (c.role === 'grandma' || !g) return;
+    if (this.phase !== 'visit' || this.pause) return;
+    const per = this.perceive(c.body.pos);
+    const atNana = target === g;
+    if (per.identifiable) this.emit(g.id, { e: 'gesture', by: c.id, emote: def.id, at });
+    if (def.tone === 'rude') {
+      this.log.add({ t: this.time, kind: 'rude', by: c.id, emote: def.id, at, atNana, seen: per.identifiable, ...(per.sharp ? { sharp: true } : {}) });
+    } else if (def.tone === 'sweet' && atNana && per.identifiable && per.dist <= EMOTE.sweetRange) {
+      this.log.add({ t: this.time, kind: 'compliment', by: c.id, line: def.name });
+    }
+  }
+
   handleTattle(id: string, accused: string): void {
     const c = this.chars.get(id);
     const g = this.grandma;
@@ -1032,7 +1099,8 @@ export class Match {
       const spawn = c.role === 'grandma' ? SPAWNS.grandma : SPAWNS.cousins[Math.max(0, this.cousinIds.indexOf(c.id)) % SPAWNS.cousins.length];
       if (rescueIfLost(c, spawn)) {
         this.dropHeld(c, false);
-        if (this.mapDef.lostToast && this.phase === 'visit') this.emit(c.id, { e: 'toast', text: this.mapDef.lostToast });
+        const lost = this.mapDef.lostToast;
+        if (lost && this.phase === 'visit') this.emitAll(() => ({ e: 'toast', text: lost.replace('{name}', c.name) }));
       }
     }
     this.updateProps(h);
@@ -1073,6 +1141,14 @@ export class Match {
     const inp = c.input;
     const live = this.phase === 'visit' || this.phase === 'intermission';
     const upright = c.state === 'normal';
+    if (c.emote) {
+      // Moving, acting, picking something up, opening the parchment or falling over ends it.
+      const p = c.pressed;
+      const acted = p.primary || p.secondary || p.shove || p.interact || p.plant || p.jump;
+      if (this.time >= c.emote.until || !live || !upright || !c.connected || acted || c.holding || c.parchmentOpen
+        || Math.hypot(inp.move.x, inp.move.z) > 0.15) c.emote = null;
+      else if (!c.emote.judged && this.time - c.emote.at >= EMOTE.judgeAt) { c.emote.judged = true; this.judgeEmote(c); }
+    }
     const canMove = live && upright && c.connected;
     const canAct = this.phase === 'visit' && upright && c.connected;
     if (upright && c.connected) this.faceInput(c, inp);
@@ -1956,7 +2032,7 @@ export class Match {
       e: 'toast',
       text: v !== 'dinner' ? `${VISITS[v].name} begins.`
         : to === this.grandmaId ? 'Family Dinner begins. You will notice anyone who leaves the table.'
-          : `Family Dinner begins. Stay near the table: Nana notices an empty chair. (E by the kitchen door excuses you, once.)`,
+          : `Family Dinner begins. Stay near the table: Nana notices an empty chair. (E by ${this.mapDef.dinner.doorName} excuses you, once.)`,
     }));
   }
 
@@ -2135,7 +2211,10 @@ export class Match {
         if (per.visible) seen = per.sharp ? 'sharp' : per.identifiable ? 'soft' : 'shape';
         else if (per.dist <= Math.max(SENSES.mumble, steps)) seen = 'heard';
       }
-      return { id: c.id, x: r2(c.body.pos.x), y: r2(c.body.pos.y), z: r2(c.body.pos.z), yaw: r2(c.yaw), state: c.state, holding: c.holding, seen };
+      return {
+        id: c.id, x: r2(c.body.pos.x), y: r2(c.body.pos.y), z: r2(c.body.pos.z), yaw: r2(c.yaw), state: c.state, holding: c.holding, seen,
+        ...(c.emote ? { emote: c.emote.id, emoteT: r2(this.time - c.emote.at) } : {}),
+      };
     });
     const props = [...this.props.values()].map((p) => ({
       id: p.id, kind: p.kind, x: r2(p.pos.x), y: r2(p.pos.y), z: r2(p.pos.z), yaw: r2(p.yaw), broken: !!p.broken, heldBy: p.heldBy, hidden: !!p.hidden,
@@ -2231,6 +2310,7 @@ export class Match {
       ragdollT: r2(c.ragdollT), holding: c.holding, running: c.running, sneaking: c.sneaking, whispering: c.whispering,
       charge: r2(c.charge), plant: r2(Math.min(1, c.plantT / COUSIN.plantHold)), leader: c.id === petId,
     };
+    if (c.emote) { s.emote = c.emote.id; s.emoteT = r2(this.time - c.emote.at); }
     // How far the server has got with your inputs is for your own prediction only.
     if (forId === c.id) s.ack = g ? g.base : c.ack;
     if (c.role === 'grandma') {
@@ -2287,6 +2367,8 @@ export class Match {
       const s = this.charSnap(c, this.petId, g.id);
       delete s.ack;
       if (!per.identifiable) { s.holding = null; s.charge = 0; s.plant = 0; s.whispering = false; }
+      // A shape she can make out may be seen dancing; someone she only hears may not.
+      if (!per.visible) { delete s.emote; delete s.emoteT; }
       chars.push(s);
     }
     const props: PropSnap[] = [];

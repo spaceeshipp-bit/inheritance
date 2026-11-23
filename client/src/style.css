@@ -393,6 +393,13 @@ kbd { display: inline-block; min-width: 22px; padding: 1px 6px; border-radius: 5
 .float-text.crash.big { font-size: 36px; color: #ffcf5a; }
 .float-text.hit { color: #ff9a6a; font-size: 22px; }
 .float-text.whiff { font-size: 19px; color: #efe6d6; font-style: italic; font-weight: 700; letter-spacing: 2px; }
+/* Gestures and dances: sweet in pink, rude in red, Nana's in lilac; the censor's word on a black bar. */
+.float-text.emote { font-size: 20px; font-family: var(--serif); font-style: italic; letter-spacing: 0.5px; }
+.float-text.emote.sweet { color: #ff9ab8; }
+.float-text.emote.rude { color: #ff7a5a; }
+.float-text.emote.show { color: #d9c2ff; }
+.float-text.emote.censored { font-family: monospace; font-style: normal; font-size: 16px; color: #fff; background: #111; padding: 2px 8px; text-shadow: none; letter-spacing: 2px; }
+.wheel-note { display: block; font-size: 10px; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); margin-left: 4px; }
 
 /* Captions, bottom right. */
 .captions { position: absolute; right: 12px; bottom: 12px; width: 340px; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }

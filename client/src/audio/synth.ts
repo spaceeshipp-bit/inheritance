@@ -1,13 +1,16 @@
 // Synthesised sound effects (WebAudio only, no files). Each voice schedules
 // its own nodes into `out` starting at `t` and returns its duration.
 
+import type { EmoteSound } from '../../../shared/emotes.js';
+import { emoteSynth, isEmoteSound } from './emotesynth.js';
+
 export type SfxKind =
   | 'crash' | 'step' | 'quill' | 'whistle' | 'cane' | 'oof' | 'ding' | 'thunder' | 'clink' | 'tut' | 'bless' | 'pop' | 'summon'
-  | 'whoosh';
+  | 'whoosh' | EmoteSound;
 
 export interface SynthCtx { ctx: AudioContext; noise: AudioBuffer; out: AudioNode; t: number; rand: () => number }
 
-function env(ctx: AudioContext, t: number, attack: number, peak: number, decay: number): GainNode {
+export function env(ctx: AudioContext, t: number, attack: number, peak: number, decay: number): GainNode {
   const g = ctx.createGain();
   g.gain.setValueAtTime(0.0001, t);
   g.gain.exponentialRampToValueAtTime(Math.max(0.0002, peak), t + attack);
@@ -15,7 +18,7 @@ function env(ctx: AudioContext, t: number, attack: number, peak: number, decay: 
   return g;
 }
 
-function noiseSrc(s: SynthCtx, t: number, dur: number): AudioBufferSourceNode {
+export function noiseSrc(s: SynthCtx, t: number, dur: number): AudioBufferSourceNode {
   const n = s.ctx.createBufferSource();
   n.buffer = s.noise;
   n.loop = true;
@@ -23,7 +26,7 @@ function noiseSrc(s: SynthCtx, t: number, dur: number): AudioBufferSourceNode {
   return n;
 }
 
-function tone(s: SynthCtx, type: OscillatorType, f0: number, f1: number, t: number, dur: number): OscillatorNode {
+export function tone(s: SynthCtx, type: OscillatorType, f0: number, f1: number, t: number, dur: number): OscillatorNode {
   const o = s.ctx.createOscillator();
   o.type = type;
   o.frequency.setValueAtTime(f0, t);
@@ -33,7 +36,7 @@ function tone(s: SynthCtx, type: OscillatorType, f0: number, f1: number, t: numb
   return o;
 }
 
-function filter(ctx: AudioContext, type: BiquadFilterType, f: number, q = 1): BiquadFilterNode {
+export function filter(ctx: AudioContext, type: BiquadFilterType, f: number, q = 1): BiquadFilterNode {
   const b = ctx.createBiquadFilter();
   b.type = type;
   b.frequency.value = f;
@@ -43,6 +46,7 @@ function filter(ctx: AudioContext, type: BiquadFilterType, f: number, q = 1): Bi
 
 export function synth(kind: SfxKind, s: SynthCtx): number {
   const { ctx, out, t, rand } = s;
+  if (isEmoteSound(kind)) return emoteSynth(kind, s);
   switch (kind) {
     case 'crash': {
       // Porcelain: a bright noise burst, ringing partials, and a dull thud.

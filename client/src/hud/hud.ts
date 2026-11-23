@@ -4,6 +4,7 @@
 // bubbles, pings, captions and effects (the shove gesture and whoosh, a
 // crash's shake and "Nana heard that!"). The settings gear lives here too and
 // shows on every screen.
+import { EMOTES, emotesFor, type EmoteId } from '../../../shared/emotes.js';
 import { QUICKCHAT, VOICE } from '../../../shared/constants.js';
 import type { GameEvent } from '../../../shared/protocol.js';
 import { dist, flatDist, hearingBand } from '../../../shared/senses.js';
@@ -33,7 +34,7 @@ import { SettingsPanel } from './settings.js';
 import { Toasts } from './toasts.js';
 import { TopBar } from './topbar.js';
 import { panelRects, type HudFrame, type Rect } from './types.js';
-import { Wheel } from './wheel.js';
+import { Wheel, type WheelKind } from './wheel.js';
 
 type Overlay = { root: HTMLElement; frame(s: GameState, now: number, t: number): void };
 
@@ -147,8 +148,8 @@ export class Hud {
     this.help.innerHTML = '';
     this.help.append(el('div', 'pref-title', 'Controls (H to close)'), el('div', 'help-keys', m.role === 'grandma' ? GRANDMA_KEYS : COUSIN_KEYS),
       el('div', 'help-keys', 'Gamepad: left stick move, right stick look. ' + (m.role === 'grandma'
-        ? 'RB Bless, LB Tut, D-pad left/right lock name, View parchment, RT cane, LT hearing aid, Y spectacles, B summon, X pin, R3 quick-chat wheel.'
-        : 'L3 run, B sneak, A jump, RT grab, RB throw, X shove, Y interact, D-pad down plant, LB compliment wheel, D-pad up tattle, LT whisper.')),
+        ? 'RB Bless, LB Tut, D-pad left/right lock name, View parchment, RT cane, LT hearing aid, Y spectacles, B summon, X pin, R3 quick-chat wheel, L3 gestures, D-pad down dances.'
+        : 'L3 run, B sneak, A jump, RT grab, RB throw, X shove, Y interact, D-pad down plant, LB compliment wheel, D-pad up tattle, D-pad left gestures, D-pad right dances, LT whisper.')),
       el('div', 'help-keys muted', 'Esc: settings (press it twice while the mouse is captured).'));
     this.prevShoveCd = 0;
     this.prevParchment = false;
@@ -177,8 +178,14 @@ export class Hud {
 
   toggleHelp(): void { show(this.help, this.help.style.display === 'none'); }
 
-  openWheel(kind: 'quick' | 'tattle'): void {
+  openWheel(kind: WheelKind): void {
     const s = this.s;
+    if (kind === 'gesture' || kind === 'dance') {
+      const list = emotesFor(s.role === 'grandma' ? 'grandma' : 'cousin', kind);
+      const note = (t: string) => (s.role === 'grandma' ? undefined : t === 'sweet' ? 'flattery' : t === 'rude' ? 'rude' : undefined);
+      this.wheel.open(kind, kind === 'gesture' ? 'Gesture...' : 'Dance...', list.map((d) => ({ label: d.name, note: note(d.tone) })));
+      return;
+    }
     if (kind === 'quick') {
       const lines = s.role === 'grandma' ? QUICKCHAT.grandma : QUICKCHAT.cousin;
       this.wheel.open('quick', 'Say...', lines.map((l) => ({ label: l })));
@@ -190,11 +197,15 @@ export class Hud {
   }
 
   /** Close the wheel; returns what was picked. */
-  closeWheel(): { kind: 'quick' | 'tattle'; line?: number; accused?: string } | null {
+  closeWheel(): { kind: WheelKind; line?: number; accused?: string; emote?: EmoteId } | null {
     const kind = this.wheel.kind;
     const i = this.wheel.close();
     if (i < 0) return null;
     if (kind === 'quick') return { kind, line: i };
+    if (kind === 'gesture' || kind === 'dance') {
+      const d = emotesFor(this.s.role === 'grandma' ? 'grandma' : 'cousin', kind)[i];
+      return d ? { kind, emote: d.id } : null;
+    }
     const others = (this.s.match?.cousins ?? []).filter((c) => c.id !== this.s.selfId);
     return others[i] ? { kind, accused: others[i].id } : null;
   }
@@ -243,6 +254,14 @@ export class Hud {
         if (g) t.push(`${nm(ev.from)} tattles: it was ${nm(ev.accused)}!`, 'warn', 4);
         else if (ev.accused === me) t.push(`${nm(ev.from)} tattled on you!`, 'bad', 4);
         break;
+      case 'gesture': {
+        // Aimed at you, or (Grandma) something she clearly saw a cousin do.
+        const d = EMOTES[ev.emote];
+        const who = ev.by === s.grandmaId ? 'Nana' : nm(ev.by);
+        if (ev.at === me) t.push(`${who} ${d.atYou}`, d.tone === 'rude' ? 'bad' : d.tone === 'sweet' ? 'good' : 'warn', 3.5);
+        else if (g) t.push(`${who} ${d.does}${ev.at ? ` at ${nm(ev.at)}` : ''}.`, 'info', 3);
+        break;
+      }
       case 'summon':
         t.push(g ? 'You ring for the family. Who comes running?' : 'Nana summons everyone to her side!', 'warn', 4);
         this.soundCaption('summon', ev.pos, "Nana's bell");

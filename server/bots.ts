@@ -22,6 +22,7 @@ import type { LogEvent, PropKind, Vec3 } from '../shared/types.js';
 import { PROP_MID, eyeOf, lineOfSight } from '../shared/sight.js';
 import { available } from '../shared/will.js';
 import { forwardOf, yawToward, wrapAngle } from '../shared/movement.js';
+import { EMOTES, type EmoteId } from '../shared/emotes.js';
 import type { Char, Match, Prop } from './match.js';
 import { beatPoints, findPath, freePoint, levelOf, waypoints } from './nav.js';
 import { roomAt } from '../shared/map.js';
@@ -191,7 +192,23 @@ type Task =
   | { k: 'retrieve'; until: number; spotted: string | null; search: Vec3 | null }
   | { k: 'summoned'; until: number }
   | { k: 'tattle'; accused: string; until: number; side: number }
+  /** Pull a face at Nana behind her back (or dance between visits). */
+  | { k: 'cheek' | 'dance'; until: number; emote: EmoteId; started: boolean }
   | { k: 'idle'; until: number };
+
+/** A small seeded generator for the bots' gestures, apart from the match's (so they do not reshuffle its dice). */
+function gestureRng(id: string): () => number {
+  let a = 0x9e3779b9;
+  for (let i = 0; i < id.length; i++) a = Math.imul(a ^ id.charCodeAt(i), 0x85ebca6b);
+  return () => {
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+const BOT_RUDE: EmoteId[] = ['raspberry', 'nose-thumb', 'the-bird', 'moon', 'coffin-measure', 'money-count'];
+const BOT_DANCES: EmoteId[] = ['will-jig', 'gold-digger', 'grave-stomp', 'hip-replacement', 'tea-twirl', 'funeral-march'];
 
 export class CousinBot implements Bot {
   private seq = 0;
@@ -212,11 +229,15 @@ export class CousinBot implements Bot {
   private nextSabotageAt = Infinity;
   private lastTattleAt = -Infinity;
   private nextComplimentAt = 0;
+  /** Gestures: their own dice, and when the next face may be pulled behind Nana's back. */
+  private erng: () => number;
+  private nextCheekAt = 0;
   /** Personality: how readily it misbehaves when it may, and how readily it runs errands. */
   readonly mischief: number;
   readonly helpful: number;
 
   constructor(private m: Match, readonly id: string) {
+    this.erng = gestureRng(id);
     this.walker = new Walker(m.rng);
     this.mischief = 0.45 + m.rng() * 0.4;
     this.helpful = 0.35 + m.rng() * 0.4;
@@ -287,7 +308,12 @@ export class CousinBot implements Bot {
     }
     if (m.phase === 'visit' && this.visit !== m.visitIndex) this.startVisit();
     if (m.phase === 'intermission') {
-      if (!this.task || this.task.k !== 'wander' || m.time > this.task.until) this.task = this.wanderTask(c, 6);
+      if (!this.task || (this.task.k !== 'wander' && this.task.k !== 'dance') || m.time > this.task.until) {
+        // Between visits, some of them dance.
+        this.task = !c.holding && this.erng() < 0.3
+          ? { k: 'dance', until: m.time + 7, emote: BOT_DANCES[Math.floor(this.erng() * BOT_DANCES.length)], started: false }
+          : this.wanderTask(c, 6);
+      }
     } else if (!this.task || m.time > this.task.until) {
       this.task = this.choose(c);
       this.walker.reset();
@@ -307,6 +333,7 @@ export class CousinBot implements Bot {
     this.nextSabotageAt = clk.start + clk.opening + m.rng() * BOTS.openingStagger * clk.pace;
     this.lastTattleAt = -Infinity;
     this.nextComplimentAt = clk.start + m.rng() * 6 * clk.pace;
+    this.nextCheekAt = clk.start + clk.opening + 10 + this.erng() * 25;
     this.task = null;
     this.missingSince = null;
     this.walker.reset();
@@ -405,6 +432,14 @@ export class CousinBot implements Bot {
     if (this.sabotageReady() && rnd() < this.mischief) {
       const t = this.sabotageTask(c);
       if (t) return t;
+    }
+    if (g && now >= this.nextCheekAt && !c.holding) {
+      // Behind her back, close enough to count: pull a face at her.
+      const d = flatDist(c.body.pos, g.body.pos);
+      if (d > 2.5 && d < 7 && sameFloor(c.body.pos, g.body.pos) && !m.canSeeNow(c.body.pos) && this.erng() < 0.35 + 0.3 * this.mischief) {
+        this.nextCheekAt = now + 35 + this.erng() * 35;
+        return { k: 'cheek', until: now + 5, emote: BOT_RUDE[Math.floor(this.erng() * BOT_RUDE.length)], started: false };
+      }
     }
     if (g && now >= this.nextComplimentAt && !this.crowded() && rnd() < 0.6) {
       const standoff = BOTS.complimentMin + 0.05 + rnd() * (BOTS.complimentMax - BOTS.complimentMin - 0.1);
@@ -614,6 +649,23 @@ export class CousinBot implements Bot {
         if (d < 0.6) this.done();
         break;
       }
+      case 'cheek':
+      case 'dance': {
+        // Stand still (facing Nana, for a face pulled at her) and play it out.
+        inp.move = { x: 0, z: 0 };
+        if (t.k === 'cheek') {
+          if (!g || m.canSeeNow(c.body.pos)) { if (!t.started) this.done(); }
+          else if (EMOTES[t.emote].away) this.face(inp, c, { x: 2 * c.body.pos.x - g.body.pos.x, y: c.body.pos.y, z: 2 * c.body.pos.z - g.body.pos.z });
+          else this.face(inp, c, g.body.pos);
+        }
+        if (!t.started) {
+          if (t.k === 'dance' || Math.abs(wrapAngle(c.yaw - inp.yaw)) < 0.25) {
+            m.handleEmote(this.id, t.emote);
+            t.started = true;
+          }
+        } else if (!c.emote) this.done();
+        break;
+      }
       case 'fetch': {
         const p = m.props.get(t.prop);
         if (!p || p.hidden || (p.heldBy && p.heldBy !== this.id) || !m.wish || m.wish.propId !== p.id) { this.done(); break; }
@@ -656,6 +708,7 @@ export class CousinBot implements Bot {
             this.face(inp, c, g.body.pos);
             t.saidAt = m.time;
             m.handleQuick(this.id, m.rng() < 0.5 ? 0 : 4);
+            if (this.erng() < 0.35) m.handleEmote(this.id, this.erng() < 0.6 ? 'heart-hands' : 'crocodile-tears');
             this.nextComplimentAt = m.time + BOTS.complimentGap * (1 + m.rng() * 0.5) * this.pace();
           } else {
             this.go(c, inp, besideNana(g, t.standoff, t.side), false);
@@ -1084,6 +1137,25 @@ export class GrandmaBot implements Bot {
       case 'bubble':
         this.heard(ev);
         break;
+      case 'gesture': {
+        // Something she clearly saw a cousin do.
+        if (!m.cousinIds.includes(ev.by)) break;
+        const by = ev.by;
+        const def = EMOTES[ev.emote];
+        if (def.tone === 'rude') {
+          this.suspect(by, ev.at === this.id ? 1.5 : 0.5);
+          this.later(0.4 + rnd() * 0.4, () => {
+            if (rnd() < 0.5) m.handleEmote(this.id, rnd() < 0.5 ? 'clutch-pearls' : 'wag-finger');
+            else m.handleQuick(this.id, 3); // "I saw that!"
+          });
+          if (ev.at === this.id && rnd() < BOTS.grandma.tutSeen * 0.6) this.later(1.4 + rnd(), () => this.tut(by, 'fair'));
+        } else if (def.tone === 'sweet' && ev.at === this.id) {
+          this.fond(by, 0.5);
+          if (rnd() < 0.5) this.later(0.8 + rnd() * 0.6, () => this.blessCompliment(by));
+          else if (rnd() < 0.4) this.later(0.5, () => m.handleEmote(this.id, 'blow-kiss'));
+        }
+        break;
+      }
       case 'tattle': {
         if (!m.cousinIds.includes(ev.accused)) break;
         const accused = ev.accused;
@@ -1098,6 +1170,7 @@ export class GrandmaBot implements Bot {
           this.suspect(by, 3);
           this.naughty = { id: by, until: m.time + 6 };
           m.handleQuick(this.id, 3); // "I saw that!"
+          if (rnd() < 0.4) this.later(0.3, () => m.handleEmote(this.id, rnd() < 0.5 ? 'cane-shake' : 'watching-you'));
           if (rnd() < BOTS.grandma.tutSeen) this.later(0.6 + rnd() * 0.8, () => this.tut(by, 'strong'));
         } else if (ev.pos && dist(ev.pos, g.body.pos) <= SENSES.mumble) {
           // An "oof" somewhere: turn to look, and eye whoever is standing over the victim.

@@ -139,7 +139,7 @@ export const MANOR: MapDef = {
     ],
   },
   heirloomSpots: pedestalTops(BOXES),
-  dinner: { table: { minX: 10.5, maxX: 13.0, minZ: -1.0, maxZ: 1.0 }, door: { x: 8, z: 0 } },
+  dinner: { table: { minX: 10.5, maxX: 13.0, minZ: -1.0, maxZ: 1.0 }, door: { x: 8, z: 0 }, doorName: 'the kitchen door' },
   nav: {
     ground: GROUND,
     upper: [U(-3, -9.7), U(3, -9.7), U(-6.5, -9.6), U(6.5, -9.6), U(-1.2, -10.8), U(1.2, -10.8), U(-5, -11.3), U(5, -11.3)],

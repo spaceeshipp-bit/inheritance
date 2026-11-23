@@ -2,6 +2,7 @@
 // the moments list, the framing metric and the bots' reactions. Nothing here
 // is sent to clients except moments (as they happen) and the final tally.
 import { MOMENT, SABOTAGE_POINTS, WILL } from '../shared/constants.js';
+import { EMOTE, EMOTES } from '../shared/emotes.js';
 import type { FinalResult, LogEvent, Moment, NanaReason } from '../shared/types.js';
 
 export type SabotageKind = 'shove' | 'break' | 'steal' | 'plant' | 'knock-specs';
@@ -41,6 +42,8 @@ export class EventLog {
   private lastCaught = new Map<string, number>();
   /** Last Love You, Nana moment per actor. */
   private lastLoveYou = new Map<string, number>();
+  /** Last Behind Her Back / The Cheek of It moment per actor. */
+  private lastRude = new Map<string, number>();
   /** The log index of the event each moment is about (for its replay). Server-side only. */
   private momentEvents = new Map<Moment, number>();
 
@@ -160,6 +163,7 @@ export class EventLog {
         const saw = before((e) => isSabotage(e) && e.by === d.target && !!e.seen);
         const tat = before((e) => e.kind === 'tattle' && e.accused === d.target);
         const left = before((e) => e.kind === 'left-table' && e.by === d.target);
+        const rude = before((e) => e.kind === 'rude' && e.by === d.target && e.seen);
         const accE = acc >= 0 ? ev[acc] : null;
         const crime = accE && accE.kind === 'accuse' && accE.crime !== null ? ev[accE.crime] : null;
         if (found >= 0) {
@@ -172,6 +176,8 @@ export class EventLog {
           truth = crime.by && crime.by !== d.target ? `${nm(crime.by)} did it.` : null;
         } else if (saw >= 0) {
           why = `saw ${who} at ${describe(ev[saw] as SabotageEvent)}`;
+        } else if (rude >= 0) {
+          why = `saw ${who} ${EMOTES[(ev[rude] as Extract<LogEvent, { kind: 'rude' }>).emote].saw}`;
         } else if (left >= 0) {
           const lt = ev[left];
           why = `${who} left the dinner table`;
@@ -225,6 +231,17 @@ export class EventLog {
       if (flattered && ev.t - last >= 30) {
         this.lastLoveYou.set(ev.by, ev.t);
         this.addMoment({ kind: 'love-you-nana', t: ev.t, actor: ev.by, victim: ev.victim, text: `${n(ev.by)} told Nana they loved her, then shoved ${n(ev.victim)}.` }, this.events.length - 1);
+      }
+    }
+    // Rudeness aimed at Nana: unseen, it is Behind Her Back; up close and seen, The Cheek of It.
+    if (ev.kind === 'rude' && ev.atNana && (!ev.seen || ev.sharp)) {
+      const last = this.lastRude.get(ev.by) ?? -Infinity;
+      if (ev.t - last >= EMOTE.momentGap) {
+        this.lastRude.set(ev.by, ev.t);
+        const did = EMOTES[ev.emote].did;
+        this.addMoment(ev.seen
+          ? { kind: 'cheek', t: ev.t, actor: ev.by, text: `${n(ev.by)} ${did} right in front of Nana.` }
+          : { kind: 'behind-her-back', t: ev.t, actor: ev.by, text: `${n(ev.by)} ${did} behind Nana's back.` }, this.events.length - 1);
       }
     }
     if (ev.kind === 'break' && ev.favourite) {

@@ -14,9 +14,9 @@ const KEEP = 10;
 const BEFORE = 5;
 const AFTER = 2;
 /** Clips kept per kind of event, first come first kept: a shove-fest does not crowd out the plant. */
-const CLIPS_PER_KIND: Partial<Record<LogEvent['kind'], number>> = { shove: 6, break: 6, plant: 6, steal: 3, 'knock-specs': 2 };
+const CLIPS_PER_KIND: Partial<Record<LogEvent['kind'], number>> = { shove: 6, break: 6, plant: 6, steal: 3, 'knock-specs': 2, rude: 4 };
 /** Which moments make the best replays, best first. Big Cut is Nana's own doing: nothing hidden to show. */
-const PRIORITY: Partial<Record<MomentKind, number>> = { framed: 5, 'love-you-nana': 4, 'caught-red-handed': 3, 'favourite-broken': 3 };
+const PRIORITY: Partial<Record<MomentKind, number>> = { framed: 5, 'love-you-nana': 4, 'behind-her-back': 4, 'caught-red-handed': 3, 'favourite-broken': 3, cheek: 2 };
 /** Replays sent with the reading. */
 export const REPLAYS_AT_READING = 3;
 

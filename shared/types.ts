@@ -1,4 +1,5 @@
 // Core data types shared by server and client.
+import type { EmoteId } from './emotes.js';
 import type { MapId } from './maps/types.js';
 import type { ItemKey, VisitId } from './constants.js';
 
@@ -53,6 +54,9 @@ export interface CharSnap {
   plant: number;
   /** "Nana's Pet" glow: the current leader. */
   leader: boolean;
+  /** A gesture or dance under way, and how far into it (s). */
+  emote?: EmoteId;
+  emoteT?: number;
   /** Grandma only. */
   parchmentOpen?: boolean;
   aidActive?: boolean;
@@ -96,7 +100,7 @@ export interface WishInfo {
 }
 
 /** A tagged moment (for the Reading of the Will highlight list and achievements). */
-export type MomentKind = 'love-you-nana' | 'framed' | 'caught-red-handed' | 'big-cut' | 'favourite-broken';
+export type MomentKind = 'love-you-nana' | 'framed' | 'caught-red-handed' | 'big-cut' | 'favourite-broken' | 'behind-her-back' | 'cheek';
 export interface Moment {
   kind: MomentKind;
   t: number;
@@ -128,6 +132,11 @@ export type LogEvent =
   | { t: number; kind: 'cane'; victim: string }
   /** Family Dinner: Nana noticed this cousin's empty chair. */
   | { t: number; kind: 'left-table'; by: string }
+  /**
+   * A rude gesture or dance: `atNana` if aimed at her (`at`: whoever it was aimed
+   * at), `seen` if she could tell who it was, `sharp` if she saw it up close.
+   */
+  | { t: number; kind: 'rude'; by: string; emote: EmoteId; at: string | null; atNana: boolean; seen: boolean; sharp?: boolean }
   | { t: number; kind: 'knock-specs'; by: string; seen?: boolean; sharp?: boolean };
 
 export interface MatchOptions {
@@ -201,6 +210,9 @@ export interface ReplayChar {
   state: BodyState;
   holding: string | null;
   seen: ReplaySeen;
+  /** A gesture or dance under way, and how far into it (s). */
+  emote?: EmoteId;
+  emoteT?: number;
 }
 
 export interface ReplayProp {
